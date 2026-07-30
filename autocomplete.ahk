@@ -2,8 +2,8 @@
 #SingleInstance Force
 Persistent
 
-; Sheet Autocomplete version 0.5.2
-global AppVersion := "0.5.2"
+; Sheet Autocomplete version 0.5.3
+global AppVersion := "0.5.3"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -15,7 +15,7 @@ global CacheDir := A_AppData "\SheetAutocomplete"
 global ManifestPath := CacheDir "\cache.ini"
 global StatePath := CacheDir "\state.ini"
 global ErrorPath := CacheDir "\last-error.txt"
-global UpdateUrl := "https://api.github.com/repos/nathanpuls/sheet-autocomplete/contents/windows/autocomplete.ahk"
+global UpdateUrl := "https://api.github.com/repos/nathanpuls/trigger-search/contents/windows/autocomplete.ahk"
 
 global Trigger := ";"
 global TriggerHotkey := ""
@@ -646,7 +646,7 @@ UpdateScriptFromGitHub(*) {
 
 FetchLiveGitHubFile(url) {
     commitRequest := GitHubRequest(
-        "https://api.github.com/repos/nathanpuls/sheet-autocomplete/commits/main"
+        "https://api.github.com/repos/nathanpuls/trigger-search/commits/main"
             . "?cacheBust=" A_NowUTC A_MSec,
         "application/vnd.github+json"
     )

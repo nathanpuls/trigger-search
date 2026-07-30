@@ -1,4 +1,4 @@
-# Sheet Autocomplete
+# Trigger Search
 
 A lightweight personal autocomplete powered by a public Google Sheet. The same
 snippet collection works across macOS with Hammerspoon and Windows with
