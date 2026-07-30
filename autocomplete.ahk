@@ -2,8 +2,8 @@
 #SingleInstance Force
 Persistent
 
-; Sheet Autocomplete version 0.4.0
-global AppVersion := "0.4.0"
+; Sheet Autocomplete version 0.4.1
+global AppVersion := "0.4.1"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -867,8 +867,10 @@ ParseSheet(csv, info, output) {
 
         for columnIndex, header in rows[1] {
             detailName := Trim(StrReplace(header, Chr(0xFEFF)))
-            if detailName = "" || columnIndex = labelColumn
-                || columnIndex = contentColumn || columnIndex = aliasColumn
+            normalizedDetailName := StrLower(detailName)
+            if detailName = "" || normalizedDetailName = "label"
+                || normalizedDetailName = "content"
+                || normalizedDetailName = "alias"
                 continue
             detailContent := Cell(row, columnIndex)
             if Trim(detailContent) = ""
