@@ -35,7 +35,7 @@ jobs:
           }
           $validation = Start-Process `
             -FilePath $exe.FullName `
-            -ArgumentList @("/validate", "$PWD\autocomplete.ahk") `
+            -ArgumentList @("/validate", "$PWD\windows\autocomplete.ahk") `
             -Wait `
             -PassThru
           if ($validation.ExitCode -ne 0) {
@@ -51,7 +51,7 @@ jobs:
           Remove-Item $result -ErrorAction SilentlyContinue
           $test = Start-Process `
             -FilePath $exe.FullName `
-            -ArgumentList @("$PWD\autocomplete.ahk", "--self-test") `
+            -ArgumentList @("$PWD\windows\autocomplete.ahk", "--self-test") `
             -Wait `
             -PassThru
           if (Test-Path $result) {
@@ -62,4 +62,13 @@ jobs:
           }
           if ((Get-Content $result -Raw) -ne "PASS") {
             throw "AutoHotkey runtime smoke tests did not report PASS."
+          }
+
+      - name: Verify legacy updater bridge
+        shell: pwsh
+        run: |
+          $legacy = (Get-FileHash autocomplete.ahk -Algorithm SHA256).Hash
+          $current = (Get-FileHash windows/autocomplete.ahk -Algorithm SHA256).Hash
+          if ($legacy -ne $current) {
+            throw "The root compatibility script differs from the Windows source."
           }
