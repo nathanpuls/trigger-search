@@ -2,8 +2,8 @@
 #SingleInstance Force
 Persistent
 
-; Sheet Autocomplete version 0.3.3
-global AppVersion := "0.3.3"
+; Sheet Autocomplete version 0.3.4
+global AppVersion := "0.3.4"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -633,18 +633,22 @@ RefreshData(*) {
     if Refreshing
         return
     Refreshing := true
+    stage := "starting refresh"
 
     try {
+        stage := "downloading the list of Sheet tabs"
         cacheBust := A_NowUTC A_MSec
         htmlUrl := "https://docs.google.com/spreadsheets/d/" SheetId
             . "/htmlview?cacheBust=" cacheBust
         html := FetchText(htmlUrl)
+        stage := "reading the list of Sheet tabs"
         infos := DiscoverSheets(html)
         if infos.Length = 0
             throw Error("No visible tabs were found.")
 
         csvByName := Map()
         for info in infos {
+            stage := "downloading the " info.Name " tab"
             csvUrl := "https://docs.google.com/spreadsheets/d/" SheetId
                 . "/gviz/tq?tqx=out:csv&gid=" info.Gid
                 . "&cacheBust=" cacheBust
@@ -654,17 +658,27 @@ RefreshData(*) {
             csvByName[info.Name] := csv
         }
 
+        stage := "parsing the downloaded Sheet tabs"
         ApplySheets infos, csvByName
+        stage := "saving the offline cache"
         SaveCache infos, csvByName
         SheetInfos := infos
         LastRefreshError := ""
     } catch as problem {
         ; Offline use is expected: keep the last successful in-memory/cache copy.
-        LastRefreshError := problem.Message
-        OutputDebug "Sheet Autocomplete refresh failed: " problem.Message "`n"
-        WriteTextAtomic CacheDir "\last-error.txt", problem.Message
+        location := problem.Line ? " at script line " problem.Line : ""
+        LastRefreshError := stage ": " problem.Message location
+        details := LastRefreshError
+        if problem.What != ""
+            details .= "`nFunction: " problem.What
+        if problem.Extra != ""
+            details .= "`nExtra: " problem.Extra
+        if problem.Stack != ""
+            details .= "`n`nStack:`n" problem.Stack
+        OutputDebug "Sheet Autocomplete refresh failed: " details "`n"
+        WriteTextAtomic CacheDir "\last-error.txt", details
         if Snippets.Length = 0
-            TrayTip "Could not load snippets: " problem.Message, "Sheet Autocomplete"
+            TrayTip "Could not load snippets while " LastRefreshError, "Sheet Autocomplete"
     } finally {
         Refreshing := false
     }
