@@ -2,8 +2,8 @@
 #SingleInstance Force
 Persistent
 
-; Sheet Autocomplete version 0.5.4
-global AppVersion := "0.5.4"
+; Sheet Autocomplete version 0.6.0
+global AppVersion := "0.6.0"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -13,7 +13,6 @@ global SheetId := "15JTaedzH2ZfT2FAb7FduyMg37aBCHTKborM7E0y8nts"
 global RefreshIntervalMs := 60000
 global CacheDir := A_AppData "\SheetAutocomplete"
 global ManifestPath := CacheDir "\cache.ini"
-global StatePath := CacheDir "\state.ini"
 global ErrorPath := CacheDir "\last-error.txt"
 global UpdateUrl := "https://api.github.com/repos/nathanpuls/trigger-search/contents/windows/autocomplete.ahk"
 
@@ -27,8 +26,6 @@ global AtBoundary := true
 global LastActiveWindow := 0
 global TargetWindow := 0
 global ChooserOpen := false
-global ActiveCategory := ""
-global Categories := []
 global SheetInfos := []
 global Snippets := []
 global VisibleChoices := []
@@ -71,12 +68,11 @@ Left::CloseDetails()
 ~MButton::ResetBoundary()
 
 Initialize() {
-    global CacheDir, RefreshIntervalMs, ActiveCategory, StatePath, Trigger
+    global CacheDir, RefreshIntervalMs, Trigger
     global Snippets, AppVersion
 
     DirCreate CacheDir
     A_IconTip := "Trigger Search v" AppVersion
-    ActiveCategory := IniRead(StatePath, "state", "category", "")
     LoadCache()
     BuildChooser()
     InstallTrigger(Trigger)
@@ -103,7 +99,7 @@ Initialize() {
 BuildChooser() {
     global ChooserGui, SearchBox, ResultsView
 
-    ChooserGui := Gui("+AlwaysOnTop +ToolWindow", "Trigger Search — All")
+    ChooserGui := Gui("+AlwaysOnTop +ToolWindow", "Trigger Search")
     ChooserGui.MarginX := 14
     ChooserGui.MarginY := 12
     ChooserGui.SetFont("s10", "Segoe UI")
@@ -123,7 +119,7 @@ BuildChooser() {
     ChooserGui.OnEvent("Close", (*) => CancelChooser())
     ChooserGui.OnEvent("Escape", (*) => CancelChooser())
 
-    SetSearchPlaceholder("Search")
+    SetSearchPlaceholder("⌕")
 }
 
 SetSearchPlaceholder(text) {
@@ -145,8 +141,8 @@ UpdateChooserContext() {
     if DetailParent
         ChooserGui.Title := "Trigger Search — " DetailParent.GroupLabel " details"
     else
-        ChooserGui.Title := "Trigger Search — " CurrentScopeLabel()
-    SetSearchPlaceholder("Search")
+        ChooserGui.Title := "Trigger Search"
+    SetSearchPlaceholder("⌕")
 }
 
 StartKeyboardWatcher() {
@@ -321,19 +317,13 @@ SearchChanged(control, info) {
 }
 
 FilterChoices(query) {
-    global Snippets, ActiveCategory, DetailParent
+    global Snippets, DetailParent
 
     needle := StrLower(Trim(query))
-    if !DetailParent && SubStr(needle, 1, 1) = "/"
-        return CategoryChoices(needle)
-
     ranked := []
     source := DetailParent ? DetailParent.Details : Snippets
 
     for item in source {
-        if !DetailParent && ActiveCategory != "" && item.Category != ActiveCategory
-            continue
-
         label := StrLower(DetailParent ? item.DetailName : item.Label)
         category := StrLower(item.Category)
         content := StrLower(item.Content " " item.DetailSearch)
@@ -418,40 +408,6 @@ InsertionSort(items, compare) {
     }
 }
 
-CategoryChoices(needle) {
-    global Categories
-
-    choices := [{
-        Type: "category",
-        Label: "/all",
-        Category: "",
-        Preview: "Search all"
-    }]
-
-    for category in Categories {
-        choices.Push({
-            Type: "category",
-            Label: "/" Slugify(category),
-            Category: category,
-            Preview: "Search only " category
-        })
-    }
-
-    if needle = "/"
-        return choices
-
-    filtered := []
-    for choice in choices {
-        if InStr(StrLower(choice.Label), needle)
-            filtered.Push(choice)
-    }
-    return filtered
-}
-
-Slugify(value) {
-    return RegExReplace(StrLower(Trim(value)), "\s+", "-")
-}
-
 RenderChoices(choices) {
     global ResultsView, VisibleChoices
 
@@ -461,14 +417,10 @@ RenderChoices(choices) {
 
     for index, choice in choices {
         shortcut := index <= 9 ? "Ctrl+" index : ""
-        if choice.HasOwnProp("Type") && choice.Type = "category" {
-            ResultsView.Add("", shortcut, choice.Label, choice.Preview)
-        } else {
-            label := choice.HasOwnProp("DisplayText") ? choice.DisplayText : choice.Label
-            supporting := choice.Category
-                . (choice.Preview != "" ? "  •  " choice.Preview : "")
-            ResultsView.Add("", shortcut, label, supporting)
-        }
+        label := choice.HasOwnProp("DisplayText") ? choice.DisplayText : choice.Label
+        supporting := choice.Category
+            . (choice.Preview != "" ? "  •  " choice.Preview : "")
+        ResultsView.Add("", shortcut, label, supporting)
     }
 
     ResultsView.Opt("+Redraw")
@@ -524,21 +476,6 @@ ResultDoubleClicked(control, row) {
 }
 
 ChooseChoice(choice) {
-    global ActiveCategory, DetailParent, RootQuery, SearchBox
-    global ChooserGui, ChooserOpen, StatePath
-
-    if choice.HasOwnProp("Type") && choice.Type = "category" {
-        ActiveCategory := choice.Category
-        IniWrite ActiveCategory, StatePath, "state", "category"
-        DetailParent := 0
-        RootQuery := ""
-        UpdateChooserContext()
-        SearchBox.Value := ""
-        RenderChoices(FilterChoices(""))
-        SearchBox.Focus()
-        return
-    }
-
     PasteChoice choice
 }
 
@@ -583,31 +520,22 @@ OpenSelectedDetails(*) {
 
 CloseDetails(*) {
     global DetailParent, SearchBox, RootQuery, ReturnParentKey
-    global ResultsView, VisibleChoices, ActiveCategory, StatePath
+    global ResultsView, VisibleChoices
 
-    if DetailParent {
-        DetailParent := 0
-        UpdateChooserContext()
-        SearchBox.Value := RootQuery
-        RenderChoices(FilterChoices(RootQuery))
-
-        for index, choice in VisibleChoices {
-            if choice.Key = ReturnParentKey {
-                ResultsView.Modify(0, "-Select -Focus")
-                ResultsView.Modify(index, "Select Focus Vis")
-                break
-            }
-        }
-        SearchBox.Focus()
+    if !DetailParent
         return
-    }
-
-    if ActiveCategory = ""
-        return
-    ActiveCategory := ""
-    IniWrite "", StatePath, "state", "category"
+    DetailParent := 0
     UpdateChooserContext()
-    RenderChoices(FilterChoices(SearchBox.Value))
+    SearchBox.Value := RootQuery
+    RenderChoices(FilterChoices(RootQuery))
+
+    for index, choice in VisibleChoices {
+        if choice.Key = ReturnParentKey {
+            ResultsView.Modify(0, "-Select -Focus")
+            ResultsView.Modify(index, "Select Focus Vis")
+            break
+        }
+    }
     SearchBox.Focus()
 }
 
@@ -620,11 +548,6 @@ EditSelected(*) {
     ChooserGui.Hide()
     ChooserOpen := false
     Run choice.EditUrl
-}
-
-CurrentScopeLabel() {
-    global ActiveCategory
-    return ActiveCategory = "" ? "All" : ActiveCategory
 }
 
 OpenWorkbook() {
@@ -879,11 +802,9 @@ RunSelfTestsAndExit() {
 }
 
 RunSelfTests() {
-    global Snippets, ActiveCategory, DetailParent, Categories
+    global Snippets, DetailParent
 
-    ActiveCategory := ""
     DetailParent := 0
-    Categories := ["Personal"]
     Snippets := [
         TestSnippet("meeting", "meet", ["mtg"]),
         TestSnippet("email address", "email@example.com", ["email"])
@@ -896,10 +817,6 @@ RunSelfTests() {
     Assert aliasMatch.Length > 0, "Alias search should return a result."
     Assert aliasMatch[1].Label = "email address",
         "Exact alias match should rank first."
-
-    categories := FilterChoices("/")
-    Assert categories.Length = 2,
-        "Category search should include All and Personal."
 
     parsed := []
     ParseSheet '"Label","Alias","Content"`n"apple","","red apple"',
@@ -981,10 +898,9 @@ DecodeJavascriptString(value) {
 }
 
 ApplySheets(infos, csvByName) {
-    global Categories, Snippets, ActiveCategory, StatePath
+    global Snippets
 
     ApplySettings infos, csvByName
-    categories := []
     parsed := []
 
     for info in infos {
@@ -992,18 +908,11 @@ ApplySheets(infos, csvByName) {
             continue
         if !csvByName.Has(info.Name)
             continue
-        categories.Push(info.Name)
         ParseSheet csvByName[info.Name], info, parsed
     }
 
     InsertionSort parsed, CompareSnippets
-    Categories := categories
     Snippets := parsed
-
-    if ActiveCategory != "" && !ArrayContains(Categories, ActiveCategory) {
-        ActiveCategory := ""
-        IniWrite "", StatePath, "state", "category"
-    }
 }
 
 ApplySettings(infos, csvByName) {
@@ -1229,14 +1138,6 @@ IsAdministrativeSheet(name) {
 
 NormalizeSheetName(name) {
     return RegExReplace(StrLower(Trim(name)), "[\s_&-]+")
-}
-
-ArrayContains(items, target) {
-    for item in items {
-        if item = target
-            return true
-    }
-    return false
 }
 
 SaveCache(infos, csvByName) {
