@@ -2,8 +2,8 @@
 #SingleInstance Force
 Persistent
 
-; Sheet Autocomplete version 0.4.2
-global AppVersion := "0.4.2"
+; Sheet Autocomplete version 0.4.3
+global AppVersion := "0.4.3"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -355,16 +355,16 @@ CompareRanked(a, b) {
     aGroup := StrLower(a.Item.GroupLabel)
     bGroup := StrLower(b.Item.GroupLabel)
     if aGroup != bGroup
-        return aGroup < bGroup ? -1 : 1
+        return StrCompare(aGroup, bGroup)
 
     aCategory := StrLower(a.Item.Category)
     bCategory := StrLower(b.Item.Category)
     if aCategory != bCategory
-        return aCategory < bCategory ? -1 : 1
+        return StrCompare(aCategory, bCategory)
 
     if a.Item.DetailOrder != b.Item.DetailOrder
         return a.Item.DetailOrder < b.Item.DetailOrder ? -1 : 1
-    return StrLower(a.Item.Label) < StrLower(b.Item.Label) ? -1 : 1
+    return StrCompare(StrLower(a.Item.Label), StrLower(b.Item.Label))
 }
 
 InsertionSort(items, compare) {
@@ -918,10 +918,10 @@ CompareSnippets(a, b) {
     aLabel := StrLower(a.GroupLabel)
     bLabel := StrLower(b.GroupLabel)
     if aLabel != bLabel
-        return aLabel < bLabel ? -1 : 1
+        return StrCompare(aLabel, bLabel)
     aCategory := StrLower(a.Category)
     bCategory := StrLower(b.Category)
-    return aCategory < bCategory ? -1 : (aCategory > bCategory ? 1 : 0)
+    return StrCompare(aCategory, bCategory)
 }
 
 MakePreview(label, content, category) {
