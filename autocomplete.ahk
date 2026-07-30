@@ -2,8 +2,8 @@
 #SingleInstance Force
 Persistent
 
-; Sheet Autocomplete version 0.6.0
-global AppVersion := "0.6.0"
+; Sheet Autocomplete version 0.6.1
+global AppVersion := "0.6.1"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -48,7 +48,7 @@ Initialize()
 Up::MoveSelection(-1)
 Down::MoveSelection(1)
 Enter::ChooseSelected()
-Esc::CancelChooser()
+*Esc::CancelChooser()
 Right::OpenSelectedDetails()
 Left::CloseDetails()
 ^e::EditSelected()
