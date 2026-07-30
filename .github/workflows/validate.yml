@@ -41,3 +41,25 @@ jobs:
           if ($validation.ExitCode -ne 0) {
             throw "AutoHotkey validation failed with exit code $($validation.ExitCode)."
           }
+
+      - name: Run chooser and filtering smoke tests
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem autohotkey -Recurse -Filter AutoHotkey64.exe |
+            Select-Object -First 1
+          $result = Join-Path $env:TEMP "sheet-autocomplete-self-test.txt"
+          Remove-Item $result -ErrorAction SilentlyContinue
+          $test = Start-Process `
+            -FilePath $exe.FullName `
+            -ArgumentList @("$PWD\autocomplete.ahk", "--self-test") `
+            -Wait `
+            -PassThru
+          if (Test-Path $result) {
+            Get-Content $result
+          }
+          if ($test.ExitCode -ne 0) {
+            throw "AutoHotkey runtime smoke tests failed with exit code $($test.ExitCode)."
+          }
+          if ((Get-Content $result -Raw) -ne "PASS") {
+            throw "AutoHotkey runtime smoke tests did not report PASS."
+          }

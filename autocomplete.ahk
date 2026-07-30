@@ -2,8 +2,8 @@
 #SingleInstance Force
 Persistent
 
-; Sheet Autocomplete version 0.4.3
-global AppVersion := "0.4.3"
+; Sheet Autocomplete version 0.4.4
+global AppVersion := "0.4.4"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -41,6 +41,9 @@ global ChooserGui := 0
 global ScopeText := 0
 global SearchBox := 0
 global ResultsView := 0
+
+if A_Args.Length > 0 && A_Args[1] = "--self-test"
+    RunSelfTestsAndExit()
 
 OnError HandleUnexpectedError
 Initialize()
@@ -304,7 +307,7 @@ FilterChoices(query) {
         aliasPrefix := false
         aliasContains := false
 
-        if !DetailParent {
+        if !DetailParent && needle != "" {
             for alias in item.Aliases {
                 if alias = needle
                     aliasExact := true
@@ -730,6 +733,69 @@ HandleUnexpectedError(problem, mode) {
     report := RecordError(problem, "Unexpected unhandled error", mode)
     MsgBox report, "Sheet Autocomplete unexpected error"
     return 0
+}
+
+RunSelfTestsAndExit() {
+    resultPath := A_Temp "\sheet-autocomplete-self-test.txt"
+    if FileExist(resultPath)
+        FileDelete resultPath
+
+    try {
+        RunSelfTests()
+        FileAppend "PASS", resultPath, "UTF-8-RAW"
+        ExitApp 0
+    } catch as problem {
+        FileAppend BuildErrorReport(problem, "Automated self-test"), resultPath,
+            "UTF-8-RAW"
+        ExitApp 1
+    }
+}
+
+RunSelfTests() {
+    global Snippets, ActiveCategory, DetailParent, Categories
+
+    ActiveCategory := ""
+    DetailParent := 0
+    Categories := ["Personal"]
+    Snippets := [
+        TestSnippet("meeting", "meet", ["mtg"]),
+        TestSnippet("email address", "email@example.com", ["email"])
+    ]
+
+    unfiltered := FilterChoices("")
+    Assert unfiltered.Length = 2, "Empty search should return every snippet."
+
+    aliasMatch := FilterChoices("email")
+    Assert aliasMatch.Length > 0, "Alias search should return a result."
+    Assert aliasMatch[1].Label = "email address",
+        "Exact alias match should rank first."
+
+    categories := FilterChoices("/")
+    Assert categories.Length = 2,
+        "Category search should include All and Personal."
+}
+
+TestSnippet(label, content, aliases) {
+    return {
+        Type: "snippet",
+        Key: label,
+        Label: label,
+        GroupLabel: label,
+        DisplayText: label,
+        Content: content,
+        Category: "Personal",
+        Aliases: aliases,
+        Details: [],
+        DetailSearch: "",
+        DetailOrder: 0,
+        Preview: "",
+        EditUrl: ""
+    }
+}
+
+Assert(condition, message) {
+    if !condition
+        throw Error(message)
 }
 
 FetchText(url) {

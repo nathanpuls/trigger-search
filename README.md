@@ -48,8 +48,9 @@ stack trace. The latest report is always saved to
 Each distinct refresh error is displayed once. Identical automatic-retry
 failures are logged silently so they do not repeatedly interrupt your work.
 
-GitHub also validates the AutoHotkey v2 syntax of every pushed version on a
-Windows runner.
+GitHub validates the AutoHotkey v2 syntax of every pushed version on a Windows
+runner. It also runs the empty chooser, text sorting, alias ranking, and category
+filtering paths as runtime smoke tests.
 
 ## Start automatically with Windows
 
