@@ -45,6 +45,8 @@ action, error type, message, function, file, line number, extra details, and
 stack trace. The latest report is always saved to
 `%APPDATA%\SheetAutocomplete\last-error.txt`. Right-click the green H and choose
 **Show last error report** to display it without finding the file manually.
+Each distinct refresh error is displayed once. Identical automatic-retry
+failures are logged silently so they do not repeatedly interrupt your work.
 
 GitHub also validates the AutoHotkey v2 syntax of every pushed version on a
 Windows runner.

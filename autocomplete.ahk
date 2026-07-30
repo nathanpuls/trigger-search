@@ -2,8 +2,8 @@
 #SingleInstance Force
 Persistent
 
-; Sheet Autocomplete version 0.4.1
-global AppVersion := "0.4.1"
+; Sheet Autocomplete version 0.4.2
+global AppVersion := "0.4.2"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -21,6 +21,8 @@ global Trigger := ";"
 global TriggerHotkey := ""
 global Refreshing := false
 global LastRefreshError := ""
+global LastShownRefreshError := ""
+global RefreshFailureCount := 0
 global AtBoundary := true
 global LastActiveWindow := 0
 global TargetWindow := 0
@@ -632,7 +634,7 @@ GitHubRequest(url, accept) {
 
 RefreshData(*) {
     global Refreshing, SheetId, SheetInfos, LastRefreshError
-    global Snippets
+    global LastShownRefreshError, RefreshFailureCount, Snippets
 
     if Refreshing
         return
@@ -668,13 +670,19 @@ RefreshData(*) {
         SaveCache infos, csvByName
         SheetInfos := infos
         LastRefreshError := ""
+        LastShownRefreshError := ""
+        RefreshFailureCount := 0
     } catch as problem {
         ; Offline use is expected: keep the last successful in-memory/cache copy.
+        RefreshFailureCount += 1
         report := RecordError(problem, "Refreshing snippets — " stage)
         location := problem.Line != "" ? " — line " problem.Line : ""
         LastRefreshError := stage ": " problem.Message location
-        if Snippets.Length = 0
+        errorKey := Type(problem) "|" problem.Message "|" problem.Line "|" stage
+        if Snippets.Length = 0 && errorKey != LastShownRefreshError {
+            LastShownRefreshError := errorKey
             MsgBox report, "Sheet Autocomplete data error"
+        }
     } finally {
         Refreshing := false
     }
