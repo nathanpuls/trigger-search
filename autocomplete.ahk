@@ -2,8 +2,8 @@
 #SingleInstance Force
 Persistent
 
-; Sheet Autocomplete version 0.3.2
-global AppVersion := "0.3.2"
+; Sheet Autocomplete version 0.3.3
+global AppVersion := "0.3.3"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -14,7 +14,7 @@ global RefreshIntervalMs := 60000
 global CacheDir := A_AppData "\SheetAutocomplete"
 global ManifestPath := CacheDir "\cache.ini"
 global StatePath := CacheDir "\state.ini"
-global UpdateUrl := "https://api.github.com/repos/nathanpuls/sheet-autocomplete/contents/autocomplete.ahk?ref=main"
+global UpdateUrl := "https://api.github.com/repos/nathanpuls/sheet-autocomplete/contents/autocomplete.ahk"
 
 global Trigger := ";"
 global TriggerHotkey := ""
@@ -602,9 +602,21 @@ UpdateScriptFromGitHub(*) {
 }
 
 FetchLiveGitHubFile(url) {
+    commitRequest := GitHubRequest(
+        "https://api.github.com/repos/nathanpuls/sheet-autocomplete/commits/main"
+            . "?cacheBust=" A_NowUTC A_MSec,
+        "application/vnd.github+json"
+    )
+    if !RegExMatch(commitRequest, '"sha"\s*:\s*"([0-9a-f]{40})"', &match)
+        throw Error("GitHub did not return the current version identifier.")
+
+    return GitHubRequest(url "?ref=" match[1], "application/vnd.github.raw+json")
+}
+
+GitHubRequest(url, accept) {
     request := ComObject("WinHttp.WinHttpRequest.5.1")
     request.Open("GET", url, false)
-    request.SetRequestHeader("Accept", "application/vnd.github.raw+json")
+    request.SetRequestHeader("Accept", accept)
     request.SetRequestHeader("User-Agent", "SheetAutocomplete")
     request.SetRequestHeader("Cache-Control", "no-cache")
     request.Send()
