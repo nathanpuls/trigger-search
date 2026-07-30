@@ -2,8 +2,8 @@
 #SingleInstance Force
 Persistent
 
-; Sheet Autocomplete version 0.5.1
-global AppVersion := "0.5.1"
+; Sheet Autocomplete version 0.5.2
+global AppVersion := "0.5.2"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -38,7 +38,6 @@ global ReturnParentKey := ""
 global KeyboardWatcher := 0
 
 global ChooserGui := 0
-global ScopeText := 0
 global SearchBox := 0
 global ResultsView := 0
 
@@ -56,6 +55,15 @@ Esc::CancelChooser()
 Right::OpenSelectedDetails()
 Left::CloseDetails()
 ^e::EditSelected()
+^1::ChooseVisibleByNumber(1)
+^2::ChooseVisibleByNumber(2)
+^3::ChooseVisibleByNumber(3)
+^4::ChooseVisibleByNumber(4)
+^5::ChooseVisibleByNumber(5)
+^6::ChooseVisibleByNumber(6)
+^7::ChooseVisibleByNumber(7)
+^8::ChooseVisibleByNumber(8)
+^9::ChooseVisibleByNumber(9)
 #HotIf
 
 ~LButton::ResetBoundary()
@@ -93,36 +101,41 @@ Initialize() {
 }
 
 BuildChooser() {
-    global ChooserGui, ScopeText, SearchBox, ResultsView
+    global ChooserGui, SearchBox, ResultsView
 
     ChooserGui := Gui("+AlwaysOnTop +ToolWindow", "Sheet Autocomplete")
     ChooserGui.MarginX := 14
     ChooserGui.MarginY := 12
     ChooserGui.SetFont("s10", "Segoe UI")
 
-    ScopeText := ChooserGui.Add("Text", "xm w730 c555555", "All")
-    SearchBox := ChooserGui.Add("Edit", "xm y+6 w730 h30 vQuery")
+    SearchBox := ChooserGui.Add("Edit", "xm w730 h30 vQuery")
     ResultsView := ChooserGui.Add(
         "ListView",
-        "xm y+8 w730 r12 -Multi NoSortHdr",
-        ["Label", "Tab", "Preview"]
+        "xm y+8 w730 r12 -Multi -Hdr",
+        ["Shortcut", "Label", "Details"]
     )
-    ResultsView.ModifyCol(1, 230)
-    ResultsView.ModifyCol(2, 165)
-    ResultsView.ModifyCol(3, 315)
+    ResultsView.ModifyCol(1, 70)
+    ResultsView.ModifyCol(2, 250)
+    ResultsView.ModifyCol(3, 410)
 
     SearchBox.OnEvent("Change", SearchChanged)
     ResultsView.OnEvent("DoubleClick", ResultDoubleClicked)
     ChooserGui.OnEvent("Close", (*) => CancelChooser())
     ChooserGui.OnEvent("Escape", (*) => CancelChooser())
 
-    ; Native Windows placeholder text inside the search box.
+    SetSearchPlaceholder("All")
+}
+
+SetSearchPlaceholder(text) {
+    global SearchBox
+
+    ; Native Windows cue text inside the search box, also shown while focused.
     DllCall(
         "SendMessage",
         "Ptr", SearchBox.Hwnd,
         "UInt", 0x1501,
         "Ptr", true,
-        "Str", "Type to search"
+        "Str", text
     )
 }
 
@@ -228,7 +241,7 @@ HandleTrigger(*) {
 
 ShowChooser(*) {
     global Snippets, TargetWindow, ChooserOpen, DetailParent, RootQuery
-    global ReturnParentKey, SearchBox, ChooserGui, ScopeText
+    global ReturnParentKey, SearchBox, ChooserGui
     global Refreshing, LastRefreshError
 
     if Snippets.Length = 0 {
@@ -250,7 +263,7 @@ ShowChooser(*) {
     DetailParent := 0
     RootQuery := ""
     ReturnParentKey := ""
-    ScopeText.Text := CurrentScopeLabel()
+    SetSearchPlaceholder(CurrentScopeLabel())
     SearchBox.Value := ""
     RenderChoices(FilterChoices(""))
     PositionChooser(TargetWindow)
@@ -436,18 +449,28 @@ RenderChoices(choices) {
     ResultsView.Opt("-Redraw")
     ResultsView.Delete()
 
-    for choice in choices {
+    for index, choice in choices {
+        shortcut := index <= 9 ? "Ctrl+" index : ""
         if choice.HasOwnProp("Type") && choice.Type = "category" {
-            ResultsView.Add("", choice.Label, "", choice.Preview)
+            ResultsView.Add("", shortcut, choice.Label, choice.Preview)
         } else {
             label := choice.HasOwnProp("DisplayText") ? choice.DisplayText : choice.Label
-            ResultsView.Add("", label, choice.Category, choice.Preview)
+            supporting := choice.Category
+                . (choice.Preview != "" ? "  •  " choice.Preview : "")
+            ResultsView.Add("", shortcut, label, supporting)
         }
     }
 
     ResultsView.Opt("+Redraw")
     if choices.Length > 0
         ResultsView.Modify(1, "Select Focus Vis")
+}
+
+ChooseVisibleByNumber(number) {
+    global VisibleChoices
+
+    if number >= 1 && number <= VisibleChoices.Length
+        ChooseChoice VisibleChoices[number]
 }
 
 MoveSelection(direction) {
@@ -491,7 +514,7 @@ ResultDoubleClicked(control, row) {
 }
 
 ChooseChoice(choice) {
-    global ActiveCategory, DetailParent, RootQuery, ScopeText, SearchBox
+    global ActiveCategory, DetailParent, RootQuery, SearchBox
     global ChooserGui, ChooserOpen, StatePath
 
     if choice.HasOwnProp("Type") && choice.Type = "category" {
@@ -499,7 +522,7 @@ ChooseChoice(choice) {
         IniWrite ActiveCategory, StatePath, "state", "category"
         DetailParent := 0
         RootQuery := ""
-        ScopeText.Text := CurrentScopeLabel()
+        SetSearchPlaceholder(CurrentScopeLabel())
         SearchBox.Value := ""
         RenderChoices(FilterChoices(""))
         SearchBox.Focus()
@@ -531,7 +554,7 @@ PasteChoice(choice) {
 }
 
 OpenSelectedDetails(*) {
-    global DetailParent, RootQuery, SearchBox, ScopeText, ReturnParentKey
+    global DetailParent, RootQuery, SearchBox, ReturnParentKey
 
     if DetailParent
         return
@@ -542,20 +565,20 @@ OpenSelectedDetails(*) {
     RootQuery := SearchBox.Value
     ReturnParentKey := choice.Key
     DetailParent := choice
-    ScopeText.Text := "←  " choice.GroupLabel " details"
+    SetSearchPlaceholder("←  " choice.GroupLabel " details")
     SearchBox.Value := ""
     RenderChoices(FilterChoices(""))
     SearchBox.Focus()
 }
 
 CloseDetails(*) {
-    global DetailParent, SearchBox, ScopeText, RootQuery, ReturnParentKey
+    global DetailParent, SearchBox, RootQuery, ReturnParentKey
     global ResultsView, VisibleChoices
 
     if !DetailParent
         return
     DetailParent := 0
-    ScopeText.Text := CurrentScopeLabel()
+    SetSearchPlaceholder(CurrentScopeLabel())
     SearchBox.Value := RootQuery
     RenderChoices(FilterChoices(RootQuery))
 
@@ -704,7 +727,7 @@ RefreshData(*) {
 }
 
 RefreshOpenChooser() {
-    global ChooserOpen, DetailParent, Snippets, SearchBox, ScopeText
+    global ChooserOpen, DetailParent, Snippets, SearchBox
     global RootQuery, VisibleChoices, ResultsView
 
     if !ChooserOpen
@@ -725,16 +748,16 @@ RefreshOpenChooser() {
 
         if refreshedParent {
             DetailParent := refreshedParent
-            ScopeText.Text := "←  " refreshedParent.GroupLabel " details"
+            SetSearchPlaceholder("←  " refreshedParent.GroupLabel " details")
             RenderChoices(FilterChoices(SearchBox.Value))
         } else {
             DetailParent := 0
-            ScopeText.Text := CurrentScopeLabel()
+            SetSearchPlaceholder(CurrentScopeLabel())
             SearchBox.Value := RootQuery
             RenderChoices(FilterChoices(RootQuery))
         }
     } else {
-        ScopeText.Text := CurrentScopeLabel()
+        SetSearchPlaceholder(CurrentScopeLabel())
         RenderChoices(FilterChoices(SearchBox.Value))
     }
 
