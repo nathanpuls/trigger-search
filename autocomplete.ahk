@@ -2,8 +2,8 @@
 #SingleInstance Force
 Persistent
 
-; Sheet Autocomplete version 0.6.1
-global AppVersion := "0.6.1"
+; Sheet Autocomplete version 0.6.2
+global AppVersion := "0.6.2"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -326,7 +326,8 @@ FilterChoices(query) {
     for item in source {
         label := StrLower(DetailParent ? item.DetailName : item.Label)
         category := StrLower(item.Category)
-        content := StrLower(item.Content " " item.DetailSearch)
+        directContent := StrLower(item.Content)
+        nestedContent := StrLower(item.DetailSearch)
         aliasExact := false
         aliasPrefix := false
         aliasContains := false
@@ -361,8 +362,10 @@ FilterChoices(query) {
             rank := 6
         else if !DetailParent && InStr(category, needle)
             rank := 7
-        else if InStr(content, needle)
+        else if InStr(directContent, needle)
             rank := 8
+        else if !DetailParent && InStr(nestedContent, needle)
+            rank := 9
 
         if rank >= 0
             ranked.Push({Item: item, Rank: rank})
@@ -825,6 +828,16 @@ RunSelfTests() {
     Assert parsed[1].Label = "apple", "The parsed Label should remain apple."
     Assert parsed[1].Content = "red apple",
         "The parsed Content should remain red apple."
+
+    directMatch := TestSnippet("doctor note", "Dr. White", [])
+    nestedOnlyMatch := TestSnippet("medication", "regular content", [])
+    nestedOnlyMatch.DetailSearch := " side effect white"
+    Snippets := [nestedOnlyMatch, directMatch]
+    contentMatch := FilterChoices("white")
+    Assert contentMatch.Length = 2,
+        "Direct and nested content matches should both remain searchable."
+    Assert contentMatch[1].Label = "doctor note",
+        "Direct Content should rank ahead of nested detail text."
 
     Assert LooksLikeCsv("Label,Content`napple,red apple"),
         "Unquoted public export CSV should be accepted."

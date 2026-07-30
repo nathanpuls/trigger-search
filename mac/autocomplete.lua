@@ -374,7 +374,8 @@ rankedSnippets = function(query)
 
     local label = (detailParent and snippet.detailName or snippet.label):lower()
     local category = snippet.category:lower()
-    local content = (snippet.content .. " " .. (snippet.detailSearch or "")):lower()
+    local directContent = snippet.content:lower()
+    local nestedContent = (snippet.detailSearch or ""):lower()
     local aliasExact, aliasPrefix, aliasContains = false, false, false
     if not detailParent then
       for _, alias in ipairs(snippet.aliases or {}) do
@@ -405,8 +406,10 @@ rankedSnippets = function(query)
       rank = 6
     elseif not detailParent and category:find(needle, 1, true) then
       rank = 7
-    elseif content:find(needle, 1, true) then
+    elseif directContent:find(needle, 1, true) then
       rank = 8
+    elseif not detailParent and nestedContent:find(needle, 1, true) then
+      rank = 9
     end
 
     if rank ~= nil then
