@@ -2,8 +2,8 @@
 #SingleInstance Force
 Persistent
 
-; Sheet Autocomplete version 0.5.0
-global AppVersion := "0.5.0"
+; Sheet Autocomplete version 0.5.1
+global AppVersion := "0.5.1"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -129,6 +129,9 @@ BuildChooser() {
 StartKeyboardWatcher() {
     global KeyboardWatcher
 
+    if IsObject(KeyboardWatcher) && KeyboardWatcher.InProgress
+        return
+
     KeyboardWatcher := InputHook("V L0 I1")
     KeyboardWatcher.NotifyNonText := true
     KeyboardWatcher.OnChar := TrackTypedCharacter
@@ -173,6 +176,7 @@ ResetBoundary(*) {
 CheckActiveWindow(*) {
     global LastActiveWindow, AtBoundary, ChooserOpen
 
+    EnsureKeyboardWatcher()
     if ChooserOpen
         return
     current := WinExist("A")
@@ -180,6 +184,13 @@ CheckActiveWindow(*) {
         LastActiveWindow := current
         AtBoundary := true
     }
+}
+
+EnsureKeyboardWatcher(*) {
+    global KeyboardWatcher
+
+    if !IsObject(KeyboardWatcher) || !KeyboardWatcher.InProgress
+        StartKeyboardWatcher()
 }
 
 InstallTrigger(newTrigger) {
@@ -675,6 +686,7 @@ RefreshData(*) {
         LastRefreshError := ""
         LastShownRefreshError := ""
         RefreshFailureCount := 0
+        RefreshOpenChooser()
     } catch as problem {
         ; Offline use is expected: keep the last successful in-memory/cache copy.
         RefreshFailureCount += 1
@@ -689,6 +701,53 @@ RefreshData(*) {
     } finally {
         Refreshing := false
     }
+}
+
+RefreshOpenChooser() {
+    global ChooserOpen, DetailParent, Snippets, SearchBox, ScopeText
+    global RootQuery, VisibleChoices, ResultsView
+
+    if !ChooserOpen
+        return
+
+    selected := SelectedChoice()
+    selectedKey := selected && selected.HasOwnProp("Key") ? selected.Key : ""
+
+    if DetailParent {
+        parentKey := DetailParent.Key
+        refreshedParent := 0
+        for item in Snippets {
+            if item.Key = parentKey {
+                refreshedParent := item
+                break
+            }
+        }
+
+        if refreshedParent {
+            DetailParent := refreshedParent
+            ScopeText.Text := "←  " refreshedParent.GroupLabel " details"
+            RenderChoices(FilterChoices(SearchBox.Value))
+        } else {
+            DetailParent := 0
+            ScopeText.Text := CurrentScopeLabel()
+            SearchBox.Value := RootQuery
+            RenderChoices(FilterChoices(RootQuery))
+        }
+    } else {
+        ScopeText.Text := CurrentScopeLabel()
+        RenderChoices(FilterChoices(SearchBox.Value))
+    }
+
+    if selectedKey != "" {
+        for index, choice in VisibleChoices {
+            if choice.HasOwnProp("Key") && choice.Key = selectedKey {
+                ResultsView.Modify(0, "-Select -Focus")
+                ResultsView.Modify(index, "Select Focus Vis")
+                break
+            }
+        }
+    }
+    SearchBox.Focus()
 }
 
 BuildErrorReport(problem, context, mode := "Caught") {
@@ -773,6 +832,14 @@ RunSelfTests() {
     categories := FilterChoices("/")
     Assert categories.Length = 2,
         "Category search should include All and Personal."
+
+    parsed := []
+    ParseSheet '"Label","Alias","Content"`n"apple","","red apple"',
+        {Name: "Test", Gid: "123"}, parsed
+    Assert parsed.Length = 1, "A standard Label and Content row should parse."
+    Assert parsed[1].Label = "apple", "The parsed Label should remain apple."
+    Assert parsed[1].Content = "red apple",
+        "The parsed Content should remain red apple."
 }
 
 TestSnippet(label, content, aliases) {
