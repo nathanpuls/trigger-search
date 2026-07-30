@@ -1,7 +1,7 @@
 # Trigger Search for Mac
 
 A small personal Hammerspoon autocomplete backed by a public Google Sheet. It
-discovers every visible tab, loads it through Google's GViz CSV endpoint, and
+discovers every visible tab, loads it through Google's public CSV endpoints, and
 keeps the latest tab list and valid responses in
 `~/.hammerspoon/autocomplete-snippets-cache.json` for offline use.
 
@@ -90,6 +90,9 @@ shows its source tab beneath the label. The selected tab is sticky across
 chooser openings and Hammerspoon restarts; select `/all` to return to all tabs.
 The main placeholder shows only the current tab name, or `All` when searching
 every tab. Type `/` to change tabs.
+Press Left Arrow from a selected tab to return to All without clearing the
+current search. When viewing nested details, Left Arrow first returns to the
+parent item; press it again to return from the selected tab to All.
 While the chooser is open, Hammerspoon captures `/` itself so the previously
 active application cannot take it away.
 `hello;` types a normal semicolon. `hello ;` opens the chooser.

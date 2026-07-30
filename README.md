@@ -10,8 +10,8 @@ AutoHotkey v2—without OAuth, sign-in, a browser extension, or a dedicated app.
 - **Windows:** See [`windows/README.md`](windows/README.md) and install
   AutoHotkey v2.
 
-Both versions read visible category tabs through Google Sheets' public GViz CSV
-endpoint, support labels, content, aliases, and nested choices, cache successful
+Both versions read visible category tabs through Google Sheets' public CSV
+endpoints, support labels, content, aliases, and nested choices, cache successful
 responses for offline use, and link results back to their exact Sheet cells.
 
 ## Repository layout
