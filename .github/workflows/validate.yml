@@ -1,0 +1,39 @@
+name: Validate AutoHotkey
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download current AutoHotkey v2
+        shell: pwsh
+        run: |
+          $release = Invoke-RestMethod `
+            -Uri "https://api.github.com/repos/AutoHotkey/AutoHotkey/releases/latest" `
+            -Headers @{ "User-Agent" = "sheet-autocomplete-validation" }
+          $asset = $release.assets |
+            Where-Object { $_.name -match '^AutoHotkey_.*\.zip$' } |
+            Select-Object -First 1
+          if (-not $asset) {
+            throw "The latest AutoHotkey release did not contain a ZIP asset."
+          }
+          Invoke-WebRequest -Uri $asset.browser_download_url -OutFile autohotkey.zip
+          Expand-Archive autohotkey.zip -DestinationPath autohotkey
+
+      - name: Validate script syntax
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem autohotkey -Recurse -Filter AutoHotkey64.exe |
+            Select-Object -First 1
+          if (-not $exe) {
+            throw "AutoHotkey64.exe was not found in the downloaded release."
+          }
+          & $exe.FullName /validate "$PWD\autocomplete.ahk"
+          if ($LASTEXITCODE -ne 0) {
+            throw "AutoHotkey validation failed with exit code $LASTEXITCODE."
+          }

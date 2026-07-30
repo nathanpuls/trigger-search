@@ -2,8 +2,8 @@
 #SingleInstance Force
 Persistent
 
-; Sheet Autocomplete version 0.3.4
-global AppVersion := "0.3.4"
+; Sheet Autocomplete version 0.4.0
+global AppVersion := "0.4.0"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -14,6 +14,7 @@ global RefreshIntervalMs := 60000
 global CacheDir := A_AppData "\SheetAutocomplete"
 global ManifestPath := CacheDir "\cache.ini"
 global StatePath := CacheDir "\state.ini"
+global ErrorPath := CacheDir "\last-error.txt"
 global UpdateUrl := "https://api.github.com/repos/nathanpuls/sheet-autocomplete/contents/autocomplete.ahk"
 
 global Trigger := ";"
@@ -39,6 +40,7 @@ global ScopeText := 0
 global SearchBox := 0
 global ResultsView := 0
 
+OnError HandleUnexpectedError
 Initialize()
 
 #HotIf IsChooserOpen()
@@ -74,6 +76,7 @@ Initialize() {
     A_TrayMenu.Add("Open autocomplete", (*) => ShowChooser())
     A_TrayMenu.Add("Refresh snippets", RefreshData)
     A_TrayMenu.Add("Update script from GitHub", UpdateScriptFromGitHub)
+    A_TrayMenu.Add("Show last error report", ShowLastErrorReport)
     A_TrayMenu.Add("Open Google Sheet", (*) => OpenWorkbook())
 
     SetTimer CheckActiveWindow, 400
@@ -597,7 +600,8 @@ UpdateScriptFromGitHub(*) {
         Sleep 500
         Reload
     } catch as problem {
-        TrayTip "Update failed: " problem.Message, "Sheet Autocomplete"
+        report := RecordError(problem, "Updating the script from GitHub")
+        MsgBox report, "Sheet Autocomplete update error"
     }
 }
 
@@ -628,7 +632,7 @@ GitHubRequest(url, accept) {
 
 RefreshData(*) {
     global Refreshing, SheetId, SheetInfos, LastRefreshError
-    global CacheDir, Snippets
+    global Snippets
 
     if Refreshing
         return
@@ -666,22 +670,58 @@ RefreshData(*) {
         LastRefreshError := ""
     } catch as problem {
         ; Offline use is expected: keep the last successful in-memory/cache copy.
-        location := problem.Line ? " at script line " problem.Line : ""
+        report := RecordError(problem, "Refreshing snippets — " stage)
+        location := problem.Line != "" ? " — line " problem.Line : ""
         LastRefreshError := stage ": " problem.Message location
-        details := LastRefreshError
-        if problem.What != ""
-            details .= "`nFunction: " problem.What
-        if problem.Extra != ""
-            details .= "`nExtra: " problem.Extra
-        if problem.Stack != ""
-            details .= "`n`nStack:`n" problem.Stack
-        OutputDebug "Sheet Autocomplete refresh failed: " details "`n"
-        WriteTextAtomic CacheDir "\last-error.txt", details
         if Snippets.Length = 0
-            TrayTip "Could not load snippets while " LastRefreshError, "Sheet Autocomplete"
+            MsgBox report, "Sheet Autocomplete data error"
     } finally {
         Refreshing := false
     }
+}
+
+BuildErrorReport(problem, context, mode := "Caught") {
+    global AppVersion
+
+    report := "Sheet Autocomplete v" AppVersion
+        . "`nContext: " context
+        . "`nError type: " Type(problem)
+        . "`nMessage: " problem.Message
+        . "`nFunction: " (problem.What != "" ? problem.What : "Not provided")
+        . "`nFile: " (problem.File != "" ? problem.File : A_ScriptFullPath)
+        . "`nLine: " (problem.Line != "" ? problem.Line : "Not provided")
+        . "`nMode: " mode
+
+    if problem.Extra != ""
+        report .= "`nExtra: " problem.Extra
+    if problem.Stack != ""
+        report .= "`n`nStack trace:`n" problem.Stack
+    return report
+}
+
+RecordError(problem, context, mode := "Caught") {
+    global ErrorPath
+
+    report := BuildErrorReport(problem, context, mode)
+    try WriteTextAtomic ErrorPath, report
+    OutputDebug report "`n"
+    return report
+}
+
+ShowLastErrorReport(*) {
+    global ErrorPath
+
+    if !FileExist(ErrorPath) {
+        MsgBox "No error has been recorded yet.", "Sheet Autocomplete diagnostics"
+        return
+    }
+    MsgBox FileRead(ErrorPath, "UTF-8"), "Sheet Autocomplete diagnostics"
+}
+
+HandleUnexpectedError(problem, mode) {
+    report := RecordError(problem, "Unexpected unhandled error", mode)
+    MsgBox report, "Sheet Autocomplete unexpected error"
+    return 0
 }
 
 FetchText(url) {

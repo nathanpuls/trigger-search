@@ -38,6 +38,17 @@ script downloads the current GitHub version, saves the previous file beside it
 as `autocomplete.ahk.backup`, replaces the working file, and reloads itself.
 If the script is already current, it leaves everything unchanged.
 
+## Diagnostics
+
+Every handled or unexpected error report includes the script version, current
+action, error type, message, function, file, line number, extra details, and
+stack trace. The latest report is always saved to
+`%APPDATA%\SheetAutocomplete\last-error.txt`. Right-click the green H and choose
+**Show last error report** to display it without finding the file manually.
+
+GitHub also validates the AutoHotkey v2 syntax of every pushed version on a
+Windows runner.
+
 ## Start automatically with Windows
 
 After the script works normally:
