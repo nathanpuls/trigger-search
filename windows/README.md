@@ -1,4 +1,4 @@
-# Windows Sheet Autocomplete
+# Trigger Search for Windows
 
 A rough AutoHotkey v2 version of the Mac Hammerspoon autocomplete. It reads the
 same public Google Sheet and does not use OAuth or a Google sign-in.

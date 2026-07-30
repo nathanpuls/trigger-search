@@ -1,4 +1,4 @@
-# Mac autocomplete prototype
+# Trigger Search for Mac
 
 A small personal Hammerspoon autocomplete backed by a public Google Sheet. It
 discovers every visible tab, loads it through Google's GViz CSV endpoint, and
