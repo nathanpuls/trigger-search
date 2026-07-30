@@ -33,7 +33,11 @@ jobs:
           if (-not $exe) {
             throw "AutoHotkey64.exe was not found in the downloaded release."
           }
-          & $exe.FullName /validate "$PWD\autocomplete.ahk"
-          if ($LASTEXITCODE -ne 0) {
-            throw "AutoHotkey validation failed with exit code $LASTEXITCODE."
+          $validation = Start-Process `
+            -FilePath $exe.FullName `
+            -ArgumentList @("/validate", "$PWD\autocomplete.ahk") `
+            -Wait `
+            -PassThru
+          if ($validation.ExitCode -ne 0) {
+            throw "AutoHotkey validation failed with exit code $($validation.ExitCode)."
           }
