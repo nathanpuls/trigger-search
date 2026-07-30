@@ -2,8 +2,8 @@
 #SingleInstance Force
 Persistent
 
-; Sheet Autocomplete version 0.3.1
-global AppVersion := "0.3.1"
+; Sheet Autocomplete version 0.3.2
+global AppVersion := "0.3.2"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -14,7 +14,7 @@ global RefreshIntervalMs := 60000
 global CacheDir := A_AppData "\SheetAutocomplete"
 global ManifestPath := CacheDir "\cache.ini"
 global StatePath := CacheDir "\state.ini"
-global UpdateUrl := "https://raw.githubusercontent.com/nathanpuls/sheet-autocomplete/main/autocomplete.ahk"
+global UpdateUrl := "https://api.github.com/repos/nathanpuls/sheet-autocomplete/contents/autocomplete.ahk?ref=main"
 
 global Trigger := ";"
 global TriggerHotkey := ""
@@ -574,12 +574,10 @@ OpenWorkbook() {
 UpdateScriptFromGitHub(*) {
     global UpdateUrl
 
-    temporary := A_Temp "\sheet-autocomplete-update-" A_TickCount ".ahk"
     backup := A_ScriptFullPath ".backup"
 
     try {
-        Download UpdateUrl "?cacheBust=" A_NowUTC A_MSec, temporary
-        replacement := FileRead(temporary, "UTF-8")
+        replacement := FetchLiveGitHubFile(UpdateUrl)
 
         if !InStr(replacement, "#Requires AutoHotkey v2.0")
             || !InStr(replacement, "; Sheet Autocomplete version ")
@@ -600,10 +598,20 @@ UpdateScriptFromGitHub(*) {
         Reload
     } catch as problem {
         TrayTip "Update failed: " problem.Message, "Sheet Autocomplete"
-    } finally {
-        if FileExist(temporary)
-            FileDelete temporary
     }
+}
+
+FetchLiveGitHubFile(url) {
+    request := ComObject("WinHttp.WinHttpRequest.5.1")
+    request.Open("GET", url, false)
+    request.SetRequestHeader("Accept", "application/vnd.github.raw+json")
+    request.SetRequestHeader("User-Agent", "SheetAutocomplete")
+    request.SetRequestHeader("Cache-Control", "no-cache")
+    request.Send()
+
+    if request.Status != 200
+        throw Error("GitHub returned HTTP " request.Status ".")
+    return request.ResponseText
 }
 
 RefreshData(*) {
