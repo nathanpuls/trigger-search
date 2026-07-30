@@ -1,2 +1,4 @@
 autocomplete-v*.txt
 *.backup
+.DS_Store
+mac/outputs/
