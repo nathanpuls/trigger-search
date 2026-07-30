@@ -2,8 +2,8 @@
 #SingleInstance Force
 Persistent
 
-; Sheet Autocomplete version 0.5.3
-global AppVersion := "0.5.3"
+; Sheet Autocomplete version 0.5.4
+global AppVersion := "0.5.4"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -75,7 +75,7 @@ Initialize() {
     global Snippets, AppVersion
 
     DirCreate CacheDir
-    A_IconTip := "Sheet Autocomplete v" AppVersion
+    A_IconTip := "Trigger Search v" AppVersion
     ActiveCategory := IniRead(StatePath, "state", "category", "")
     LoadCache()
     BuildChooser()
@@ -83,8 +83,8 @@ Initialize() {
     StartKeyboardWatcher()
 
     A_TrayMenu.Add()
-    A_TrayMenu.Add("Sheet Autocomplete v" AppVersion, (*) => 0)
-    A_TrayMenu.Disable("Sheet Autocomplete v" AppVersion)
+    A_TrayMenu.Add("Trigger Search v" AppVersion, (*) => 0)
+    A_TrayMenu.Disable("Trigger Search v" AppVersion)
     A_TrayMenu.Add()
     A_TrayMenu.Add("Open autocomplete", (*) => ShowChooser())
     A_TrayMenu.Add("Refresh snippets", RefreshData)
@@ -103,7 +103,7 @@ Initialize() {
 BuildChooser() {
     global ChooserGui, SearchBox, ResultsView
 
-    ChooserGui := Gui("+AlwaysOnTop +ToolWindow", "Sheet Autocomplete")
+    ChooserGui := Gui("+AlwaysOnTop +ToolWindow", "Trigger Search — All")
     ChooserGui.MarginX := 14
     ChooserGui.MarginY := 12
     ChooserGui.SetFont("s10", "Segoe UI")
@@ -114,16 +114,16 @@ BuildChooser() {
         "xm y+8 w730 r12 -Multi -Hdr",
         ["Shortcut", "Label", "Details"]
     )
-    ResultsView.ModifyCol(1, 70)
-    ResultsView.ModifyCol(2, 250)
-    ResultsView.ModifyCol(3, 410)
+    ResultsView.ModifyCol(1, 65)
+    ResultsView.ModifyCol(2, 225)
+    ResultsView.ModifyCol(3, 400)
 
     SearchBox.OnEvent("Change", SearchChanged)
     ResultsView.OnEvent("DoubleClick", ResultDoubleClicked)
     ChooserGui.OnEvent("Close", (*) => CancelChooser())
     ChooserGui.OnEvent("Escape", (*) => CancelChooser())
 
-    SetSearchPlaceholder("All")
+    SetSearchPlaceholder("Search")
 }
 
 SetSearchPlaceholder(text) {
@@ -137,6 +137,16 @@ SetSearchPlaceholder(text) {
         "Ptr", true,
         "Str", text
     )
+}
+
+UpdateChooserContext() {
+    global ChooserGui, DetailParent
+
+    if DetailParent
+        ChooserGui.Title := "Trigger Search — " DetailParent.GroupLabel " details"
+    else
+        ChooserGui.Title := "Trigger Search — " CurrentScopeLabel()
+    SetSearchPlaceholder("Search")
 }
 
 StartKeyboardWatcher() {
@@ -253,7 +263,7 @@ ShowChooser(*) {
                 : (LastRefreshError != ""
                     ? "Could not load snippets: " LastRefreshError
                     : "No snippets are available. Check the public Sheet and internet connection.")
-            TrayTip message, "Sheet Autocomplete"
+            TrayTip message, "Trigger Search"
             return
         }
     }
@@ -263,7 +273,7 @@ ShowChooser(*) {
     DetailParent := 0
     RootQuery := ""
     ReturnParentKey := ""
-    SetSearchPlaceholder(CurrentScopeLabel())
+    UpdateChooserContext()
     SearchBox.Value := ""
     RenderChoices(FilterChoices(""))
     PositionChooser(TargetWindow)
@@ -522,7 +532,7 @@ ChooseChoice(choice) {
         IniWrite ActiveCategory, StatePath, "state", "category"
         DetailParent := 0
         RootQuery := ""
-        SetSearchPlaceholder(CurrentScopeLabel())
+        UpdateChooserContext()
         SearchBox.Value := ""
         RenderChoices(FilterChoices(""))
         SearchBox.Focus()
@@ -565,7 +575,7 @@ OpenSelectedDetails(*) {
     RootQuery := SearchBox.Value
     ReturnParentKey := choice.Key
     DetailParent := choice
-    SetSearchPlaceholder("←  " choice.GroupLabel " details")
+    UpdateChooserContext()
     SearchBox.Value := ""
     RenderChoices(FilterChoices(""))
     SearchBox.Focus()
@@ -573,22 +583,31 @@ OpenSelectedDetails(*) {
 
 CloseDetails(*) {
     global DetailParent, SearchBox, RootQuery, ReturnParentKey
-    global ResultsView, VisibleChoices
+    global ResultsView, VisibleChoices, ActiveCategory, StatePath
 
-    if !DetailParent
-        return
-    DetailParent := 0
-    SetSearchPlaceholder(CurrentScopeLabel())
-    SearchBox.Value := RootQuery
-    RenderChoices(FilterChoices(RootQuery))
+    if DetailParent {
+        DetailParent := 0
+        UpdateChooserContext()
+        SearchBox.Value := RootQuery
+        RenderChoices(FilterChoices(RootQuery))
 
-    for index, choice in VisibleChoices {
-        if choice.Key = ReturnParentKey {
-            ResultsView.Modify(0, "-Select -Focus")
-            ResultsView.Modify(index, "Select Focus Vis")
-            break
+        for index, choice in VisibleChoices {
+            if choice.Key = ReturnParentKey {
+                ResultsView.Modify(0, "-Select -Focus")
+                ResultsView.Modify(index, "Select Focus Vis")
+                break
+            }
         }
+        SearchBox.Focus()
+        return
     }
+
+    if ActiveCategory = ""
+        return
+    ActiveCategory := ""
+    IniWrite "", StatePath, "state", "category"
+    UpdateChooserContext()
+    RenderChoices(FilterChoices(SearchBox.Value))
     SearchBox.Focus()
 }
 
@@ -627,7 +646,7 @@ UpdateScriptFromGitHub(*) {
 
         current := FileRead(A_ScriptFullPath, "UTF-8")
         if current = replacement {
-            TrayTip "You already have the newest version.", "Sheet Autocomplete"
+            TrayTip "You already have the newest version.", "Trigger Search"
             return
         }
 
@@ -635,12 +654,12 @@ UpdateScriptFromGitHub(*) {
             FileDelete backup
         FileCopy A_ScriptFullPath, backup, 1
         WriteTextAtomic A_ScriptFullPath, replacement
-        TrayTip "Update installed. Reloading now...", "Sheet Autocomplete"
+        TrayTip "Update installed. Reloading now...", "Trigger Search"
         Sleep 500
         Reload
     } catch as problem {
         report := RecordError(problem, "Updating the script from GitHub")
-        MsgBox report, "Sheet Autocomplete update error"
+        MsgBox report, "Trigger Search update error"
     }
 }
 
@@ -692,12 +711,7 @@ RefreshData(*) {
         csvByName := Map()
         for info in infos {
             stage := "downloading the " info.Name " tab"
-            csvUrl := "https://docs.google.com/spreadsheets/d/" SheetId
-                . "/gviz/tq?tqx=out:csv&gid=" info.Gid
-                . "&cacheBust=" cacheBust
-            csv := FetchText(csvUrl)
-            if SubStr(LTrim(csv), 1, 1) != Chr(34)
-                throw Error("Invalid CSV response for " info.Name)
+            csv := FetchSheetCsv(info, cacheBust)
             csvByName[info.Name] := csv
         }
 
@@ -719,11 +733,42 @@ RefreshData(*) {
         errorKey := Type(problem) "|" problem.Message "|" problem.Line "|" stage
         if Snippets.Length = 0 && errorKey != LastShownRefreshError {
             LastShownRefreshError := errorKey
-            MsgBox report, "Sheet Autocomplete data error"
+            MsgBox report, "Trigger Search data error"
         }
     } finally {
         Refreshing := false
     }
+}
+
+FetchSheetCsv(info, cacheBust) {
+    global SheetId
+
+    baseUrl := "https://docs.google.com/spreadsheets/d/" SheetId
+    urls := [
+        baseUrl "/export?format=csv&gid=" info.Gid "&cacheBust=" cacheBust,
+        baseUrl "/gviz/tq?tqx=out:csv&gid=" info.Gid "&cacheBust=" cacheBust
+    ]
+    failures := []
+
+    for url in urls {
+        try {
+            csv := FetchText(url)
+            if LooksLikeCsv(csv)
+                return csv
+            failures.Push("invalid CSV")
+        } catch as problem {
+            failures.Push(problem.Message)
+        }
+    }
+    throw Error("No valid public CSV response for " info.Name
+        . ". Export: " failures[1] "; GViz: " failures[2])
+}
+
+LooksLikeCsv(csv) {
+    if SubStr(LTrim(csv), 1, 1) = "<"
+        return false
+    rows := ParseCsv(csv)
+    return rows.Length > 0 && rows[1].Length >= 2
 }
 
 RefreshOpenChooser() {
@@ -748,16 +793,16 @@ RefreshOpenChooser() {
 
         if refreshedParent {
             DetailParent := refreshedParent
-            SetSearchPlaceholder("←  " refreshedParent.GroupLabel " details")
+            UpdateChooserContext()
             RenderChoices(FilterChoices(SearchBox.Value))
         } else {
             DetailParent := 0
-            SetSearchPlaceholder(CurrentScopeLabel())
+            UpdateChooserContext()
             SearchBox.Value := RootQuery
             RenderChoices(FilterChoices(RootQuery))
         }
     } else {
-        SetSearchPlaceholder(CurrentScopeLabel())
+        UpdateChooserContext()
         RenderChoices(FilterChoices(SearchBox.Value))
     }
 
@@ -776,7 +821,7 @@ RefreshOpenChooser() {
 BuildErrorReport(problem, context, mode := "Caught") {
     global AppVersion
 
-    report := "Sheet Autocomplete v" AppVersion
+    report := "Trigger Search v" AppVersion
         . "`nContext: " context
         . "`nError type: " Type(problem)
         . "`nMessage: " problem.Message
@@ -805,15 +850,15 @@ ShowLastErrorReport(*) {
     global ErrorPath
 
     if !FileExist(ErrorPath) {
-        MsgBox "No error has been recorded yet.", "Sheet Autocomplete diagnostics"
+        MsgBox "No error has been recorded yet.", "Trigger Search diagnostics"
         return
     }
-    MsgBox FileRead(ErrorPath, "UTF-8"), "Sheet Autocomplete diagnostics"
+    MsgBox FileRead(ErrorPath, "UTF-8"), "Trigger Search diagnostics"
 }
 
 HandleUnexpectedError(problem, mode) {
     report := RecordError(problem, "Unexpected unhandled error", mode)
-    MsgBox report, "Sheet Autocomplete unexpected error"
+    MsgBox report, "Trigger Search unexpected error"
     return 0
 }
 
@@ -863,6 +908,11 @@ RunSelfTests() {
     Assert parsed[1].Label = "apple", "The parsed Label should remain apple."
     Assert parsed[1].Content = "red apple",
         "The parsed Content should remain red apple."
+
+    Assert LooksLikeCsv("Label,Content`napple,red apple"),
+        "Unquoted public export CSV should be accepted."
+    Assert !LooksLikeCsv("<html><body>Not CSV</body></html>"),
+        "An HTML response should not be accepted as CSV."
 }
 
 TestSnippet(label, content, aliases) {

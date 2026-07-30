@@ -93,6 +93,12 @@ local function csvRows(csv)
   return rows
 end
 
+local function looksLikeCsv(csv)
+  if type(csv) ~= "string" or trim(csv):sub(1, 1) == "<" then return false end
+  local ok, rows = pcall(csvRows, csv)
+  return ok and type(rows) == "table" and #rows > 0 and #rows[1] >= 2
+end
+
 local function configuredSheetNames()
   local source
   if type(discoveredSheetNames) == "table" and #discoveredSheetNames > 0 then
@@ -490,7 +496,11 @@ local function updateChooserHotkeys()
     end
   end
   if backHotkey then
-    if visible and detailParent then backHotkey:enable() else backHotkey:disable() end
+    if visible and (detailParent or activeCategory) then
+      backHotkey:enable()
+    else
+      backHotkey:disable()
+    end
   end
 end
 
@@ -525,6 +535,22 @@ local function closeDetails()
       break
     end
   end
+  updateChooserHotkeys()
+end
+
+local function goBack()
+  if detailParent then
+    closeDetails()
+    return
+  end
+  if not activeCategory then return end
+
+  activeCategory = nil
+  hs.settings.set(categorySettingKey, "__all")
+  local query = chooser:query() or ""
+  rootQuery = query
+  chooser:placeholderText(rootPlaceholder())
+  chooser:choices(rankedSnippets(query))
   updateChooserHotkeys()
 end
 
@@ -720,40 +746,60 @@ refresh = function()
     end
 
     local responses, remaining, failed = {}, #sheetNames, false
-    for _, sheetName in ipairs(sheetNames) do
-      local category = sheetName
-      local url = "https://docs.google.com/spreadsheets/d/"
-        .. encodeQueryValue(config.sheetId)
-        .. "/gviz/tq?tqx=out:csv&sheet="
-        .. encodeQueryValue(category)
-        .. "&cacheBust=" .. tostring(os.time())
 
-      hs.http.asyncGet(url, nil, function(status, body)
-        if status == 200 then
-          responses[category] = body
-        else
-          failed = true
-          print("Mac autocomplete: " .. category
-            .. " refresh failed with HTTP " .. tostring(status))
-        end
+    local function finishSheet(category, body, errorMessage)
+      if body then
+        responses[category] = body
+      else
+        failed = true
+        print("Mac autocomplete: " .. category .. " refresh failed: "
+          .. tostring(errorMessage))
+      end
 
-        remaining = remaining - 1
-        if remaining == 0 then
-          refreshInProgress = false
-          if not failed and installSheets(responses, "Google Sheets") then
-            local cacheJson = hs.json.encode({
-              sheets = responses,
-              sheetNames = sheetNames,
-              sheetGids = config.sheetGids,
-            })
-            local ok, errorMessage = writeFile(config.cachePath, cacheJson)
-            if not ok then
-              print("Mac autocomplete: could not write cache: "
-                .. tostring(errorMessage))
-            end
+      remaining = remaining - 1
+      if remaining == 0 then
+        refreshInProgress = false
+        if not failed and installSheets(responses, "Google Sheets") then
+          local cacheJson = hs.json.encode({
+            sheets = responses,
+            sheetNames = sheetNames,
+            sheetGids = config.sheetGids,
+          })
+          local ok, cacheError = writeFile(config.cachePath, cacheJson)
+          if not ok then
+            print("Mac autocomplete: could not write cache: "
+              .. tostring(cacheError))
           end
         end
-      end)
+      end
+    end
+
+    for _, sheetName in ipairs(sheetNames) do
+      local category = sheetName
+      local baseUrl = "https://docs.google.com/spreadsheets/d/"
+        .. encodeQueryValue(config.sheetId)
+      local gvizUrl = baseUrl .. "/gviz/tq?tqx=out:csv&sheet="
+        .. encodeQueryValue(category)
+        .. "&cacheBust=" .. tostring(os.time())
+      local gid = type(config.sheetGids) == "table"
+        and config.sheetGids[category] or nil
+      local exportUrl = gid and (baseUrl .. "/export?format=csv&gid="
+        .. encodeQueryValue(gid) .. "&cacheBust=" .. tostring(os.time())) or nil
+
+      local function requestCsv(url, fallbackUrl)
+        hs.http.asyncGet(url, nil, function(status, body)
+          if status == 200 and looksLikeCsv(body) then
+            finishSheet(category, body, nil)
+          elseif fallbackUrl then
+            requestCsv(fallbackUrl, nil)
+          else
+            finishSheet(category, nil, "HTTP " .. tostring(status)
+              .. (status == 200 and " returned invalid CSV" or ""))
+          end
+        end)
+      end
+
+      requestCsv(exportUrl or gvizUrl, exportUrl and gvizUrl or nil)
     end
   end
 
@@ -812,7 +858,7 @@ function M.start(userConfig)
   end)
 
   backHotkey = hs.hotkey.new({}, "left", function()
-    if chooser and chooser:isVisible() then closeDetails() end
+    if chooser and chooser:isVisible() then goBack() end
   end)
 
   local cachedJson = readFile(config.cachePath)

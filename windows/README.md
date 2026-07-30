@@ -23,6 +23,8 @@ launcher should choose v2 even if another version is also installed.
 - `hello;` types a normal semicolon.
 - `;`, `hello ;`, and a semicolon after Enter or Tab open the chooser.
 - Type `/` in the chooser to select All or one Sheet tab. The choice is sticky.
+- Press Left from a selected tab to return to All without clearing the current
+  search. Inside nested details, Left first returns to the parent item.
 - Press `Ctrl+1` through `Ctrl+9` to choose one of the first nine visible items.
 - Aliases rank above ordinary label matches.
 - A `›` means an item has nested details. Press Right to open them and Left to
