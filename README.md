@@ -13,6 +13,8 @@ AutoHotkey v2—without OAuth, sign-in, a browser extension, or a dedicated app.
 Both versions read visible category tabs through Google Sheets' public CSV
 endpoints, support labels, content, aliases, and nested choices, cache successful
 responses for offline use, and link results back to their exact Sheet cells.
+Every search covers every visible data tab; tab names remain useful for Sheet
+organization and result context without creating separate search modes.
 
 ## Repository layout
 

@@ -14,13 +14,11 @@ local refreshInProgress = false
 local snippets = {}
 local atBoundary = true
 local previousApp
-local activeCategory
 local discoveredSheetNames
 local detailParent
 local rootQuery = ""
 local returnParentCategory
 local returnParentRow
-local categorySettingKey = "macAutocomplete.activeCategory"
 
 local config = {
   sheetId = "",
@@ -140,19 +138,6 @@ local function discoverSheets(html)
   end
   if #names == 0 then return nil, "no visible tabs found" end
   return names, gids
-end
-
-local function restoreSavedCategory()
-  local savedCategory = hs.settings.get(categorySettingKey)
-  activeCategory = nil
-  if savedCategory and savedCategory ~= "__all" then
-    for _, category in ipairs(configuredSheetNames()) do
-      if category == savedCategory then activeCategory = category end
-    end
-  end
-  if savedCategory and savedCategory ~= "__all" and not activeCategory then
-    hs.settings.set(categorySettingKey, "__all")
-  end
 end
 
 local function columnLetter(columnIndex)
@@ -373,41 +358,8 @@ local function installSheets(sheetCsvs, source)
   return true
 end
 
-local function categoryChoices(query)
-  local needle = trim(query or ""):lower()
-  local choices = {
-    {
-      text = "/all",
-      subText = "Search all",
-      isCategoryChoice = true,
-      categoryTarget = "__all",
-    },
-  }
-  for _, category in ipairs(configuredSheetNames()) do
-    choices[#choices + 1] = {
-      text = "/" .. category:lower():gsub("%s+", "-"),
-      subText = "Search only " .. category,
-      isCategoryChoice = true,
-      categoryTarget = category,
-    }
-  end
-
-  if needle == "" or needle == "/" then return choices end
-
-  local filtered = {}
-  for _, choice in ipairs(choices) do
-    if choice.text:lower():find(needle, 1, true) then
-      filtered[#filtered + 1] = choice
-    end
-  end
-  return filtered
-end
-
 rankedSnippets = function(query)
   local needle = trim(query):lower()
-  if not detailParent and needle:sub(1, 1) == "/" then
-    return categoryChoices(needle)
-  end
 
   local matches = {}
   for _, snippet in ipairs(snippets) do
@@ -434,8 +386,6 @@ rankedSnippets = function(query)
     local rank
 
     if not inCurrentView then
-      rank = nil
-    elseif not detailParent and activeCategory and snippet.category ~= activeCategory then
       rank = nil
     elseif needle == "" then
       rank = 0
@@ -496,7 +446,7 @@ local function updateChooserHotkeys()
     end
   end
   if backHotkey then
-    if visible and (detailParent or activeCategory) then
+    if visible and detailParent then
       backHotkey:enable()
     else
       backHotkey:disable()
@@ -505,7 +455,7 @@ local function updateChooserHotkeys()
 end
 
 local function rootPlaceholder()
-  return activeCategory or "All"
+  return "⌕"
 end
 
 local function openDetails(choice)
@@ -538,40 +488,8 @@ local function closeDetails()
   updateChooserHotkeys()
 end
 
-local function goBack()
-  if detailParent then
-    closeDetails()
-    return
-  end
-  if not activeCategory then return end
-
-  activeCategory = nil
-  hs.settings.set(categorySettingKey, "__all")
-  local query = chooser:query() or ""
-  rootQuery = query
-  chooser:placeholderText(rootPlaceholder())
-  chooser:choices(rankedSnippets(query))
-  updateChooserHotkeys()
-end
-
 local function pasteSnippet(choice)
   if not choice then return end
-  if choice.isCategoryChoice then
-    detailParent = nil
-    if choice.categoryTarget == "__all" then
-      activeCategory = nil
-    else
-      activeCategory = choice.categoryTarget
-    end
-    hs.settings.set(categorySettingKey, activeCategory or "__all")
-    hs.timer.doAfter(0.05, function()
-      chooser:placeholderText(rootPlaceholder())
-      chooser:query("")
-      chooser:choices(rankedSnippets(""))
-      chooser:show()
-    end)
-    return
-  end
   local oldClipboard = hs.pasteboard.getContents()
   hs.pasteboard.setContents(choice.content)
 
@@ -676,16 +594,7 @@ local function watchKey(event)
   local flags = event:getFlags()
   local typedCharacter = event:getCharacters()
 
-  -- While our chooser is open, claim / explicitly and use it to start the
-  -- tab selector regardless of what the previously active app does with it.
   if chooser and chooser:isVisible() then
-    if not detailParent and not hasCommandModifier(flags)
-        and typedCharacter == "/" then
-      rootQuery = "/"
-      chooser:query("/")
-      chooser:choices(categoryChoices("/"))
-      return true
-    end
     return false
   end
 
@@ -812,7 +721,6 @@ refresh = function()
       if names then
         discoveredSheetNames = names
         for name, gid in pairs(gids) do config.sheetGids[name] = gid end
-        restoreSavedCategory()
         fetchSheetCsvs(names)
         return
       end
@@ -858,7 +766,7 @@ function M.start(userConfig)
   end)
 
   backHotkey = hs.hotkey.new({}, "left", function()
-    if chooser and chooser:isVisible() then goBack() end
+    if chooser and chooser:isVisible() then closeDetails() end
   end)
 
   local cachedJson = readFile(config.cachePath)
@@ -877,12 +785,9 @@ function M.start(userConfig)
           end
         end
       end
-      restoreSavedCategory()
       installSheets(cachedSheets, "local cache")
     end
   end
-  restoreSavedCategory()
-
   keyWatcher = hs.eventtap.new({ hs.eventtap.event.types.keyDown }, watchKey):start()
   mouseWatcher = hs.eventtap.new({
     hs.eventtap.event.types.leftMouseDown,

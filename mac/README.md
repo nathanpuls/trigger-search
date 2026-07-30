@@ -83,18 +83,10 @@ Highlight a result and press Command-E to open its exact row or detail cell in
 Google Sheets for editing. The chooser refreshes from the Sheet whenever it
 opens, while still appearing immediately from its local cache.
 
-Searches include every visible tab by default. Folder choices stay out of the
-normal results; type `/` to see them,
-then select one to limit the current chooser search to that tab. Each result
-shows its source tab beneath the label. The selected tab is sticky across
-chooser openings and Hammerspoon restarts; select `/all` to return to all tabs.
-The main placeholder shows only the current tab name, or `All` when searching
-every tab. Type `/` to change tabs.
-Press Left Arrow from a selected tab to return to All without clearing the
-current search. When viewing nested details, Left Arrow first returns to the
-parent item; press it again to return from the selected tab to All.
-While the chooser is open, Hammerspoon captures `/` itself so the previously
-active application cannot take it away.
+Every search includes every visible tab. Tabs organize the Google Sheet and
+appear beneath results as source labels, but they are not separate searchable
+containers. The search field uses a small monochrome `⌕` placeholder. When
+viewing nested details, press Left Arrow to return to the parent item.
 `hello;` types a normal semicolon. `hello ;` opens the chooser.
 
 The prototype checks the focused text field through Accessibility when possible,
