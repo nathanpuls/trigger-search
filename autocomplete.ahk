@@ -2,8 +2,8 @@
 #SingleInstance Force
 Persistent
 
-; Sheet Autocomplete version 0.3.0
-global AppVersion := "0.3.0"
+; Sheet Autocomplete version 0.3.1
+global AppVersion := "0.3.1"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -682,7 +682,7 @@ DiscoverSheets(html) {
 DecodeJavascriptString(value) {
     position := 1
     while found := RegExMatch(value, "\\x([0-9A-Fa-f]{2})", &match, position) {
-        replacement := Chr("0x" match[1])
+        replacement := Chr(Integer("0x" match[1]))
         value := SubStr(value, 1, found - 1) replacement
             . SubStr(value, found + match.Len(0))
         position := found + StrLen(replacement)
