@@ -45,25 +45,28 @@ of a multiline Sheet cell.
 Use **File → Share → Publish to web** in Google Sheets. Publish the workbook.
 No OAuth or Google sign-in is used by this prototype.
 
-Copy the spreadsheet ID from its URL:
-
-```text
-https://docs.google.com/spreadsheets/d/SPREADSHEET_ID/edit
-```
-
 ## 2. Install
 
 Copy `autocomplete.lua` into `~/.hammerspoon/`, then add the contents of
-`init.lua.example` to `~/.hammerspoon/init.lua`. The example already points to
-the created **Mac Autocomplete Snippets** Sheet; change `sheetId` or
-`sheetNames` only if you want to use another spreadsheet or set of tabs.
+`init.lua.example` to `~/.hammerspoon/init.lua` and reload Hammerspoon.
 
-Reload Hammerspoon. On the first run, macOS may ask for Accessibility permission
+On first launch, Trigger Search displays a native setup window. Paste the
+complete Google Sheet link and choose **Connect**. It extracts the spreadsheet
+ID, verifies the public workbook, and saves the choice locally in Hammerspoon's
+settings. You do not need to edit Lua. Existing installations automatically
+keep their current Sheet.
+
+A small **TS** item in the Mac menu bar provides **Open Trigger Search**,
+**Refresh Now**, **Open Google Sheet**, and **Change Google Sheet…**. A new
+Sheet is saved only after it passes validation; otherwise the previous Sheet
+and offline data remain available. The local choice survives code updates and
+can differ from the Sheet selected on a Windows computer.
+
+On the first run, macOS may ask for Accessibility permission
 so Hammerspoon can observe and intercept keystrokes.
 
 The opening character is configured in the Google Sheet's `Settings & Help`
-tab. It
-defaults to a semicolon:
+tab. It defaults to a semicolon:
 
 | Setting | Value |
 |---|---|
@@ -85,8 +88,8 @@ opens, while still appearing immediately from its local cache.
 
 Every search includes every visible tab. Tabs organize the Google Sheet and
 appear beneath results as source labels, but they are not separate searchable
-containers. The search field uses a small monochrome `⌕` placeholder. When
-viewing nested details, press Left Arrow to return to the parent item.
+containers. The search field uses the placeholder **Search**. When viewing
+nested details, press Left Arrow to return to the parent item.
 `hello;` types a normal semicolon. `hello ;` opens the chooser.
 
 The prototype checks the focused text field through Accessibility when possible,

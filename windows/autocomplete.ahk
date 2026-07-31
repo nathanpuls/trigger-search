@@ -2,17 +2,20 @@
 #SingleInstance Force
 Persistent
 
-; Sheet Autocomplete version 0.6.3
-global AppVersion := "0.6.3"
+; Sheet Autocomplete version 0.7.0
+global AppVersion := "0.7.0"
 
 SendMode "Input"
 SetTitleMatchMode 2
 
-; Public Google Sheet used by the Mac prototype. No OAuth or sign-in.
-global SheetId := "15JTaedzH2ZfT2FAb7FduyMg37aBCHTKborM7E0y8nts"
+; Existing installs migrate this legacy example ID into their local settings.
+; New installs ask for a public Google Sheet link on first launch.
+global LegacySheetId := "15JTaedzH2ZfT2FAb7FduyMg37aBCHTKborM7E0y8nts"
+global SheetId := ""
 global RefreshIntervalMs := 60000
 global CacheDir := A_AppData "\SheetAutocomplete"
 global ManifestPath := CacheDir "\cache.ini"
+global SettingsPath := CacheDir "\settings.ini"
 global ErrorPath := CacheDir "\last-error.txt"
 global UpdateUrl := "https://api.github.com/repos/nathanpuls/trigger-search/contents/windows/autocomplete.ahk"
 
@@ -68,11 +71,12 @@ Left::CloseDetails()
 ~MButton::ResetBoundary()
 
 Initialize() {
-    global CacheDir, RefreshIntervalMs, Trigger
+    global CacheDir, RefreshIntervalMs, Trigger, SheetId
     global Snippets, AppVersion
 
     DirCreate CacheDir
     A_IconTip := "Trigger Search v" AppVersion
+    LoadSheetConfiguration()
     LoadCache()
     BuildChooser()
     InstallTrigger(Trigger)
@@ -84,13 +88,17 @@ Initialize() {
     A_TrayMenu.Add()
     A_TrayMenu.Add("Open autocomplete", (*) => ShowChooser())
     A_TrayMenu.Add("Refresh snippets", RefreshData)
+    A_TrayMenu.Add("Open Google Sheet", (*) => OpenWorkbook())
+    A_TrayMenu.Add("Change Google Sheet...", (*) => PromptForGoogleSheet(false))
+    A_TrayMenu.Add()
     A_TrayMenu.Add("Update script from GitHub", UpdateScriptFromGitHub)
     A_TrayMenu.Add("Show last error report", ShowLastErrorReport)
-    A_TrayMenu.Add("Open Google Sheet", (*) => OpenWorkbook())
 
     SetTimer CheckActiveWindow, 400
     SetTimer RefreshData, RefreshIntervalMs
-    if Snippets.Length = 0
+    if SheetId = ""
+        SetTimer () => PromptForGoogleSheet(true), -100
+    else if Snippets.Length = 0
         RefreshData()
     else
         SetTimer RefreshData, -25
@@ -248,7 +256,13 @@ HandleTrigger(*) {
 ShowChooser(*) {
     global Snippets, TargetWindow, ChooserOpen, DetailParent, RootQuery
     global ReturnParentKey, SearchBox, ChooserGui
-    global Refreshing, LastRefreshError
+    global Refreshing, LastRefreshError, SheetId
+
+    if SheetId = "" {
+        PromptForGoogleSheet(true)
+        if SheetId = ""
+            return
+    }
 
     if Snippets.Length = 0 {
         if !Refreshing
@@ -555,7 +569,104 @@ EditSelected(*) {
 
 OpenWorkbook() {
     global SheetId
+
+    if SheetId = "" {
+        PromptForGoogleSheet(true)
+        return
+    }
     Run "https://docs.google.com/spreadsheets/d/" SheetId "/edit"
+}
+
+LoadSheetConfiguration() {
+    global SettingsPath, ManifestPath, LegacySheetId, SheetId
+
+    SheetId := Trim(IniRead(SettingsPath, "settings", "sheetId", ""))
+    if SheetId != "" || !FileExist(ManifestPath)
+        return
+
+    ; A cache created by an older version proves this is an existing install.
+    cachedSheetId := Trim(IniRead(ManifestPath, "cache", "sheetId", ""))
+    SheetId := cachedSheetId != "" ? cachedSheetId : LegacySheetId
+    SaveSheetConfiguration()
+}
+
+SaveSheetConfiguration() {
+    global SettingsPath, SheetId
+    IniWrite SheetId, SettingsPath, "settings", "sheetId"
+}
+
+ExtractSheetId(value) {
+    value := Trim(value)
+    if RegExMatch(value, "i)/spreadsheets/d/([A-Za-z0-9_-]+)", &match)
+        return match[1]
+    if RegExMatch(value, "^[A-Za-z0-9_-]{20,}$")
+        return value
+    return ""
+}
+
+PromptForGoogleSheet(firstRun := false) {
+    global SheetId
+
+    title := firstRun ? "Set up Trigger Search" : "Change Google Sheet"
+    prompt := "Paste the link to your public Google Sheet."
+        . "`n`nIn Google Sheets, use File > Share > Publish to web first."
+        . "`nYour choice is saved only on this computer."
+    defaultValue := SheetId = "" ? ""
+        : "https://docs.google.com/spreadsheets/d/" SheetId "/edit"
+    answer := InputBox(prompt, title, "w600 h180", defaultValue)
+    if answer.Result != "OK"
+        return false
+
+    newSheetId := ExtractSheetId(answer.Value)
+    if newSheetId = "" {
+        MsgBox "That does not look like a Google Sheets link."
+            . "`n`nPaste the complete link from your browser and try again.",
+            title
+        return false
+    }
+    return ConnectGoogleSheet(newSheetId, title)
+}
+
+ConnectGoogleSheet(newSheetId, title := "Change Google Sheet") {
+    global SheetId, SheetInfos, Snippets, Trigger
+    global LastRefreshError, LastShownRefreshError, RefreshFailureCount
+
+    oldSheetId := SheetId
+    oldInfos := SheetInfos
+    oldSnippets := Snippets
+    oldTrigger := Trigger
+    stage := "checking the Google Sheet"
+
+    try {
+        DownloadWorkbook newSheetId, &infos, &csvByName, &stage
+        SheetId := newSheetId
+        ApplySheets infos, csvByName
+        if Snippets.Length = 0
+            throw Error("No usable autocomplete rows were found. Each data tab needs Label and Content headers.")
+
+        SaveCache infos, csvByName
+        SaveSheetConfiguration()
+        SheetInfos := infos
+        LastRefreshError := ""
+        LastShownRefreshError := ""
+        RefreshFailureCount := 0
+        RefreshOpenChooser()
+        TrayTip "Google Sheet connected and " Snippets.Length " snippets loaded.",
+            "Trigger Search"
+        return true
+    } catch as problem {
+        SheetId := oldSheetId
+        SheetInfos := oldInfos
+        Snippets := oldSnippets
+        InstallTrigger oldTrigger
+        report := RecordError(problem, "Connecting a Google Sheet — " stage)
+        MsgBox "Trigger Search could not use that Sheet."
+            . "`n`n" problem.Message
+            . "`n`nMake sure the link is correct and the workbook is published to the web."
+            . "`n`nTechnical details were saved to the last error report.",
+            title
+        return false
+    }
 }
 
 UpdateScriptFromGitHub(*) {
@@ -620,27 +731,13 @@ RefreshData(*) {
 
     if Refreshing
         return
+    if SheetId = ""
+        return
     Refreshing := true
     stage := "starting refresh"
 
     try {
-        stage := "downloading the list of Sheet tabs"
-        cacheBust := A_NowUTC A_MSec
-        htmlUrl := "https://docs.google.com/spreadsheets/d/" SheetId
-            . "/htmlview?cacheBust=" cacheBust
-        html := FetchText(htmlUrl)
-        stage := "reading the list of Sheet tabs"
-        infos := DiscoverSheets(html)
-        if infos.Length = 0
-            throw Error("No visible tabs were found.")
-
-        csvByName := Map()
-        for info in infos {
-            stage := "downloading the " info.Name " tab"
-            csv := FetchSheetCsv(info, cacheBust)
-            csvByName[info.Name] := csv
-        }
-
+        DownloadWorkbook SheetId, &infos, &csvByName, &stage
         stage := "parsing the downloaded Sheet tabs"
         ApplySheets infos, csvByName
         stage := "saving the offline cache"
@@ -666,10 +763,27 @@ RefreshData(*) {
     }
 }
 
-FetchSheetCsv(info, cacheBust) {
-    global SheetId
+DownloadWorkbook(sheetId, &infos, &csvByName, &stage) {
+    stage := "downloading the list of Sheet tabs"
+    cacheBust := A_NowUTC A_MSec
+    htmlUrl := "https://docs.google.com/spreadsheets/d/" sheetId
+        . "/htmlview?cacheBust=" cacheBust
+    html := FetchText(htmlUrl)
+    stage := "reading the list of Sheet tabs"
+    infos := DiscoverSheets(html)
+    if infos.Length = 0
+        throw Error("No visible tabs were found. The workbook may not be published to the web.")
 
-    baseUrl := "https://docs.google.com/spreadsheets/d/" SheetId
+    csvByName := Map()
+    for info in infos {
+        stage := "downloading the " info.Name " tab"
+        csvByName[info.Name] := FetchSheetCsv(info, cacheBust, sheetId)
+    }
+}
+
+FetchSheetCsv(info, cacheBust, sheetId) {
+
+    baseUrl := "https://docs.google.com/spreadsheets/d/" sheetId
     urls := [
         baseUrl "/export?format=csv&gid=" info.Gid "&cacheBust=" cacheBust,
         baseUrl "/gviz/tq?tqx=out:csv&gid=" info.Gid "&cacheBust=" cacheBust
@@ -843,6 +957,15 @@ RunSelfTests() {
         "Unquoted public export CSV should be accepted."
     Assert !LooksLikeCsv("<html><body>Not CSV</body></html>"),
         "An HTML response should not be accepted as CSV."
+
+    sampleId := "15JTaedzH2ZfT2FAb7FduyMg37aBCHTKborM7E0y8nts"
+    Assert ExtractSheetId("https://docs.google.com/spreadsheets/d/" sampleId
+        . "/edit?usp=sharing") = sampleId,
+        "A complete Google Sheets link should yield its spreadsheet ID."
+    Assert ExtractSheetId(sampleId) = sampleId,
+        "A raw spreadsheet ID should remain valid."
+    Assert ExtractSheetId("https://example.com/not-a-sheet") = "",
+        "A non-Google link should be rejected."
 }
 
 TestSnippet(label, content, aliases) {
@@ -1154,9 +1277,10 @@ NormalizeSheetName(name) {
 }
 
 SaveCache(infos, csvByName) {
-    global CacheDir, ManifestPath, Trigger
+    global CacheDir, ManifestPath, Trigger, SheetId
 
-    manifest := "[cache]`ncount=" infos.Length "`ntrigger=" Trigger "`n"
+    manifest := "[cache]`ncount=" infos.Length "`ntrigger=" Trigger
+        . "`nsheetId=" SheetId "`n"
     for index, info in infos {
         cacheFile := CacheDir "\sheet-" info.Gid ".csv"
         WriteTextAtomic cacheFile, csvByName[info.Name]
@@ -1175,11 +1299,14 @@ WriteTextAtomic(path, contents) {
 }
 
 LoadCache() {
-    global ManifestPath, Trigger, SheetInfos
+    global ManifestPath, Trigger, SheetInfos, SheetId
 
-    if !FileExist(ManifestPath)
+    if SheetId = "" || !FileExist(ManifestPath)
         return
 
+    cachedSheetId := Trim(IniRead(ManifestPath, "cache", "sheetId", ""))
+    if cachedSheetId != "" && cachedSheetId != SheetId
+        return
     count := IniRead(ManifestPath, "cache", "count", 0) + 0
     cachedTrigger := IniRead(ManifestPath, "cache", "trigger", Trigger)
     infos := []

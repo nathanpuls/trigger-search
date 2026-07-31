@@ -1,13 +1,7 @@
 local autocomplete = require("autocomplete")
 
 autocomplete.start({
-  sheetId = "15JTaedzH2ZfT2FAb7FduyMg37aBCHTKborM7E0y8nts",
   trigger = ";", -- Change this to another single character if preferred.
-  sheetNames = { "Personal", "Psychiatric Medications" },
-  sheetGids = {
-    Personal = 1737844023,
-    ["Psychiatric Medications"] = 529027093,
-  },
 })
 
 -- Optional manual refresh hotkey:
