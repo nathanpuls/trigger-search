@@ -37,8 +37,9 @@ jobs:
             "/ErrorStdOut=UTF-8" `
             "/validate" `
             "$PWD\windows\autocomplete.ahk"
-          if ($LASTEXITCODE -ne 0) {
-            throw "AutoHotkey validation failed with exit code $LASTEXITCODE."
+          $validationSucceeded = $?
+          if (-not $validationSucceeded) {
+            throw "AutoHotkey validation failed. See the exact AutoHotkey message above."
           }
 
       - name: Run chooser and filtering smoke tests

@@ -790,14 +790,14 @@ ExtractLaunchUrl(text) {
     candidates := []
     seen := Map()
     position := 1
-    pattern := "i)https?://[^\s<>""']+"
+    pattern := "i)https?://[^\s<>" Chr(34) "']+"
     while found := RegExMatch(text, pattern, &match, position) {
         AddLaunchCandidate candidates, seen, match[0], false
         position := found + match.Len(0)
     }
 
     position := 1
-    pattern := "i)(?:[a-z0-9-]+\.)+[a-z]{2,}(?:[/?#][^\s<>""']*)?"
+    pattern := "i)(?:[a-z0-9-]+\.)+[a-z]{2,}(?:[/?#][^\s<>" Chr(34) "']*)?"
     while found := RegExMatch(text, pattern, &match, position) {
         previous := found > 1 ? SubStr(text, found - 1, 1) : ""
         if previous != "@" && !RegExMatch(previous, "[A-Za-z0-9_]")
