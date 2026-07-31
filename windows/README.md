@@ -33,6 +33,8 @@ launcher should choose v2 even if another version is also installed.
 - A `›` means an item has nested details. Press Right to open them and Left to
   return to the same result.
 - Press Ctrl+E to open the selected item’s exact Google Sheets cell.
+- Dates, times, clipboard text, and cursor position can be calculated with the
+  same dynamic placeholders as the Mac version.
 - The Sheet is refreshed at startup, whenever the chooser opens, and every 60
   seconds. The last successful data is cached under `%APPDATA%\SheetAutocomplete`
   for offline use.
@@ -48,6 +50,40 @@ remain in use. **Open Google Sheet** opens the currently connected workbook.
 The selected ID is stored in `%APPDATA%\SheetAutocomplete\settings.ini`, not
 inside the script, so it survives GitHub updates. It is local to that Windows
 computer and may differ from the Sheet used on a Mac or another PC.
+
+## Dynamic placeholders
+
+Trigger Search expands a documented subset of
+[Raycast-style dynamic placeholders](https://manual.raycast.com/dynamic-placeholders)
+only when a snippet is pasted:
+
+| Placeholder | Result |
+|---|---|
+| `{date}` | Current date, such as `07/30/2026` |
+| `{time}` | Current time, such as `4:30 PM` |
+| `{datetime}` | Current date and time |
+| `{day}` | Current weekday |
+| `{clipboard}` | Plain text that was on the clipboard before the paste |
+| `{cursor}` | Removes the marker and leaves the cursor at that position |
+
+Dates and times accept `format` and `offset`:
+
+```text
+Annual visit by: {date format="MM/dd/yyyy" offset="+1y"}
+Follow up around: {date format="MM/dd/yyyy" offset="+3M"}
+Created: {datetime format="MMM d, yyyy h:mm a"}
+```
+
+Offsets use `y` for years, uppercase `M` for months, `d` for days, `h` for
+hours, and lowercase `m` for minutes. Multiple offsets can be combined, as in
+`offset="+1M -3d"`. Calendar-month and year offsets clamp to the final valid
+day when necessary, so January 31 plus one month becomes February 28 or 29.
+
+Supported format symbols are `yyyy`, `yy`, `MMMM`, `MMM`, `MM`, `M`, `dd`,
+`d`, `EEEE`, `EEE`, `HH`, `H`, `hh`, `h`, `mm`, `m`, `ss`, `s`, `SSS`, and
+`a`. Text inside single quotes is literal. Trigger Search intentionally does
+not support Raycast's script-like or browser-context placeholders. Unknown
+placeholders remain unchanged.
 
 ## Get future script updates
 

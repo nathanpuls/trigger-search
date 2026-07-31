@@ -47,8 +47,9 @@ No OAuth or Google sign-in is used by this prototype.
 
 ## 2. Install
 
-Copy `autocomplete.lua` into `~/.hammerspoon/`, then add the contents of
-`init.lua.example` to `~/.hammerspoon/init.lua` and reload Hammerspoon.
+Copy `autocomplete.lua` and `trigger-search-menuTemplate.png` into
+`~/.hammerspoon/`, then add the contents of `init.lua.example` to
+`~/.hammerspoon/init.lua` and reload Hammerspoon.
 
 On first launch, Trigger Search displays a native setup window. Paste the
 complete Google Sheet link and choose **Connect**. It extracts the spreadsheet
@@ -56,8 +57,9 @@ ID, verifies the public workbook, and saves the choice locally in Hammerspoon's
 settings. You do not need to edit Lua. Existing installations automatically
 keep their current Sheet.
 
-A small **TS** item in the Mac menu bar provides **Open Trigger Search**,
-**Refresh Now**, **Open Google Sheet**, and **Change Google Sheet…**. A new
+A lightning-bolt icon in the Mac menu bar provides **Open Trigger Search**,
+**Refresh Now**, **Open Google Sheet**, and **Change Google Sheet…**. If the
+icon file is missing, Trigger Search falls back to a small **TS** item. A new
 Sheet is saved only after it passes validation; otherwise the previous Sheet
 and offline data remain available. The local choice survives code updates and
 can differ from the Sheet selected on a Windows computer.
@@ -94,6 +96,40 @@ nested details, press Left Arrow to return to the parent item.
 
 The prototype checks the focused text field through Accessibility when possible,
 so the boundary rule also works after mouse clicks and cursor movement.
+
+## Dynamic placeholders
+
+Trigger Search expands a documented subset of
+[Raycast-style dynamic placeholders](https://manual.raycast.com/dynamic-placeholders)
+only when a snippet is pasted:
+
+| Placeholder | Result |
+|---|---|
+| `{date}` | Current date, such as `07/30/2026` |
+| `{time}` | Current time, such as `4:30 PM` |
+| `{datetime}` | Current date and time |
+| `{day}` | Current weekday |
+| `{clipboard}` | Plain text that was on the clipboard before the paste |
+| `{cursor}` | Removes the marker and leaves the cursor at that position |
+
+Dates and times accept `format` and `offset`:
+
+```text
+Annual visit by: {date format="MM/dd/yyyy" offset="+1y"}
+Follow up around: {date format="MM/dd/yyyy" offset="+3M"}
+Created: {datetime format="MMM d, yyyy h:mm a"}
+```
+
+Offsets use `y` for years, uppercase `M` for months, `d` for days, `h` for
+hours, and lowercase `m` for minutes. Multiple offsets can be combined, as in
+`offset="+1M -3d"`. Calendar-month and year offsets clamp to the final valid
+day when necessary, so January 31 plus one month becomes February 28 or 29.
+
+Supported format symbols are `yyyy`, `yy`, `MMMM`, `MMM`, `MM`, `M`, `dd`,
+`d`, `EEEE`, `EEE`, `HH`, `H`, `hh`, `h`, `mm`, `m`, `ss`, `s`, `SSS`, and
+`a`. Text inside single quotes is literal. Trigger Search intentionally does
+not support Raycast's script-like or browser-context placeholders. Unknown
+placeholders remain unchanged.
 
 ## Notes
 

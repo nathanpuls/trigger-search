@@ -2,8 +2,8 @@
 #SingleInstance Force
 Persistent
 
-; Sheet Autocomplete version 0.7.0
-global AppVersion := "0.7.0"
+; Sheet Autocomplete version 0.8.0
+global AppVersion := "0.8.0"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -499,10 +499,12 @@ ChooseChoice(choice) {
 PasteChoice(choice) {
     global TargetWindow, ChooserGui, ChooserOpen, AtBoundary
 
+    clipboardText := A_Clipboard
     savedClipboard := ClipboardAll()
+    expanded := ExpandDynamicContent(choice.Content, clipboardText)
     ChooserGui.Hide()
     ChooserOpen := false
-    A_Clipboard := choice.Content
+    A_Clipboard := expanded.Text
     if !ClipWait(1) {
         A_Clipboard := savedClipboard
         return
@@ -512,9 +514,208 @@ PasteChoice(choice) {
         WinActivate "ahk_id " TargetWindow
     Sleep 80
     Send "^v"
-    Sleep 250
+    if expanded.CursorLeft > 0 {
+        Sleep 50
+        Send "{Left " expanded.CursorLeft "}"
+        Sleep 200
+    } else {
+        Sleep 250
+    }
     A_Clipboard := savedClipboard
-    AtBoundary := RegExMatch(choice.Content, "\s$") != 0
+    AtBoundary := RegExMatch(expanded.Text, "\s$") != 0
+}
+
+ExpandDynamicContent(text, clipboardText := "", timestamp := "") {
+    if timestamp = ""
+        timestamp := A_Now
+
+    output := ""
+    searchAt := 1
+    cursorPosition := 0
+    hasCursor := false
+
+    while foundAt := RegExMatch(text, "\{([^{}\r\n]+)\}", &match, searchAt) {
+        output .= SubStr(text, searchAt, foundAt - searchAt)
+        placeholder := ExpandDynamicPlaceholder(
+            Trim(match[1]), clipboardText, timestamp)
+        if placeholder.Recognized {
+            if placeholder.IsCursor && !hasCursor {
+                cursorPosition := StrLen(output)
+                hasCursor := true
+            }
+            output .= placeholder.Value
+        } else {
+            output .= match[0]
+        }
+        searchAt := foundAt + StrLen(match[0])
+    }
+    output .= SubStr(text, searchAt)
+
+    return {
+        Text: output,
+        CursorLeft: hasCursor ? StrLen(output) - cursorPosition : 0
+    }
+}
+
+ExpandDynamicPlaceholder(body, clipboardText, timestamp) {
+    if body = "clipboard"
+        return {Recognized: true, IsCursor: false, Value: clipboardText}
+    if body = "cursor"
+        return {Recognized: true, IsCursor: true, Value: ""}
+
+    if !RegExMatch(body, "i)^(date|time|datetime|day)(?:\s|$)", &match)
+        return {Recognized: false, IsCursor: false, Value: ""}
+
+    keyword := StrLower(match[1])
+    defaultFormats := Map(
+        "date", "MM/dd/yyyy",
+        "time", "h:mm a",
+        "datetime", "MM/dd/yyyy h:mm a",
+        "day", "EEEE"
+    )
+    formatPattern := PlaceholderAttribute(body, "format")
+    if formatPattern = ""
+        formatPattern := defaultFormats[keyword]
+    offset := PlaceholderAttribute(body, "offset")
+    shifted := ApplyDateOffset(timestamp, offset)
+    return {
+        Recognized: true,
+        IsCursor: false,
+        Value: FormatDynamicDate(shifted, formatPattern)
+    }
+}
+
+PlaceholderAttribute(body, name) {
+    quote := Chr(34)
+    quotedPattern := "i)\b" name "\s*=\s*" quote "([^" quote "]*)" quote
+    if RegExMatch(body, quotedPattern, &match)
+        return match[1]
+    if RegExMatch(body, "i)\b" name "\s*=\s*([^\s]+)", &match)
+        return match[1]
+    return ""
+}
+
+ApplyDateOffset(timestamp, offsetText) {
+    shifted := timestamp
+    searchAt := 1
+    while foundAt := RegExMatch(
+        offsetText, "([+-])(\d+)([yMdhm])", &match, searchAt) {
+        amount := Integer(match[2])
+        if match[1] = "-"
+            amount := -amount
+
+        unit := match[3]
+        if unit = "y"
+            shifted := AddCalendarMonths(shifted, amount * 12)
+        else if unit = "M"
+            shifted := AddCalendarMonths(shifted, amount)
+        else if unit = "d"
+            shifted := DateAdd(shifted, amount, "Days")
+        else if unit = "h"
+            shifted := DateAdd(shifted, amount, "Hours")
+        else if unit = "m"
+            shifted := DateAdd(shifted, amount, "Minutes")
+
+        searchAt := foundAt + StrLen(match[0])
+    }
+    return shifted
+}
+
+AddCalendarMonths(timestamp, amount) {
+    year := Integer(SubStr(timestamp, 1, 4))
+    month := Integer(SubStr(timestamp, 5, 2))
+    day := Integer(SubStr(timestamp, 7, 2))
+    zeroBasedMonth := year * 12 + month - 1 + amount
+    newYear := Floor(zeroBasedMonth / 12)
+    newMonth := Mod(zeroBasedMonth, 12) + 1
+    if newMonth <= 0 {
+        newMonth += 12
+        newYear -= 1
+    }
+    newDay := Min(day, DaysInMonth(newYear, newMonth))
+    return Format("{:04}{:02}{:02}", newYear, newMonth, newDay)
+        . SubStr(timestamp, 9)
+}
+
+DaysInMonth(year, month) {
+    if month = 2 {
+        isLeapYear := Mod(year, 400) = 0
+            || (Mod(year, 4) = 0 && Mod(year, 100) != 0)
+        return isLeapYear ? 29 : 28
+    }
+    return InStr(",1,3,5,7,8,10,12,", "," month ",") ? 31 : 30
+}
+
+FormatDynamicDate(timestamp, formatPattern) {
+    hour24 := Integer(FormatTime(timestamp, "HH"))
+    hour12 := Mod(hour24, 12)
+    if hour12 = 0
+        hour12 := 12
+
+    values := Map(
+        "EEEE", FormatTime(timestamp, "dddd"),
+        "MMMM", FormatTime(timestamp, "MMMM"),
+        "yyyy", FormatTime(timestamp, "yyyy"),
+        "EEE", FormatTime(timestamp, "ddd"),
+        "MMM", FormatTime(timestamp, "MMM"),
+        "SSS", "000",
+        "yy", FormatTime(timestamp, "yy"),
+        "MM", FormatTime(timestamp, "MM"),
+        "dd", FormatTime(timestamp, "dd"),
+        "HH", FormatTime(timestamp, "HH"),
+        "hh", Format("{:02}", hour12),
+        "mm", FormatTime(timestamp, "mm"),
+        "ss", FormatTime(timestamp, "ss"),
+        "M", Integer(FormatTime(timestamp, "MM")),
+        "d", Integer(FormatTime(timestamp, "dd")),
+        "H", hour24,
+        "h", hour12,
+        "m", Integer(FormatTime(timestamp, "mm")),
+        "s", Integer(FormatTime(timestamp, "ss")),
+        "a", FormatTime(timestamp, "tt")
+    )
+    tokenOrder := [
+        "EEEE", "MMMM", "yyyy", "EEE", "MMM", "SSS",
+        "yy", "MM", "dd", "HH", "hh", "mm", "ss",
+        "M", "d", "H", "h", "m", "s", "a"
+    ]
+
+    output := ""
+    index := 1
+    literal := false
+    while index <= StrLen(formatPattern) {
+        character := SubStr(formatPattern, index, 1)
+        if character = "'" {
+            if SubStr(formatPattern, index + 1, 1) = "'" {
+                output .= "'"
+                index += 2
+            } else {
+                literal := !literal
+                index += 1
+            }
+            continue
+        }
+        if literal {
+            output .= character
+            index += 1
+            continue
+        }
+
+        matched := false
+        for token in tokenOrder {
+            if SubStr(formatPattern, index, StrLen(token)) = token {
+                output .= values[token]
+                index += StrLen(token)
+                matched := true
+                break
+            }
+        }
+        if !matched {
+            output .= character
+            index += 1
+        }
+    }
+    return output
 }
 
 OpenSelectedDetails(*) {
@@ -942,6 +1143,41 @@ RunSelfTests() {
     Assert parsed[1].Label = "apple", "The parsed Label should remain apple."
     Assert parsed[1].Content = "red apple",
         "The parsed Content should remain red apple."
+    Assert InStr(parsed[1].EditUrl, "&range=C2"),
+        "Editing a standard snippet should target its pasted Content cell."
+
+    labelOnly := []
+    ParseSheet '"Label","Alias","Content"`n"apple","",""',
+        {Name: "Test", Gid: "123"}, labelOnly
+    Assert InStr(labelOnly[1].EditUrl, "&range=A2"),
+        "Editing a Label-only snippet should target its pasted Label cell."
+
+    dynamic := ExpandDynamicContent(
+        "Annual: {date format="
+            . Chr(34) "MM/dd/yyyy" Chr(34) " offset="
+            . Chr(34) "+1y" Chr(34) "}`n"
+            . "Follow-up: {date format="
+            . Chr(34) "MM/dd/yyyy" Chr(34) " offset="
+            . Chr(34) "+3M" Chr(34) "}`n"
+            . "Copied: {clipboard}`nBefore {cursor}after",
+        "clipboard value", "20260730120000")
+    Assert dynamic.Text = "Annual: 07/30/2027`n"
+        . "Follow-up: 10/30/2026`n"
+        . "Copied: clipboard value`nBefore after",
+        "Date, offset, and clipboard placeholders should expand at paste time."
+    Assert dynamic.CursorLeft = 5,
+        "The cursor placeholder should leave the cursor before trailing text."
+
+    monthEnd := ExpandDynamicContent(
+        "{date format=" Chr(34) "MM/dd/yyyy" Chr(34)
+            . " offset=" Chr(34) "+1M" Chr(34) "}",
+        "", "20260131120000")
+    Assert monthEnd.Text = "02/28/2026",
+        "Calendar-month offsets should clamp safely at month end."
+
+    preserved := ExpandDynamicContent("{unsupported}", "", "20260730120000")
+    Assert preserved.Text = "{unsupported}",
+        "Unknown placeholders should remain ordinary text."
 
     directMatch := TestSnippet("doctor note", "Dr. White", [])
     nestedOnlyMatch := TestSnippet("medication", "regular content", [])
@@ -1088,7 +1324,6 @@ ParseSheet(csv, info, output) {
     labelColumn := columns.Has("label") ? columns["label"] : 0
     contentColumn := columns.Has("content") ? columns["content"] : 0
     aliasColumn := columns.Has("alias") ? columns["alias"] : 0
-    baseEndColumn := Max(labelColumn, contentColumn, aliasColumn)
 
     Loop rows.Length - 1 {
         rowNumber := A_Index + 1
@@ -1099,6 +1334,7 @@ ParseSheet(csv, info, output) {
         if label = ""
             continue
         content := Trim(sheetContent) != "" ? sheetContent : label
+        editColumn := Trim(sheetContent) != "" ? contentColumn : labelColumn
 
         aliases := []
         aliasText := aliasColumn ? Cell(row, aliasColumn) : ""
@@ -1121,7 +1357,8 @@ ParseSheet(csv, info, output) {
             DetailSearch: "",
             DetailOrder: 0,
             Preview: MakePreview(sheetLabel, sheetContent, info.Name),
-            EditUrl: EditUrl(info.Gid, rowNumber, 1, Max(1, baseEndColumn))
+            EditUrl: EditUrl(info.Gid, rowNumber, Max(1, editColumn),
+                Max(1, editColumn))
         }
 
         for columnIndex, header in rows[1] {

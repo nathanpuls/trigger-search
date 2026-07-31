@@ -162,12 +162,185 @@ local function columnLetter(columnIndex)
   return result
 end
 
+local monthNames = {
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+}
+
+local monthNamesShort = {
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+}
+
+local weekdayNames = {
+  "Sunday", "Monday", "Tuesday", "Wednesday",
+  "Thursday", "Friday", "Saturday",
+}
+
+local weekdayNamesShort = {
+  "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat",
+}
+
+local function daysInMonth(year, month)
+  return os.date("*t", os.time({
+    year = year,
+    month = month + 1,
+    day = 0,
+    hour = 12,
+  })).day
+end
+
+local function addCalendarMonths(timestamp, amount)
+  local parts = os.date("*t", timestamp)
+  local zeroBasedMonth = (parts.year * 12 + parts.month - 1) + amount
+  local year = math.floor(zeroBasedMonth / 12)
+  local month = zeroBasedMonth - year * 12 + 1
+  parts.year = year
+  parts.month = month
+  parts.day = math.min(parts.day, daysInMonth(year, month))
+  parts.isdst = nil
+  return os.time(parts)
+end
+
+local function applyDateOffset(timestamp, offsetText)
+  local shifted = timestamp
+  for sign, amountText, unit in offsetText:gmatch("([+-])(%d+)([yMdhm])") do
+    local amount = tonumber(amountText) or 0
+    if sign == "-" then amount = -amount end
+    if unit == "y" then
+      shifted = addCalendarMonths(shifted, amount * 12)
+    elseif unit == "M" then
+      shifted = addCalendarMonths(shifted, amount)
+    else
+      local parts = os.date("*t", shifted)
+      if unit == "d" then
+        parts.day = parts.day + amount
+      elseif unit == "h" then
+        parts.hour = parts.hour + amount
+      elseif unit == "m" then
+        parts.min = parts.min + amount
+      end
+      parts.isdst = nil
+      shifted = os.time(parts)
+    end
+  end
+  return shifted
+end
+
+local function placeholderAttribute(body, name)
+  local quoted = body:match(name .. '%s*=%s*"([^"]*)"')
+  if quoted ~= nil then return quoted end
+  return body:match(name .. "%s*=%s*([^%s]+)")
+end
+
+local function formatDynamicDate(timestamp, format)
+  local parts = os.date("*t", timestamp)
+  local hour12 = parts.hour % 12
+  if hour12 == 0 then hour12 = 12 end
+  local values = {
+    EEEE = weekdayNames[parts.wday],
+    MMMM = monthNames[parts.month],
+    yyyy = string.format("%04d", parts.year),
+    EEE = weekdayNamesShort[parts.wday],
+    MMM = monthNamesShort[parts.month],
+    SSS = "000",
+    yy = string.format("%02d", parts.year % 100),
+    MM = string.format("%02d", parts.month),
+    dd = string.format("%02d", parts.day),
+    HH = string.format("%02d", parts.hour),
+    hh = string.format("%02d", hour12),
+    mm = string.format("%02d", parts.min),
+    ss = string.format("%02d", parts.sec),
+    M = tostring(parts.month),
+    d = tostring(parts.day),
+    H = tostring(parts.hour),
+    h = tostring(hour12),
+    m = tostring(parts.min),
+    s = tostring(parts.sec),
+    a = parts.hour < 12 and "AM" or "PM",
+  }
+  local tokenOrder = {
+    "EEEE", "MMMM", "yyyy", "EEE", "MMM", "SSS",
+    "yy", "MM", "dd", "HH", "hh", "mm", "ss",
+    "M", "d", "H", "h", "m", "s", "a",
+  }
+  local output, index, literal = {}, 1, false
+  while index <= #format do
+    local character = format:sub(index, index)
+    if character == "'" then
+      if format:sub(index + 1, index + 1) == "'" then
+        output[#output + 1] = "'"
+        index = index + 2
+      else
+        literal = not literal
+        index = index + 1
+      end
+    elseif literal then
+      output[#output + 1] = character
+      index = index + 1
+    else
+      local matched = false
+      for _, token in ipairs(tokenOrder) do
+        if format:sub(index, index + #token - 1) == token then
+          output[#output + 1] = values[token]
+          index = index + #token
+          matched = true
+          break
+        end
+      end
+      if not matched then
+        output[#output + 1] = character
+        index = index + 1
+      end
+    end
+  end
+  return table.concat(output)
+end
+
+local cursorMarker = "<<<TRIGGER_SEARCH_CURSOR_7F3A>>>"
+
+local function expandDynamicContent(content, clipboardText, timestamp)
+  local baseTimestamp = timestamp or os.time()
+  local expanded = content:gsub("{([^{}\r\n]+)}", function(rawBody)
+    local body = trim(rawBody)
+    if body == "clipboard" then return clipboardText or "" end
+    if body == "cursor" then return cursorMarker end
+
+    local keyword = body:match("^([%a]+)")
+    if keyword ~= "date" and keyword ~= "time"
+        and keyword ~= "datetime" and keyword ~= "day" then
+      return "{" .. rawBody .. "}"
+    end
+
+    local defaultFormats = {
+      date = "MM/dd/yyyy",
+      time = "h:mm a",
+      datetime = "MM/dd/yyyy h:mm a",
+      day = "EEEE",
+    }
+    local format = placeholderAttribute(body, "format")
+      or defaultFormats[keyword]
+    local offset = placeholderAttribute(body, "offset") or ""
+    return formatDynamicDate(applyDateOffset(baseTimestamp, offset), format)
+  end)
+
+  local cursorStart = expanded:find(cursorMarker, 1, true)
+  local cursorLeft = 0
+  if cursorStart then
+    local suffix = expanded:sub(cursorStart + #cursorMarker)
+      :gsub(cursorMarker, "")
+    cursorLeft = utf8.len(suffix) or #suffix
+  end
+  expanded = expanded:gsub(cursorMarker, "")
+  return expanded, cursorLeft
+end
+
 local function parseSheet(csv, category)
   local rows = csvRows(csv)
   if #rows == 0 then return nil, "the CSV is empty" end
 
   local function addSnippet(parsed, sheetLabel, sheetContent, rowIndex,
-      detailName, detailColumnIndex, baseEndColumnIndex)
+      detailName, detailColumnIndex, baseEditColumnIndex)
     local label = sheetLabel ~= "" and sheetLabel or trim(sheetContent)
     if label == "" then return end
 
@@ -190,12 +363,11 @@ local function parseSheet(csv, category)
       and config.sheetGids[category] or nil
     local editUrl
     if sheetGid ~= nil then
-      local editRange = "A" .. tostring(rowIndex) .. ":B" .. tostring(rowIndex)
+      local editRange = "A" .. tostring(rowIndex)
       if detailColumnIndex then
         editRange = columnLetter(detailColumnIndex) .. tostring(rowIndex)
-      elseif baseEndColumnIndex and baseEndColumnIndex > 2 then
-        editRange = "A" .. tostring(rowIndex) .. ":"
-          .. columnLetter(baseEndColumnIndex) .. tostring(rowIndex)
+      elseif baseEditColumnIndex then
+        editRange = columnLetter(baseEditColumnIndex) .. tostring(rowIndex)
       end
       editUrl = "https://docs.google.com/spreadsheets/d/"
         .. config.sheetId .. "/edit#gid=" .. tostring(sheetGid)
@@ -238,11 +410,11 @@ local function parseSheet(csv, category)
     local sheetLabel = columns.label and trim(row[columns.label] or "") or ""
     local sheetContent = columns.content and (row[columns.content] or "") or ""
     local aliasText = columns.alias and trim(row[columns.alias]) or ""
-    local baseEndColumnIndex = math.max(columns.label or 0, columns.content or 0,
-      columns.alias or 0)
+    local baseEditColumnIndex = trim(sheetContent) ~= ""
+      and columns.content or columns.label
     local rootIndex = #parsed + 1
     addSnippet(parsed, sheetLabel, sheetContent, rowIndex, nil, nil,
-      baseEndColumnIndex)
+      baseEditColumnIndex)
 
     local parentLabel = sheetLabel ~= "" and sheetLabel or trim(sheetContent)
     if parentLabel ~= "" then
@@ -506,18 +678,27 @@ end
 local function pasteSnippet(choice)
   if not choice then return end
   local oldClipboard = hs.pasteboard.getContents()
-  hs.pasteboard.setContents(choice.content)
+  local expandedContent, cursorLeft = expandDynamicContent(
+    choice.content, oldClipboard or "")
+  hs.pasteboard.setContents(expandedContent)
 
   local targetApp = previousApp
   if targetApp then targetApp:activate() end
 
   hs.timer.doAfter(0.08, function()
     hs.eventtap.keyStroke({ "cmd" }, "v", 0)
-    atBoundary = choice.content:match("%s$") ~= nil
+    if cursorLeft > 0 then
+      hs.timer.doAfter(0.04, function()
+        for _ = 1, cursorLeft do
+          hs.eventtap.keyStroke({}, "left", 0)
+        end
+      end)
+    end
+    atBoundary = expandedContent:match("%s$") ~= nil
   end)
 
   hs.timer.doAfter(0.8, function()
-    if hs.pasteboard.getContents() == choice.content then
+    if hs.pasteboard.getContents() == expandedContent then
       if oldClipboard == nil then
         hs.pasteboard.clearContents()
       else
@@ -854,7 +1035,13 @@ end
 local function buildSettingsMenu()
   settingsMenu = hs.menubar.new(true, "TriggerSearchMenu")
   if not settingsMenu then return end
-  settingsMenu:setTitle("TS")
+  local iconPath = hs.configdir .. "/trigger-search-menuTemplate.png"
+  local icon = hs.image.imageFromPath(iconPath)
+  if icon then
+    settingsMenu:setIcon(icon:setSize({ w = 18, h = 18 }), true)
+  else
+    settingsMenu:setTitle("TS")
+  end
   settingsMenu:setTooltip("Trigger Search")
   settingsMenu:setMenu(function()
     local missingSheet = config.sheetId == ""
@@ -971,6 +1158,12 @@ end
 
 function M.refresh()
   refresh()
+end
+
+function M.expandDynamicContent(content, options)
+  options = options or {}
+  return expandDynamicContent(content or "", options.clipboard or "",
+    options.timestamp)
 end
 
 function M.stop()

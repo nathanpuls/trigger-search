@@ -16,6 +16,13 @@ responses for offline use, and link results back to their exact Sheet cells.
 Every search covers every visible data tab; tab names remain useful for Sheet
 organization and result context without creating separate search modes.
 
+Both versions also expand the same small
+[Raycast-style dynamic-placeholder subset](https://manual.raycast.com/dynamic-placeholders)
+at paste time: dates and times with formats or relative offsets,
+`{clipboard}`, and `{cursor}`. See the platform guides for the exact supported
+syntax. Trigger Search does not execute scripts or arbitrary code stored in the
+public Sheet.
+
 ## Connect your Google Sheet
 
 Publish your workbook with **File → Share → Publish to web** in Google Sheets.
