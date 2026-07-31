@@ -2,8 +2,8 @@
 #SingleInstance Force
 Persistent
 
-; Sheet Autocomplete version 0.6.2
-global AppVersion := "0.6.2"
+; Sheet Autocomplete version 0.6.3
+global AppVersion := "0.6.3"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -119,7 +119,7 @@ BuildChooser() {
     ChooserGui.OnEvent("Close", (*) => CancelChooser())
     ChooserGui.OnEvent("Escape", (*) => CancelChooser())
 
-    SetSearchPlaceholder("⌕")
+    SetSearchPlaceholder("Search")
 }
 
 SetSearchPlaceholder(text) {
@@ -142,7 +142,7 @@ UpdateChooserContext() {
         ChooserGui.Title := "Trigger Search — " DetailParent.GroupLabel " details"
     else
         ChooserGui.Title := "Trigger Search"
-    SetSearchPlaceholder("⌕")
+    SetSearchPlaceholder("Search")
 }
 
 StartKeyboardWatcher() {

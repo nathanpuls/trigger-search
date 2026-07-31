@@ -458,7 +458,7 @@ local function updateChooserHotkeys()
 end
 
 local function rootPlaceholder()
-  return "⌕"
+  return "Search"
 end
 
 local function openDetails(choice)
