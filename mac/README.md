@@ -7,14 +7,16 @@ keeps the latest tab list and valid responses in
 
 ## 1. Make the Sheet public
 
-Use one tab per category. Every tab must always contain these two headers:
+Use one tab per category. There are two supported layouts.
+
+For the full layout, use headers:
 
 | Label | Content |
 |---|---|
 | Email address | me@example.com |
 | Short signature | Thanks, Nathan |
 
-Both columns remain present even when one is unused. If either cell is blank,
+If either cell is blank,
 the other value is used for both display and pasting. When both are filled,
 Label is displayed and Content is pasted.
 
@@ -30,6 +32,15 @@ ordinary value; press Right Arrow to open only its detail choices. The nested
 search field begins with `←` to show that Left Arrow returns to the same parent
 search and highlighted item. Escape closes the chooser, and the next trigger
 starts a clean search. Blank details stay hidden.
+
+For a quick headerless tab, start entering data on the first row:
+
+- One column: each cell is both the displayed label and the pasted value.
+- Two columns: the left cell is the label and the right cell is the content.
+
+Headerless tabs intentionally do not support aliases or nested detail columns.
+A headerless tab with more than two populated columns is ignored so an
+unrelated Sheet is not mistaken for snippet data.
 
 Visible tabs are discovered automatically from the public workbook. Add,
 rename, rearrange, or remove a tab in Google Sheets and the chooser will follow
@@ -71,15 +82,22 @@ and can differ from the Sheet selected on a Windows computer.
 On the first run, macOS may ask for Accessibility permission
 so Hammerspoon can observe and intercept keystrokes.
 
-The opening character is configured in the Google Sheet's `Settings & Help`
-tab. It defaults to a semicolon:
+The opening character and an optional launcher shortcut are configured in the
+Google Sheet's `Settings & Help` tab:
 
 | Setting | Value |
 |---|---|
 | Trigger | ; |
+| Launcher Modifier | None |
+| Launcher Key | None |
 
 Replace `;` with another single printable character whenever you prefer. The
-local `trigger` value in `init.lua` remains an offline fallback.
+local `trigger` value in `init.lua` remains an offline fallback. The two
+launcher dropdowns form a shortcut automatically; do not type a plus sign.
+Examples include `Alt/Option` + `Space`, `Control` + `K`, or `None` + `F6`.
+For safety, a single ordinary letter, number, Space, Return, or Tab is not
+accepted without a modifier. A single F1–F12 key is allowed. Set either
+launcher field to `None` to disable the extra launcher shortcut.
 
 ## 3. Use
 
@@ -97,6 +115,13 @@ appear beneath results as source labels, but they are not separate searchable
 containers. The search field uses the placeholder **Search**. When viewing
 nested details, press Left Arrow to return to the parent item.
 `hello;` types a normal semicolon. `hello ;` opens the chooser.
+
+When a snippet contains exactly one recognizable web link, Return opens that
+link in the Mac's default browser. The link may include `http://` or `https://`,
+or it may be a recognizable bare domain such as `example.com/help`, and it may
+appear within ordinary text. Press Shift-Return to paste the full snippet
+instead. Content containing multiple links is pasted normally rather than
+guessing which link to open.
 
 The prototype checks the focused text field through Accessibility when possible,
 so the boundary rule also works after mouse clicks and cursor movement.

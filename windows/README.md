@@ -33,12 +33,40 @@ launcher should choose v2 even if another version is also installed.
 - A `›` means an item has nested details. Press Right to open them and Left to
   return to the same result.
 - Press Ctrl+E to open the selected item’s exact Google Sheets cell.
+- If a snippet contains exactly one recognizable web link, Enter opens it in
+  the default browser. Shift+Enter pastes the full snippet instead. Explicit
+  `http://` or `https://` links and bare domains such as `example.com/help`
+  work, including when surrounded by ordinary text. Multiple links paste
+  normally rather than making Trigger Search guess.
 - Dates, times, clipboard text, and cursor position can be calculated with the
   same dynamic placeholders as the Mac version.
 - The Sheet is refreshed at startup, whenever the chooser opens, and every 60
   seconds. The last successful data is cached under `%APPDATA%\SheetAutocomplete`
   for offline use.
-- The trigger comes from `Settings & Help`, just like the Mac version.
+- The trigger and optional launcher shortcut come from `Settings & Help`, just
+  like the Mac version.
+
+## Sheet layouts
+
+A headered tab supports `Label`, `Content`, optional `Alias`, and any additional
+nested-detail columns. If Label or Content is blank, the other value is used
+for both display and pasting.
+
+For a quick headerless tab, begin on row 1. With one column, each value is both
+the label and content. With two columns, the left value is the label and the
+right value is the content. Headerless tabs do not provide aliases or nesting;
+a headerless tab with more than two populated columns is ignored.
+
+## Launcher shortcut
+
+In `Settings & Help`, choose values for `Launcher Modifier` and `Launcher Key`.
+The plus sign is inferred. Examples are `Alt/Option` + `Space`, `Control` + `K`,
+or `None` + `F6`. `Command/Windows` means the Windows key on this platform.
+
+For safety, a bare letter, number, Space, Return, or Tab is not enabled because
+it would steal normal typing. A standalone F1–F12 key is allowed. Set either
+launcher field to `None` to disable the extra shortcut. The original printable
+trigger remains available independently.
 
 ## Change the Google Sheet
 

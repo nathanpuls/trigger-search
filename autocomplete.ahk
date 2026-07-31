@@ -2,8 +2,8 @@
 #SingleInstance Force
 Persistent
 
-; Sheet Autocomplete version 0.9.0
-global AppVersion := "0.9.0"
+; Sheet Autocomplete version 0.10.0
+global AppVersion := "0.10.0"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -21,6 +21,9 @@ global UpdateUrl := "https://api.github.com/repos/nathanpuls/trigger-search/cont
 
 global Trigger := ";"
 global TriggerHotkey := ""
+global LauncherModifier := "None"
+global LauncherKey := "None"
+global LauncherHotkey := ""
 global Refreshing := false
 global LastRefreshError := ""
 global LastShownRefreshError := ""
@@ -50,6 +53,8 @@ Initialize()
 #HotIf IsChooserOpen()
 Up::MoveSelection(-1)
 Down::MoveSelection(1)
++Enter::ChooseSelected(true)
++NumpadEnter::ChooseSelected(true)
 Enter::ChooseSelected()
 *Esc::CancelChooser()
 Right::OpenSelectedDetails()
@@ -72,6 +77,7 @@ Left::CloseDetails()
 
 Initialize() {
     global CacheDir, RefreshIntervalMs, Trigger, SheetId
+    global LauncherModifier, LauncherKey
     global Snippets, AppVersion
 
     DirCreate CacheDir
@@ -80,6 +86,7 @@ Initialize() {
     LoadCache()
     BuildChooser()
     InstallTrigger(Trigger)
+    InstallLauncherHotkey(LauncherModifier, LauncherKey)
     StartKeyboardWatcher()
 
     A_TrayMenu.Add()
@@ -234,6 +241,67 @@ InstallTrigger(newTrigger) {
     Trigger := newTrigger
     TriggerHotkey := "$" Trigger
     Hotkey TriggerHotkey, HandleTrigger, "On"
+}
+
+InstallLauncherHotkey(modifierValue, keyValue) {
+    global LauncherModifier, LauncherKey, LauncherHotkey
+
+    if LauncherHotkey != "" {
+        try Hotkey LauncherHotkey, "Off"
+        LauncherHotkey := ""
+    }
+
+    LauncherModifier := modifierValue = "" ? "None" : modifierValue
+    LauncherKey := keyValue = "" ? "None" : keyValue
+    modifierName := RegExReplace(StrLower(Trim(LauncherModifier)), "[\s_/-]+")
+    keyName := RegExReplace(StrLower(Trim(LauncherKey)), "[\s_-]+")
+    if keyName = "" || keyName = "none"
+        return
+
+    if modifierName = "" || modifierName = "none"
+        modifierPrefix := ""
+    else if modifierName = "altoption" || modifierName = "alt"
+        || modifierName = "option"
+        modifierPrefix := "!"
+    else if modifierName = "control" || modifierName = "ctrl"
+        modifierPrefix := "^"
+    else if modifierName = "commandwindows" || modifierName = "command"
+        || modifierName = "cmd" || modifierName = "windows"
+        || modifierName = "win"
+        modifierPrefix := "#"
+    else if modifierName = "shift"
+        modifierPrefix := "+"
+    else {
+        OutputDebug "Trigger Search: unsupported Launcher Modifier: " LauncherModifier "`n"
+        return
+    }
+
+    if keyName = "return"
+        keyName := "Enter"
+    else if keyName = "space"
+        keyName := "Space"
+    else if keyName = "tab"
+        keyName := "Tab"
+    else if RegExMatch(keyName, "i)^f(?:[1-9]|1[0-2])$")
+        keyName := StrUpper(keyName)
+    else if RegExMatch(keyName, "i)^[a-z0-9]$")
+        keyName := StrLower(keyName)
+    else {
+        OutputDebug "Trigger Search: unsupported Launcher Key: " LauncherKey "`n"
+        return
+    }
+
+    if modifierPrefix = "" && !RegExMatch(keyName, "^F(?:[1-9]|1[0-2])$") {
+        OutputDebug "Trigger Search: a launcher without a modifier must use F1-F12.`n"
+        return
+    }
+
+    LauncherHotkey := "$" modifierPrefix keyName
+    Hotkey LauncherHotkey, HandleLauncher, "On"
+}
+
+HandleLauncher(*) {
+    ShowChooser()
 }
 
 HandleTrigger(*) {
@@ -659,11 +727,11 @@ SelectedChoice() {
     return VisibleChoices[row]
 }
 
-ChooseSelected(*) {
+ChooseSelected(forcePaste := false) {
     choice := SelectedChoice()
     if !choice
         return
-    ChooseChoice choice
+    ChooseChoice choice, forcePaste
 }
 
 ResultDoubleClicked(control, row) {
@@ -673,18 +741,28 @@ ResultDoubleClicked(control, row) {
         ChooseChoice VisibleChoices[row]
 }
 
-ChooseChoice(choice) {
+ChooseChoice(choice, forcePaste := false) {
     if choice.HasOwnProp("IsUtilityError") && choice.IsUtilityError
         return
-    PasteChoice choice
+    PasteChoice choice, forcePaste
 }
 
-PasteChoice(choice) {
+PasteChoice(choice, forcePaste := false) {
     global TargetWindow, ChooserGui, ChooserOpen, AtBoundary
 
     clipboardText := A_Clipboard
     savedClipboard := ClipboardAll()
     expanded := ExpandDynamicContent(choice.Content, clipboardText)
+    if !forcePaste {
+        launchUrl := ExtractLaunchUrl(expanded.Text)
+        if launchUrl != "" {
+            ChooserGui.Hide()
+            ChooserOpen := false
+            AtBoundary := true
+            Run launchUrl
+            return
+        }
+    }
     ChooserGui.Hide()
     ChooserOpen := false
     A_Clipboard := expanded.Text
@@ -706,6 +784,39 @@ PasteChoice(choice) {
     }
     A_Clipboard := savedClipboard
     AtBoundary := RegExMatch(expanded.Text, "\s$") != 0
+}
+
+ExtractLaunchUrl(text) {
+    candidates := []
+    seen := Map()
+    position := 1
+    pattern := "i)https?://[^\s<>""']+"
+    while found := RegExMatch(text, pattern, &match, position) {
+        AddLaunchCandidate candidates, seen, match[0], false
+        position := found + match.Len(0)
+    }
+
+    position := 1
+    pattern := "i)(?:[a-z0-9-]+\.)+[a-z]{2,}(?:[/?#][^\s<>""']*)?"
+    while found := RegExMatch(text, pattern, &match, position) {
+        previous := found > 1 ? SubStr(text, found - 1, 1) : ""
+        if previous != "@" && !RegExMatch(previous, "[A-Za-z0-9_]")
+            AddLaunchCandidate candidates, seen, match[0], true
+        position := found + match.Len(0)
+    }
+
+    return candidates.Length = 1 ? candidates[1] : ""
+}
+
+AddLaunchCandidate(candidates, seen, candidate, needsProtocol) {
+    candidate := RegExReplace(candidate, "[\)\]\}\.,;:!?]+$")
+    if candidate = ""
+        return
+    normalized := needsProtocol ? "https://" candidate : candidate
+    if !seen.Has(normalized) {
+        candidates.Push(normalized)
+        seen[normalized] := true
+    }
 }
 
 ExpandDynamicContent(text, clipboardText := "", timestamp := "") {
@@ -1013,12 +1124,15 @@ PromptForGoogleSheet(firstRun := false) {
 
 ConnectGoogleSheet(newSheetId, title := "Change Google Sheet") {
     global SheetId, SheetInfos, Snippets, Trigger
+    global LauncherModifier, LauncherKey
     global LastRefreshError, LastShownRefreshError, RefreshFailureCount
 
     oldSheetId := SheetId
     oldInfos := SheetInfos
     oldSnippets := Snippets
     oldTrigger := Trigger
+    oldLauncherModifier := LauncherModifier
+    oldLauncherKey := LauncherKey
     stage := "checking the Google Sheet"
 
     try {
@@ -1026,7 +1140,7 @@ ConnectGoogleSheet(newSheetId, title := "Change Google Sheet") {
         SheetId := newSheetId
         ApplySheets infos, csvByName
         if Snippets.Length = 0
-            throw Error("No usable autocomplete rows were found. Each data tab needs Label and Content headers.")
+            throw Error("No usable autocomplete rows were found. Use Label/Content headers, or one or two headerless columns.")
 
         SaveCache infos, csvByName
         SaveSheetConfiguration()
@@ -1043,6 +1157,7 @@ ConnectGoogleSheet(newSheetId, title := "Change Google Sheet") {
         SheetInfos := oldInfos
         Snippets := oldSnippets
         InstallTrigger oldTrigger
+        InstallLauncherHotkey oldLauncherModifier, oldLauncherKey
         report := RecordError(problem, "Connecting a Google Sheet — " stage)
         MsgBox "Trigger Search could not use that Sheet."
             . "`n`n" problem.Message
@@ -1192,7 +1307,7 @@ LooksLikeCsv(csv) {
     if SubStr(LTrim(csv), 1, 1) = "<"
         return false
     rows := ParseCsv(csv)
-    return rows.Length > 0 && rows[1].Length >= 2
+    return rows.Length > 0 && rows[1].Length >= 1 && Trim(csv) != ""
 }
 
 RefreshOpenChooser() {
@@ -1335,6 +1450,31 @@ RunSelfTests() {
     Assert InStr(labelOnly[1].EditUrl, "&range=A2"),
         "Editing a Label-only snippet should target its pasted Label cell."
 
+    headerlessOne := []
+    ParseSheet "apple`nbanana", {Name: "Quick", Gid: "123"}, headerlessOne
+    Assert headerlessOne.Length = 2 && headerlessOne[1].Content = "apple",
+        "A one-column headerless tab should display and paste each value."
+
+    headerlessTwo := []
+    ParseSheet "apple,red apple`nbanana,yellow banana",
+        {Name: "Quick", Gid: "123"}, headerlessTwo
+    Assert headerlessTwo.Length = 2 && headerlessTwo[1].Label = "apple"
+        && headerlessTwo[1].Content = "red apple",
+        "A two-column headerless tab should use left as Label and right as Content."
+
+    Assert ExtractLaunchUrl("Open https://example.com/help when needed")
+        = "https://example.com/help",
+        "An embedded protocol URL should be launchable."
+    Assert ExtractLaunchUrl("Open example.com/help when needed")
+        = "https://example.com/help",
+        "A recognizable bare web address should receive https."
+    Assert ExtractLaunchUrl("me@example.com") = "",
+        "An email address should not be treated as a web link."
+    Assert ExtractLaunchUrl("https://one.example and https://two.example") = "",
+        "Content containing multiple links should paste normally instead of guessing."
+    Assert ExtractLaunchUrl("https://one.example and two.example") = "",
+        "Mixed explicit and bare links should paste normally instead of guessing."
+
     dynamic := ExpandDynamicContent(
         "Annual: {date format="
             . Chr(34) "MM/dd/yyyy" Chr(34) " offset="
@@ -1397,6 +1537,8 @@ RunSelfTests() {
 
     Assert LooksLikeCsv("Label,Content`napple,red apple"),
         "Unquoted public export CSV should be accepted."
+    Assert LooksLikeCsv("apple`nbanana"),
+        "A one-column public export should be accepted for headerless tabs."
     Assert !LooksLikeCsv("<html><body>Not CSV</body></html>"),
         "An HTML response should not be accepted as CSV."
 
@@ -1494,6 +1636,7 @@ ApplySheets(infos, csvByName) {
 }
 
 ApplySettings(infos, csvByName) {
+    global LauncherModifier, LauncherKey
     for info in infos {
         normalized := NormalizeSheetName(info.Name)
         if normalized != "settings" && normalized != "settingshelp"
@@ -1515,7 +1658,12 @@ ApplySettings(infos, csvByName) {
             value := Trim(Cell(row, columns["value"]))
             if key = "trigger" && value != ""
                 InstallTrigger value
+            else if key = "launchermodifier"
+                LauncherModifier := value != "" ? value : "None"
+            else if key = "launcherkey"
+                LauncherKey := value != "" ? value : "None"
         }
+        InstallLauncherHotkey LauncherModifier, LauncherKey
     }
 }
 
@@ -1524,15 +1672,32 @@ ParseSheet(csv, info, output) {
     if rows.Length = 0
         return
     columns := HeaderMap(rows[1])
-    if !columns.Has("label") && !columns.Has("content")
-        return
+    hasHeaders := columns.Has("label") || columns.Has("content")
+    if !hasHeaders {
+        rightmostContentColumn := 0
+        for row in rows {
+            for columnIndex, value in row {
+                if Trim(value) != ""
+                    rightmostContentColumn := Max(rightmostContentColumn, columnIndex)
+            }
+        }
+        if rightmostContentColumn > 2 {
+            OutputDebug "Trigger Search: skipped headerless tab " info.Name
+                . " because it uses more than two columns.`n"
+            return
+        }
+        columns["label"] := 1
+        if rightmostContentColumn >= 2
+            columns["content"] := 2
+    }
 
     labelColumn := columns.Has("label") ? columns["label"] : 0
     contentColumn := columns.Has("content") ? columns["content"] : 0
-    aliasColumn := columns.Has("alias") ? columns["alias"] : 0
+    aliasColumn := hasHeaders && columns.Has("alias") ? columns["alias"] : 0
 
-    Loop rows.Length - 1 {
-        rowNumber := A_Index + 1
+    firstDataRow := hasHeaders ? 2 : 1
+    Loop rows.Length - firstDataRow + 1 {
+        rowNumber := firstDataRow + A_Index - 1
         row := rows[rowNumber]
         sheetLabel := labelColumn ? Trim(Cell(row, labelColumn)) : ""
         sheetContent := contentColumn ? Cell(row, contentColumn) : ""
@@ -1566,8 +1731,12 @@ ParseSheet(csv, info, output) {
             EditUrl: EditUrl(info.Gid, rowNumber, Max(1, editColumn),
                 Max(1, editColumn))
         }
+        if ExtractLaunchUrl(content) != ""
+            root.Preview .= (root.Preview != "" ? "  •  " : "")
+                . "Return opens link  •  Shift+Enter pastes"
 
-        for columnIndex, header in rows[1] {
+        if hasHeaders {
+          for columnIndex, header in rows[1] {
             detailName := Trim(StrReplace(header, Chr(0xFEFF)))
             normalizedDetailName := StrLower(detailName)
             if detailName = "" || normalizedDetailName = "label"
@@ -1594,8 +1763,12 @@ ParseSheet(csv, info, output) {
                 Preview: PreviewText(detailContent),
                 EditUrl: EditUrl(info.Gid, rowNumber, columnIndex, columnIndex)
             }
+            if ExtractLaunchUrl(detailContent) != ""
+                detail.Preview .= (detail.Preview != "" ? "  •  " : "")
+                    . "Return opens link  •  Shift+Enter pastes"
             root.Details.Push(detail)
             root.DetailSearch .= " " detailName " " detailContent
+          }
         }
 
         if root.Details.Length > 0 {

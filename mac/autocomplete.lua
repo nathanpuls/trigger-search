@@ -5,6 +5,8 @@ local keyWatcher
 local editHotkey
 local openDetailsHotkey
 local backHotkey
+local forcePasteHotkey
+local launcherHotkey
 local settingsMenu
 local mouseWatcher
 local appWatcher
@@ -12,6 +14,8 @@ local refreshTimer
 local refresh
 local promptForGoogleSheet
 local rankedSnippets
+local showChooser
+local updateLauncherHotkey
 local refreshInProgress = false
 local snippets = {}
 local atBoundary = true
@@ -29,6 +33,8 @@ local config = {
   sheetNames = {},
   sheetGids = {},
   trigger = ";",
+  launcherModifier = "None",
+  launcherKey = "None",
   cachePath = hs.configdir .. "/autocomplete-snippets-cache.json",
   refreshInterval = 60,
   rows = 10,
@@ -37,6 +43,40 @@ local config = {
 
 local function trim(value)
   return (tostring(value or ""):gsub("^%s+", ""):gsub("%s+$", ""))
+end
+
+local function stripUrlPunctuation(value)
+  return (value:gsub("[%)%]%}%.,;:!?]+$", ""))
+end
+
+local function extractLaunchUrl(value)
+  local text = tostring(value or "")
+  local candidates, seen = {}, {}
+
+  local function add(candidate, needsProtocol)
+    candidate = stripUrlPunctuation(candidate)
+    if candidate == "" then return end
+    local normalized = needsProtocol and ("https://" .. candidate) or candidate
+    if not seen[normalized] then
+      candidates[#candidates + 1] = normalized
+      seen[normalized] = true
+    end
+  end
+
+  for candidate in text:gmatch("https?://[^%s<>\"']+") do add(candidate, false) end
+  local position = 1
+  local pattern = "[%w%-]+%.[%a][%a]+[%w%-%._~:/%?#%[%]@!$&'()*+,;=%%]*"
+  while true do
+    local startAt, endAt = text:find(pattern, position)
+    if not startAt then break end
+    local previous = startAt > 1 and text:sub(startAt - 1, startAt - 1) or ""
+    if previous ~= "@" and not previous:match("[%w_]") then
+      add(text:sub(startAt, endAt), true)
+    end
+    position = endAt + 1
+  end
+
+  return #candidates == 1 and candidates[1] or nil
 end
 
 local function extractSheetId(value)
@@ -106,7 +146,8 @@ end
 local function looksLikeCsv(csv)
   if type(csv) ~= "string" or trim(csv):sub(1, 1) == "<" then return false end
   local ok, rows = pcall(csvRows, csv)
-  return ok and type(rows) == "table" and #rows > 0 and #rows[1] >= 2
+  return ok and type(rows) == "table" and #rows > 0 and #rows[1] >= 1
+    and trim(csv) ~= ""
 end
 
 local function configuredSheetNames()
@@ -545,6 +586,9 @@ local function parseSheet(csv, category)
         and preview:lower() ~= label:lower() then
       subText = category .. "  •  " .. preview
     end
+    if extractLaunchUrl(content) then
+      subText = subText .. "  •  Return opens link  •  Shift-Return pastes"
+    end
 
     local sheetGid = type(config.sheetGids) == "table"
       and config.sheetGids[category] or nil
@@ -583,20 +627,34 @@ local function parseSheet(csv, category)
     columns[normalizedName] = index
   end
 
-  if not columns.label and not columns.content then
-    return nil, 'every tab must have a "Label" or "Content" column'
-  end
-  if not columns.label or not columns.content then
+  local hasHeaders = columns.label ~= nil or columns.content ~= nil
+  if not hasHeaders then
+    local rightmostContentColumn = 0
+    for _, row in ipairs(rows) do
+      for columnIndex, value in ipairs(row) do
+        if trim(value) ~= "" then
+          rightmostContentColumn = math.max(rightmostContentColumn, columnIndex)
+        end
+      end
+    end
+    if rightmostContentColumn > 2 then
+      return nil, "headerless tabs may use only one or two columns"
+    end
+    columns.label = 1
+    if rightmostContentColumn >= 2 then columns.content = 2 end
+  elseif not columns.label or not columns.content then
     print('Mac autocomplete: "' .. category
       .. '" is missing Label or Content; using the column that remains')
   end
 
   local parsed = {}
-  for rowIndex = 2, #rows do
+  local firstDataRow = hasHeaders and 2 or 1
+  for rowIndex = firstDataRow, #rows do
     local row = rows[rowIndex]
     local sheetLabel = columns.label and trim(row[columns.label] or "") or ""
     local sheetContent = columns.content and (row[columns.content] or "") or ""
-    local aliasText = columns.alias and trim(row[columns.alias]) or ""
+    local aliasText = hasHeaders and columns.alias
+      and trim(row[columns.alias] or "") or ""
     local baseEditColumnIndex = trim(sheetContent) ~= ""
       and columns.content or columns.label
     local rootIndex = #parsed + 1
@@ -604,7 +662,7 @@ local function parseSheet(csv, category)
       baseEditColumnIndex)
 
     local parentLabel = sheetLabel ~= "" and sheetLabel or trim(sheetContent)
-    if parentLabel ~= "" then
+    if hasHeaders and parentLabel ~= "" then
       for columnIndex, header in ipairs(rows[1]) do
         local detailName = trim(header):gsub("^\239\187\191", "")
         if columnIndex ~= columns.label and columnIndex ~= columns.content
@@ -689,6 +747,12 @@ local function applySheetSettings(sheetCsvs)
               :gsub("[%s_%-]+", "")
             local value = trim(rows[rowIndex][valueColumn])
             if key == "trigger" and value ~= "" then config.trigger = value end
+            if key == "launchermodifier" then
+              config.launcherModifier = value ~= "" and value or "None"
+            end
+            if key == "launcherkey" then
+              config.launcherKey = value ~= "" and value or "None"
+            end
           end
         else
           print('Mac autocomplete: Settings needs "Setting" and "Value" columns')
@@ -731,6 +795,7 @@ local function installSheets(sheetCsvs, source)
     end
   end
   newSnippetTargets = targets
+  if updateLauncherHotkey then updateLauncherHotkey() end
   if chooser then chooser:choices(rankedSnippets(chooser:query() or "")) end
   print(string.format("Mac autocomplete: loaded %d snippets from %s", #snippets, source))
   return true
@@ -835,6 +900,9 @@ local function updateChooserHotkeys()
       backHotkey:disable()
     end
   end
+  if forcePasteHotkey then
+    if visible then forcePasteHotkey:enable() else forcePasteHotkey:disable() end
+  end
 end
 
 local function rootPlaceholder()
@@ -871,7 +939,7 @@ local function closeDetails()
   updateChooserHotkeys()
 end
 
-local function pasteSnippet(choice)
+local function pasteSnippet(choice, forcePaste)
   if not choice then return end
   if choice.isUtilityError then
     hs.alert.show(choice.text)
@@ -880,6 +948,13 @@ local function pasteSnippet(choice)
   local oldClipboard = hs.pasteboard.getContents()
   local expandedContent, cursorLeft = expandDynamicContent(
     choice.content, oldClipboard or "")
+  local launchUrl = not forcePaste and extractLaunchUrl(expandedContent) or nil
+  if launchUrl then
+    chooser:hide()
+    atBoundary = true
+    hs.urlevent.openURL(launchUrl)
+    return
+  end
   hs.pasteboard.setContents(expandedContent)
 
   local targetApp = previousApp
@@ -914,7 +989,7 @@ local function editSnippet(choice)
   hs.urlevent.openURL(choice.editUrl)
 end
 
-local function showChooser()
+showChooser = function()
   if config.sheetId == "" then
     promptForGoogleSheet(true)
     return
@@ -934,6 +1009,58 @@ local function showChooser()
   chooser:choices(rankedSnippets(""))
   chooser:show()
   refresh()
+end
+
+updateLauncherHotkey = function()
+  if launcherHotkey then
+    launcherHotkey:disable()
+    launcherHotkey:delete()
+    launcherHotkey = nil
+  end
+
+  local modifierName = trim(config.launcherModifier):lower()
+    :gsub("[%s_/%-]+", "")
+  local keyName = trim(config.launcherKey):lower():gsub("[%s_%-]+", "")
+  if keyName == "" or keyName == "none" then return end
+
+  local modifiers = {}
+  if modifierName == "" or modifierName == "none" then
+    modifiers = {}
+  elseif modifierName == "altoption" or modifierName == "alt"
+      or modifierName == "option" then
+    modifiers = { "alt" }
+  elseif modifierName == "control" or modifierName == "ctrl" then
+    modifiers = { "ctrl" }
+  elseif modifierName == "commandwindows" or modifierName == "command"
+      or modifierName == "cmd" or modifierName == "windows"
+      or modifierName == "win" then
+    modifiers = { "cmd" }
+  elseif modifierName == "shift" then
+    modifiers = { "shift" }
+  else
+    print("Mac autocomplete: unsupported Launcher Modifier: "
+      .. tostring(config.launcherModifier))
+    return
+  end
+
+  if keyName == "enter" then keyName = "return" end
+  local isFunctionKey = keyName:match("^f%d%d?$") ~= nil
+    and tonumber(keyName:sub(2)) <= 12
+  local isLetterOrNumber = keyName:match("^[a-z0-9]$") ~= nil
+  local isNamedKey = keyName == "space" or keyName == "return"
+    or keyName == "tab"
+  if not isFunctionKey and not isLetterOrNumber and not isNamedKey then
+    print("Mac autocomplete: unsupported Launcher Key: "
+      .. tostring(config.launcherKey))
+    return
+  end
+  if #modifiers == 0 and not isFunctionKey then
+    print("Mac autocomplete: a launcher without a modifier must use F1-F12")
+    return
+  end
+
+  launcherHotkey = hs.hotkey.new(modifiers, keyName, showChooser)
+  launcherHotkey:enable()
 end
 
 local function hasCommandModifier(flags)
@@ -1124,15 +1251,18 @@ local function downloadWorkbook(sheetId, allowFallback, callback)
 end
 
 local function installWorkbook(data, source, sheetId)
-  local oldNames, oldGids, oldTrigger = discoveredSheetNames,
-    config.sheetGids, config.trigger
+  local oldNames, oldGids, oldTrigger, oldLauncherModifier, oldLauncherKey =
+    discoveredSheetNames, config.sheetGids, config.trigger,
+    config.launcherModifier, config.launcherKey
   discoveredSheetNames = data.sheetNames
   config.sheetGids = data.sheetGids or {}
   if not installSheets(data.sheets, source) or #snippets == 0 then
     discoveredSheetNames, config.sheetGids = oldNames, oldGids
     config.trigger = oldTrigger
+    config.launcherModifier, config.launcherKey = oldLauncherModifier, oldLauncherKey
+    if updateLauncherHotkey then updateLauncherHotkey() end
     return false, "No usable autocomplete rows were found. "
-      .. "Each data tab needs Label and Content headers."
+      .. "Use Label/Content headers, or one or two headerless columns."
   end
 
   local cacheJson = hs.json.encode({
@@ -1333,6 +1463,14 @@ function M.start(userConfig)
     if chooser and chooser:isVisible() then closeDetails() end
   end)
 
+  forcePasteHotkey = hs.hotkey.new({ "shift" }, "return", function()
+    if chooser and chooser:isVisible() then
+      pasteSnippet(chooser:selectedRowContents(), true)
+    end
+  end)
+
+  updateLauncherHotkey()
+
   local cachedJson = config.sheetId ~= "" and readFile(config.cachePath) or nil
   if cachedJson then
     local ok, cachedData = pcall(hs.json.decode, cachedJson)
@@ -1402,6 +1540,14 @@ function M.utilityChoice(query, options)
   return utilityChoice(query or "", options.timestamp)
 end
 
+function M.extractLaunchUrl(value)
+  return extractLaunchUrl(value)
+end
+
+function M.parseSheet(csv, category)
+  return parseSheet(csv or "", category or "Test")
+end
+
 function M.stop()
   if keyWatcher then keyWatcher:stop(); keyWatcher = nil end
   if editHotkey then editHotkey:disable(); editHotkey:delete(); editHotkey = nil end
@@ -1409,6 +1555,12 @@ function M.stop()
     openDetailsHotkey:disable(); openDetailsHotkey:delete(); openDetailsHotkey = nil
   end
   if backHotkey then backHotkey:disable(); backHotkey:delete(); backHotkey = nil end
+  if forcePasteHotkey then
+    forcePasteHotkey:disable(); forcePasteHotkey:delete(); forcePasteHotkey = nil
+  end
+  if launcherHotkey then
+    launcherHotkey:disable(); launcherHotkey:delete(); launcherHotkey = nil
+  end
   if refreshTimer then refreshTimer:stop(); refreshTimer = nil end
   if mouseWatcher then mouseWatcher:stop(); mouseWatcher = nil end
   if appWatcher then appWatcher:stop(); appWatcher = nil end

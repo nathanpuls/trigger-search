@@ -11,8 +11,9 @@ AutoHotkey v2—without OAuth, sign-in, a browser extension, or a dedicated app.
   AutoHotkey v2.
 
 Both versions read visible category tabs through Google Sheets' public CSV
-endpoints, support labels, content, aliases, and nested choices, cache successful
-responses for offline use, and link results back to their exact Sheet cells.
+endpoints, support full headered tabs or simple one/two-column headerless tabs,
+cache successful responses for offline use, and link results back to their
+exact Sheet cells. Headered tabs additionally support aliases and nested choices.
 Every search covers every visible data tab; tab names remain useful for Sheet
 organization and result context without creating separate search modes.
 
@@ -27,6 +28,11 @@ The search field also doubles as a small calculator. Enter a duration such as
 `4W` or `6M` to see the future date, or a complete arithmetic expression such
 as `90 / 3`. The equals sign is optional. These calculated results appear above
 ordinary Sheet matches and can be read without selecting them.
+
+A result containing one recognizable web link opens in the computer's default
+browser. Shift-Return/Shift-Enter pastes it instead. The Sheet can also define
+an optional launcher shortcut with two dropdowns—modifier and key—while keeping
+the normal printable trigger available.
 
 ## Connect your Google Sheet
 
