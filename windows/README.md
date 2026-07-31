@@ -12,7 +12,10 @@ same public Google Sheet and does not use OAuth or a Google sign-in.
    keep UTF-8 encoding so Windows does not add `.txt`.
 3. Double-click `autocomplete.ahk`. AutoHotkey v2 should place its green H tray
    icon in the notification area.
-4. Type `;` at the start of a text run or immediately after whitespace. Type to
+4. The first launch displays **Set up Trigger Search**. Paste the complete link
+   to your published Google Sheet and choose **OK**. Trigger Search extracts the
+   spreadsheet ID and verifies the workbook; no script editing is required.
+5. Type `;` at the start of a text run or immediately after whitespace. Type to
    filter, use Up/Down, and press Enter to paste. Escape cancels.
 
 The script is explicitly marked `#Requires AutoHotkey v2.0`, so the AutoHotkey
@@ -24,7 +27,7 @@ launcher should choose v2 even if another version is also installed.
 - `;`, `hello ;`, and a semicolon after Enter or Tab open the chooser.
 - Every search includes every visible Sheet tab. Tabs remain visible as source
   labels but are not separate searchable containers.
-- The search field uses a small monochrome `⌕` placeholder.
+- The search field uses the placeholder **Search**.
 - Press `Ctrl+1` through `Ctrl+9` to choose one of the first nine visible items.
 - Aliases rank above ordinary label matches.
 - A `›` means an item has nested details. Press Right to open them and Left to
@@ -34,6 +37,17 @@ launcher should choose v2 even if another version is also installed.
   seconds. The last successful data is cached under `%APPDATA%\SheetAutocomplete`
   for offline use.
 - The trigger comes from `Settings & Help`, just like the Mac version.
+
+## Change the Google Sheet
+
+Right-click the green AutoHotkey **H** tray icon and choose **Change Google
+Sheet...**. Paste the new workbook's complete link. Trigger Search tests the
+new Sheet before saving it; if validation fails, the previous Sheet and cache
+remain in use. **Open Google Sheet** opens the currently connected workbook.
+
+The selected ID is stored in `%APPDATA%\SheetAutocomplete\settings.ini`, not
+inside the script, so it survives GitHub updates. It is local to that Windows
+computer and may differ from the Sheet used on a Mac or another PC.
 
 ## Get future script updates
 

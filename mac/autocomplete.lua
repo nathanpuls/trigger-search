@@ -5,10 +5,12 @@ local keyWatcher
 local editHotkey
 local openDetailsHotkey
 local backHotkey
+local settingsMenu
 local mouseWatcher
 local appWatcher
 local refreshTimer
 local refresh
+local promptForGoogleSheet
 local rankedSnippets
 local refreshInProgress = false
 local snippets = {}
@@ -19,6 +21,7 @@ local detailParent
 local rootQuery = ""
 local returnParentCategory
 local returnParentRow
+local sheetSettingKey = "triggerSearchSheetId"
 
 local config = {
   sheetId = "",
@@ -33,6 +36,14 @@ local config = {
 
 local function trim(value)
   return (tostring(value or ""):gsub("^%s+", ""):gsub("%s+$", ""))
+end
+
+local function extractSheetId(value)
+  value = trim(value)
+  local sheetId = value:match("/spreadsheets/d/([%w_%-]+)")
+  if sheetId then return sheetId end
+  if value:match("^[%w_%-]+$") and #value >= 20 then return value end
+  return nil
 end
 
 local function isAdministrativeSheet(name)
@@ -347,7 +358,8 @@ end
 local function installSheets(sheetCsvs, source)
   applySheetSettings(sheetCsvs)
   local parsed, errorMessage = parseSheets(sheetCsvs)
-  if not parsed then
+  if not parsed or #parsed == 0 then
+    errorMessage = errorMessage or "no usable autocomplete rows were found"
     print("Mac autocomplete: ignored " .. source .. ": " .. errorMessage)
     return false
   end
@@ -522,6 +534,10 @@ local function editSnippet(choice)
 end
 
 local function showChooser()
+  if config.sheetId == "" then
+    promptForGoogleSheet(true)
+    return
+  end
   if #snippets == 0 then
     hs.alert.show("Autocomplete: no snippets loaded")
     return
@@ -641,47 +657,32 @@ local function encodeQueryValue(value)
   return hs.http.encodeForQuery(tostring(value))
 end
 
-refresh = function()
-  if config.sheetId == "" or config.sheetId == "PASTE_YOUR_SHEET_ID_HERE" then
-    hs.alert.show("Autocomplete: add your Google Sheet ID")
-    return
-  end
-
-  if refreshInProgress then return end
-  refreshInProgress = true
-
-  local function fetchSheetCsvs(sheetNames)
+local function downloadWorkbook(sheetId, allowFallback, callback)
+  local function fetchSheetCsvs(sheetNames, sheetGids)
     if #sheetNames == 0 then
-      refreshInProgress = false
-      hs.alert.show("Autocomplete: no visible Sheet tabs found")
+      callback(nil, "No visible autocomplete tabs were found.")
       return
     end
 
-    local responses, remaining, failed = {}, #sheetNames, false
+    local responses, remaining, failures = {}, #sheetNames, {}
 
     local function finishSheet(category, body, errorMessage)
       if body then
         responses[category] = body
       else
-        failed = true
-        print("Mac autocomplete: " .. category .. " refresh failed: "
-          .. tostring(errorMessage))
+        failures[#failures + 1] = category .. ": " .. tostring(errorMessage)
       end
 
       remaining = remaining - 1
       if remaining == 0 then
-        refreshInProgress = false
-        if not failed and installSheets(responses, "Google Sheets") then
-          local cacheJson = hs.json.encode({
+        if #failures > 0 then
+          callback(nil, table.concat(failures, "; "))
+        else
+          callback({
             sheets = responses,
             sheetNames = sheetNames,
-            sheetGids = config.sheetGids,
+            sheetGids = sheetGids,
           })
-          local ok, cacheError = writeFile(config.cachePath, cacheJson)
-          if not ok then
-            print("Mac autocomplete: could not write cache: "
-              .. tostring(cacheError))
-          end
         end
       end
     end
@@ -689,12 +690,11 @@ refresh = function()
     for _, sheetName in ipairs(sheetNames) do
       local category = sheetName
       local baseUrl = "https://docs.google.com/spreadsheets/d/"
-        .. encodeQueryValue(config.sheetId)
+        .. encodeQueryValue(sheetId)
       local gvizUrl = baseUrl .. "/gviz/tq?tqx=out:csv&sheet="
         .. encodeQueryValue(category)
         .. "&cacheBust=" .. tostring(os.time())
-      local gid = type(config.sheetGids) == "table"
-        and config.sheetGids[category] or nil
+      local gid = type(sheetGids) == "table" and sheetGids[category] or nil
       local exportUrl = gid and (baseUrl .. "/export?format=csv&gid="
         .. encodeQueryValue(gid) .. "&cacheBust=" .. tostring(os.time())) or nil
 
@@ -716,28 +716,171 @@ refresh = function()
   end
 
   local metadataUrl = "https://docs.google.com/spreadsheets/d/"
-    .. encodeQueryValue(config.sheetId)
+    .. encodeQueryValue(sheetId)
     .. "/htmlview?cacheBust=" .. tostring(os.time())
   hs.http.asyncGet(metadataUrl, nil, function(status, body)
     if status == 200 then
       local names, gids = discoverSheets(body)
       if names then
-        discoveredSheetNames = names
-        for name, gid in pairs(gids) do config.sheetGids[name] = gid end
-        fetchSheetCsvs(names)
+        fetchSheetCsvs(names, gids)
+        return
+      end
+      if not allowFallback then
+        callback(nil, "The workbook did not expose a visible tab list. "
+          .. "Make sure it is published to the web.")
         return
       end
       print("Mac autocomplete: could not discover tabs: " .. tostring(gids))
+    elseif not allowFallback then
+      callback(nil, "Google returned HTTP " .. tostring(status)
+        .. ". Make sure the link is correct and the workbook is published to the web.")
+      return
     else
       print("Mac autocomplete: tab discovery failed with HTTP " .. tostring(status))
     end
-    fetchSheetCsvs(configuredSheetNames())
+    fetchSheetCsvs(configuredSheetNames(), config.sheetGids)
+  end)
+end
+
+local function installWorkbook(data, source, sheetId)
+  local oldNames, oldGids, oldTrigger = discoveredSheetNames,
+    config.sheetGids, config.trigger
+  discoveredSheetNames = data.sheetNames
+  config.sheetGids = data.sheetGids or {}
+  if not installSheets(data.sheets, source) or #snippets == 0 then
+    discoveredSheetNames, config.sheetGids = oldNames, oldGids
+    config.trigger = oldTrigger
+    return false, "No usable autocomplete rows were found. "
+      .. "Each data tab needs Label and Content headers."
+  end
+
+  local cacheJson = hs.json.encode({
+    sheetId = sheetId,
+    sheets = data.sheets,
+    sheetNames = data.sheetNames,
+    sheetGids = data.sheetGids,
+  })
+  local ok, cacheError = writeFile(config.cachePath, cacheJson)
+  if not ok then
+    print("Mac autocomplete: could not write cache: " .. tostring(cacheError))
+  end
+  return true
+end
+
+refresh = function()
+  if config.sheetId == "" or config.sheetId == "PASTE_YOUR_SHEET_ID_HERE" then
+    return
+  end
+  if refreshInProgress then return end
+  refreshInProgress = true
+
+  downloadWorkbook(config.sheetId, true, function(data, errorMessage)
+    refreshInProgress = false
+    if not data then
+      print("Mac autocomplete: refresh failed: " .. tostring(errorMessage))
+      return
+    end
+    local ok, installError = installWorkbook(data, "Google Sheets", config.sheetId)
+    if not ok then
+      print("Mac autocomplete: refresh failed: " .. tostring(installError))
+    end
+  end)
+end
+
+local function openWorkbook()
+  if config.sheetId == "" then return end
+  hs.urlevent.openURL("https://docs.google.com/spreadsheets/d/"
+    .. config.sheetId .. "/edit")
+end
+
+promptForGoogleSheet = function(firstRun)
+  if refreshInProgress then
+    hs.alert.show("Trigger Search is already refreshing. Try again in a moment.")
+    return
+  end
+
+  local title = firstRun and "Set up Trigger Search" or "Change Google Sheet"
+  local defaultText = config.sheetId ~= "" and
+    ("https://docs.google.com/spreadsheets/d/" .. config.sheetId .. "/edit") or ""
+  local button, value = hs.dialog.textPrompt(
+    title,
+    "Paste the link to your public Google Sheet. In Google Sheets, use "
+      .. "File > Share > Publish to web first. This choice is saved only on this Mac.",
+    defaultText,
+    "Connect",
+    "Cancel"
+  )
+  if button ~= "Connect" then return end
+
+  local newSheetId = extractSheetId(value)
+  if not newSheetId then
+    hs.dialog.blockAlert(
+      "That does not look like a Google Sheets link.",
+      "Paste the complete link from your browser and try again.",
+      "OK", nil, "warning")
+    return
+  end
+
+  refreshInProgress = true
+  downloadWorkbook(newSheetId, false, function(data, errorMessage)
+    refreshInProgress = false
+    if not data then
+      print("Mac autocomplete: Sheet connection failed: " .. tostring(errorMessage))
+      hs.dialog.blockAlert(
+        "Trigger Search could not use that Sheet.",
+        tostring(errorMessage),
+        "OK", nil, "critical")
+      return
+    end
+
+    local oldSheetId = config.sheetId
+    config.sheetId = newSheetId
+    local ok, installError = installWorkbook(data, "Google Sheets", newSheetId)
+    if not ok then
+      config.sheetId = oldSheetId
+      print("Mac autocomplete: Sheet connection failed: " .. tostring(installError))
+      hs.dialog.blockAlert(
+        "Trigger Search could not use that Sheet.",
+        tostring(installError),
+        "OK", nil, "critical")
+      return
+    end
+
+    hs.settings.set(sheetSettingKey, newSheetId)
+    hs.alert.show("Google Sheet connected: " .. tostring(#snippets) .. " snippets loaded")
+  end)
+end
+
+local function buildSettingsMenu()
+  settingsMenu = hs.menubar.new(true, "TriggerSearchMenu")
+  if not settingsMenu then return end
+  settingsMenu:setTitle("TS")
+  settingsMenu:setTooltip("Trigger Search")
+  settingsMenu:setMenu(function()
+    local missingSheet = config.sheetId == ""
+    return {
+      { title = "Open Trigger Search", fn = showChooser },
+      { title = "Refresh Now", fn = refresh, disabled = missingSheet },
+      { title = "Open Google Sheet", fn = openWorkbook, disabled = missingSheet },
+      { title = "Change Google Sheet…", fn = function()
+          promptForGoogleSheet(false)
+        end },
+    }
   end)
 end
 
 function M.start(userConfig)
   if keyWatcher then M.stop() end
   for key, value in pairs(userConfig or {}) do config[key] = value end
+  local savedSheetId = trim(hs.settings.get(sheetSettingKey))
+  if savedSheetId ~= "" then
+    config.sheetId = savedSheetId
+  elseif config.sheetId ~= "" and config.sheetId ~= "PASTE_YOUR_SHEET_ID_HERE" then
+    -- Migrate an existing init.lua configuration into persistent local settings.
+    hs.settings.set(sheetSettingKey, config.sheetId)
+  else
+    config.sheetId = ""
+  end
   discoveredSheetNames = nil
 
   chooser = hs.chooser.new(pasteSnippet)
@@ -772,12 +915,14 @@ function M.start(userConfig)
     if chooser and chooser:isVisible() then closeDetails() end
   end)
 
-  local cachedJson = readFile(config.cachePath)
+  local cachedJson = config.sheetId ~= "" and readFile(config.cachePath) or nil
   if cachedJson then
     local ok, cachedData = pcall(hs.json.decode, cachedJson)
     if ok and type(cachedData) == "table" then
+      local cacheMatchesSheet = not cachedData.sheetId
+        or cachedData.sheetId == config.sheetId
       local cachedSheets = cachedData
-      if type(cachedData.sheets) == "table" then
+      if cacheMatchesSheet and type(cachedData.sheets) == "table" then
         cachedSheets = cachedData.sheets
         if type(cachedData.sheetNames) == "table" then
           discoveredSheetNames = cachedData.sheetNames
@@ -788,7 +933,7 @@ function M.start(userConfig)
           end
         end
       end
-      installSheets(cachedSheets, "local cache")
+      if cacheMatchesSheet then installSheets(cachedSheets, "local cache") end
     end
   end
   keyWatcher = hs.eventtap.new({ hs.eventtap.event.types.keyDown }, watchKey):start()
@@ -815,7 +960,12 @@ function M.start(userConfig)
     refreshTimer = hs.timer.doEvery(config.refreshInterval, refresh)
   end
 
-  refresh()
+  buildSettingsMenu()
+  if config.sheetId == "" then
+    hs.timer.doAfter(0.2, function() promptForGoogleSheet(true) end)
+  else
+    refresh()
+  end
   return M
 end
 
@@ -833,6 +983,7 @@ function M.stop()
   if refreshTimer then refreshTimer:stop(); refreshTimer = nil end
   if mouseWatcher then mouseWatcher:stop(); mouseWatcher = nil end
   if appWatcher then appWatcher:stop(); appWatcher = nil end
+  if settingsMenu then settingsMenu:delete(); settingsMenu = nil end
   if chooser then chooser:delete(); chooser = nil end
 end
 

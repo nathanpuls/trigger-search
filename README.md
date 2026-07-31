@@ -16,6 +16,18 @@ responses for offline use, and link results back to their exact Sheet cells.
 Every search covers every visible data tab; tab names remain useful for Sheet
 organization and result context without creating separate search modes.
 
+## Connect your Google Sheet
+
+Publish your workbook with **File → Share → Publish to web** in Google Sheets.
+The first time Trigger Search runs, paste the complete Sheet link into its setup
+window and confirm. Trigger Search extracts the spreadsheet ID,
+checks the public data, and saves the choice only on that computer—no code
+editing is required.
+
+Each computer has its own setting. A Mac can therefore use a personal Sheet
+while a Windows work computer uses a different Sheet. Script updates do not
+replace either choice.
+
 ## Repository layout
 
 ```text
