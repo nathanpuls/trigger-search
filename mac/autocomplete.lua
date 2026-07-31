@@ -17,6 +17,7 @@ local snippets = {}
 local atBoundary = true
 local previousApp
 local discoveredSheetNames
+local newSnippetTargets = {}
 local detailParent
 local rootQuery = ""
 local returnParentCategory
@@ -160,6 +161,31 @@ local function columnLetter(columnIndex)
     value = math.floor((value - 1) / 26)
   end
   return result
+end
+
+local function newSnippetTarget(csv)
+  local rows = csvRows(csv)
+  if #rows == 0 then return "A2" end
+
+  local entryColumn = 1
+  for columnIndex, header in ipairs(rows[1]) do
+    if trim(header):lower():gsub("^\239\187\191", "") == "label" then
+      entryColumn = columnIndex
+      break
+    end
+  end
+
+  local lastOccupiedRow = 1
+  for rowIndex, row in ipairs(rows) do
+    for _, value in ipairs(row) do
+      if trim(value) ~= "" then
+        lastOccupiedRow = rowIndex
+        break
+      end
+    end
+  end
+
+  return columnLetter(entryColumn) .. tostring(math.max(2, lastOccupiedRow + 1))
 end
 
 local monthNames = {
@@ -698,6 +724,13 @@ local function installSheets(sheetCsvs, source)
   end
 
   snippets = parsed
+  local targets = {}
+  for _, category in ipairs(configuredSheetNames()) do
+    if sheetCsvs[category] then
+      targets[category] = newSnippetTarget(sheetCsvs[category])
+    end
+  end
+  newSnippetTargets = targets
   if chooser then chooser:choices(rankedSnippets(chooser:query() or "")) end
   print(string.format("Mac autocomplete: loaded %d snippets from %s", #snippets, source))
   return true
@@ -1141,6 +1174,32 @@ local function openWorkbook()
     .. config.sheetId .. "/edit")
 end
 
+local function openNewSnippet(category)
+  if config.sheetId == "" then return end
+  local target = newSnippetTargets[category] or "A2"
+  local gid = type(config.sheetGids) == "table" and config.sheetGids[category] or nil
+  local url = "https://docs.google.com/spreadsheets/d/"
+    .. config.sheetId .. "/edit"
+  if gid ~= nil then url = url .. "#gid=" .. tostring(gid) end
+  url = url .. (gid ~= nil and "&range=" or "#range=") .. target
+  hs.urlevent.openURL(url)
+end
+
+local function buildNewSnippetMenu()
+  local items = {}
+  for _, category in ipairs(configuredSheetNames()) do
+    local sheetName = category
+    items[#items + 1] = {
+      title = sheetName,
+      fn = function() openNewSnippet(sheetName) end,
+    }
+  end
+  if #items == 0 then
+    items[1] = { title = "No autocomplete tabs found", disabled = true }
+  end
+  return items
+end
+
 promptForGoogleSheet = function(firstRun)
   if refreshInProgress then
     hs.alert.show("Trigger Search is already refreshing. Try again in a moment.")
@@ -1214,6 +1273,11 @@ local function buildSettingsMenu()
     local missingSheet = config.sheetId == ""
     return {
       { title = "Open Trigger Search", fn = showChooser },
+      {
+        title = "New Snippet",
+        menu = buildNewSnippetMenu(),
+        disabled = missingSheet,
+      },
       { title = "Refresh Now", fn = refresh, disabled = missingSheet },
       { title = "Open Google Sheet", fn = openWorkbook, disabled = missingSheet },
       { title = "Change Google Sheet…", fn = function()

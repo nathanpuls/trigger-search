@@ -59,11 +59,14 @@ settings. You do not need to edit Lua. Existing installations automatically
 keep their current Sheet.
 
 A lightning-bolt icon in the Mac menu bar provides **Open Trigger Search**,
-**Refresh Now**, **Open Google Sheet**, and **Change Google Sheet…**. If the
-icon file is missing, Trigger Search falls back to a small **TS** item. A new
-Sheet is saved only after it passes validation; otherwise the previous Sheet
-and offline data remain available. The local choice survives code updates and
-can differ from the Sheet selected on a Windows computer.
+**New Snippet**, **Refresh Now**, **Open Google Sheet**, and **Change Google
+Sheet…**. **New Snippet** opens a submenu containing every live autocomplete
+tab. Choosing one opens its Label cell on the first empty row after the tab's
+existing information, ready for a new entry. Rearranged columns are respected.
+If the icon file is missing, Trigger Search falls back to a small **TS** item.
+A new Sheet is saved only after it passes validation; otherwise the previous
+Sheet and offline data remain available. The local choice survives code updates
+and can differ from the Sheet selected on a Windows computer.
 
 On the first run, macOS may ask for Accessibility permission
 so Hammerspoon can observe and intercept keystrokes.
