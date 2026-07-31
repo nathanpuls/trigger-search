@@ -33,8 +33,9 @@ starts a clean search. Blank details stay hidden.
 
 Visible tabs are discovered automatically from the public workbook. Add,
 rename, rearrange, or remove a tab in Google Sheets and the chooser will follow
-on its next refresh. `sheetNames` remains only as a fallback if tab discovery
-is temporarily unavailable. The reserved `Settings & Help` tab contains both
+on its next refresh. `sheetNames` is empty by default and remains available
+only as an optional manual fallback if tab discovery is temporarily
+unavailable. The reserved `Settings & Help` tab contains both
 configuration and usage guidance while staying hidden from autocomplete. The
 reserved `Blank Template` tab is also hidden. Duplicate it, rename the copy,
 and add your items whenever you want a new autocomplete category. The reserved
@@ -96,6 +97,20 @@ nested details, press Left Arrow to return to the parent item.
 
 The prototype checks the focused text field through Accessibility when possible,
 so the boundary rule also works after mouse clicks and cursor movement.
+
+## Inline calculations
+
+The root search field recognizes two kinds of complete calculations:
+
+- Enter `4W`, `6M`, `10D`, or `1Y` to see that future date. Units are days,
+  weeks, calendar months, and calendar years; lowercase also works.
+- Enter arithmetic such as `90 / 3`, `12 * 5`, or `(90 - 10) / 2`. A leading
+  equals sign is accepted but not required.
+
+The calculated result appears first with a plain-language interpretation. Read
+it and press Escape, or press Return to paste the result. A plain number such as
+`30` remains an ordinary snippet search. Arithmetic is handled by a restricted
+parser and never executes Lua or code from the Sheet.
 
 ## Dynamic placeholders
 

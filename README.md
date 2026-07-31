@@ -23,6 +23,11 @@ at paste time: dates and times with formats or relative offsets,
 syntax. Trigger Search does not execute scripts or arbitrary code stored in the
 public Sheet.
 
+The search field also doubles as a small calculator. Enter a duration such as
+`4W` or `6M` to see the future date, or a complete arithmetic expression such
+as `90 / 3`. The equals sign is optional. These calculated results appear above
+ordinary Sheet matches and can be read without selecting them.
+
 ## Connect your Google Sheet
 
 Publish your workbook with **File → Share → Publish to web** in Google Sheets.

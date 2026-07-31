@@ -51,6 +51,20 @@ The selected ID is stored in `%APPDATA%\SheetAutocomplete\settings.ini`, not
 inside the script, so it survives GitHub updates. It is local to that Windows
 computer and may differ from the Sheet used on a Mac or another PC.
 
+## Inline calculations
+
+The root search field recognizes two kinds of complete calculations:
+
+- Enter `4W`, `6M`, `10D`, or `1Y` to see that future date. Units are days,
+  weeks, calendar months, and calendar years; lowercase also works.
+- Enter arithmetic such as `90 / 3`, `12 * 5`, or `(90 - 10) / 2`. A leading
+  equals sign is accepted but not required.
+
+The calculated result appears first with a plain-language interpretation. Read
+it and press Escape, or press Enter to paste the result. A plain number such as
+`30` remains an ordinary snippet search. Arithmetic is handled by a restricted
+parser and never executes AutoHotkey or code from the Sheet.
+
 ## Dynamic placeholders
 
 Trigger Search expands a documented subset of

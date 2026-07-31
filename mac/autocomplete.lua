@@ -25,7 +25,7 @@ local sheetSettingKey = "triggerSearchSheetId"
 
 local config = {
   sheetId = "",
-  sheetNames = { "Personal", "Psychiatric Medications" },
+  sheetNames = {},
   sheetGids = {},
   trigger = ";",
   cachePath = hs.configdir .. "/autocomplete-snippets-cache.json",
@@ -335,6 +335,167 @@ local function expandDynamicContent(content, clipboardText, timestamp)
   return expanded, cursorLeft
 end
 
+local function formatCalculationNumber(value)
+  if math.abs(value) < 1e-12 then value = 0 end
+  if value == math.floor(value) then return string.format("%.0f", value) end
+  return string.format("%.10f", value):gsub("0+$", ""):gsub("%.$", "")
+end
+
+local function parseArithmetic(query)
+  local expression = trim(query)
+  local explicit = expression:sub(1, 1) == "="
+  if explicit then expression = trim(expression:sub(2)) end
+  if expression == "" or not expression:match("^[%d%.%s%+%-%*%/%(%)]*$") then
+    return nil
+  end
+  if not explicit and not expression:match("[%+%-%*%/%(%)]") then return nil end
+
+  local state = { text = expression, position = 1 }
+  local function skipWhitespace()
+    while state.text:sub(state.position, state.position):match("%s") do
+      state.position = state.position + 1
+    end
+  end
+
+  local parseExpression
+  local function parsePrimary()
+    skipWhitespace()
+    local character = state.text:sub(state.position, state.position)
+    if character == "+" or character == "-" then
+      state.position = state.position + 1
+      local value, errorMessage = parsePrimary()
+      if value == nil then return nil, errorMessage end
+      return character == "-" and -value or value
+    end
+    if character == "(" then
+      state.position = state.position + 1
+      local value, errorMessage = parseExpression()
+      if value == nil then return nil, errorMessage end
+      skipWhitespace()
+      if state.text:sub(state.position, state.position) ~= ")" then
+        return nil, "missing closing parenthesis"
+      end
+      state.position = state.position + 1
+      return value
+    end
+
+    local start = state.position
+    local dots = 0
+    while true do
+      character = state.text:sub(state.position, state.position)
+      if character:match("%d") then
+        state.position = state.position + 1
+      elseif character == "." and dots == 0 then
+        dots = dots + 1
+        state.position = state.position + 1
+      else
+        break
+      end
+    end
+    local numberText = state.text:sub(start, state.position - 1)
+    if numberText == "" or numberText == "." then return nil, "expected a number" end
+    return tonumber(numberText)
+  end
+
+  local function parseTerm()
+    local value, errorMessage = parsePrimary()
+    if value == nil then return nil, errorMessage end
+    while true do
+      skipWhitespace()
+      local operator = state.text:sub(state.position, state.position)
+      if operator ~= "*" and operator ~= "/" then break end
+      state.position = state.position + 1
+      local right, rightError = parsePrimary()
+      if right == nil then return nil, rightError end
+      if operator == "/" and right == 0 then return nil, "division by zero" end
+      value = operator == "*" and value * right or value / right
+    end
+    return value
+  end
+
+  parseExpression = function()
+    local value, errorMessage = parseTerm()
+    if value == nil then return nil, errorMessage end
+    while true do
+      skipWhitespace()
+      local operator = state.text:sub(state.position, state.position)
+      if operator ~= "+" and operator ~= "-" then break end
+      state.position = state.position + 1
+      local right, rightError = parseTerm()
+      if right == nil then return nil, rightError end
+      value = operator == "+" and value + right or value - right
+    end
+    return value
+  end
+
+  local value, errorMessage = parseExpression()
+  skipWhitespace()
+  if value == nil then return nil, errorMessage end
+  if state.position <= #state.text then return nil, "unexpected character" end
+  return value
+end
+
+local function utilityChoice(query, timestamp)
+  local cleaned = trim(query)
+  local amountText, unit = cleaned:match("^(%d+)%s*([dDwWmMyY])$")
+  if amountText and unit then
+    local amount = tonumber(amountText)
+    local normalizedUnit = unit:upper()
+    local shifted = timestamp or os.time()
+    local unitName
+    if normalizedUnit == "D" then
+      local parts = os.date("*t", shifted)
+      parts.day = parts.day + amount
+      parts.isdst = nil
+      shifted = os.time(parts)
+      unitName = amount == 1 and "day" or "days"
+    elseif normalizedUnit == "W" then
+      local parts = os.date("*t", shifted)
+      parts.day = parts.day + amount * 7
+      parts.isdst = nil
+      shifted = os.time(parts)
+      unitName = amount == 1 and "week" or "weeks"
+    elseif normalizedUnit == "M" then
+      shifted = addCalendarMonths(shifted, amount)
+      unitName = amount == 1 and "month" or "months"
+    else
+      shifted = addCalendarMonths(shifted, amount * 12)
+      unitName = amount == 1 and "year" or "years"
+    end
+    local pasteValue = formatDynamicDate(shifted, "MM/dd/yyyy")
+    return {
+      text = formatDynamicDate(shifted, "MMMM d, yyyy"),
+      subText = tostring(amount) .. " " .. unitName
+        .. " from today  •  Enter to paste " .. pasteValue,
+      content = pasteValue,
+      isUtility = true,
+      utilityType = "date",
+    }
+  end
+
+  local value, errorMessage = parseArithmetic(cleaned)
+  if value ~= nil then
+    local result = formatCalculationNumber(value)
+    return {
+      text = result,
+      subText = cleaned:gsub("^=%s*", "") .. "  •  Enter to paste result",
+      content = result,
+      isUtility = true,
+      utilityType = "arithmetic",
+    }
+  end
+  if errorMessage == "division by zero" then
+    return {
+      text = "Cannot divide by zero",
+      subText = cleaned,
+      content = "",
+      isUtility = true,
+      isUtilityError = true,
+    }
+  end
+  return nil
+end
+
 local function parseSheet(csv, category)
   local rows = csvRows(csv)
   if #rows == 0 then return nil, "the CSV is empty" end
@@ -616,6 +777,8 @@ rankedSnippets = function(query)
   end)
 
   local choices = {}
+  local utility = not detailParent and utilityChoice(query)
+  if utility then choices[#choices + 1] = utility end
   for _, match in ipairs(matches) do choices[#choices + 1] = match.choice end
   return choices
 end
@@ -677,6 +840,10 @@ end
 
 local function pasteSnippet(choice)
   if not choice then return end
+  if choice.isUtilityError then
+    hs.alert.show(choice.text)
+    return
+  end
   local oldClipboard = hs.pasteboard.getContents()
   local expandedContent, cursorLeft = expandDynamicContent(
     choice.content, oldClipboard or "")
@@ -1164,6 +1331,11 @@ function M.expandDynamicContent(content, options)
   options = options or {}
   return expandDynamicContent(content or "", options.clipboard or "",
     options.timestamp)
+end
+
+function M.utilityChoice(query, options)
+  options = options or {}
+  return utilityChoice(query or "", options.timestamp)
 end
 
 function M.stop()

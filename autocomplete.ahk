@@ -2,8 +2,8 @@
 #SingleInstance Force
 Persistent
 
-; Sheet Autocomplete version 0.8.0
-global AppVersion := "0.8.0"
+; Sheet Autocomplete version 0.9.0
+global AppVersion := "0.9.0"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -330,6 +330,184 @@ SearchChanged(control, info) {
     RenderChoices(FilterChoices(query))
 }
 
+BuildUtilityChoice(query, timestamp := "") {
+    cleaned := Trim(query)
+    if timestamp = ""
+        timestamp := A_Now
+
+    if RegExMatch(cleaned, "i)^(\d+)\s*([DWMY])$", &match) {
+        amount := Integer(match[1])
+        unit := StrUpper(match[2])
+        shifted := timestamp
+        if unit = "D" {
+            shifted := DateAdd(shifted, amount, "Days")
+            unitName := amount = 1 ? "day" : "days"
+        } else if unit = "W" {
+            shifted := DateAdd(shifted, amount * 7, "Days")
+            unitName := amount = 1 ? "week" : "weeks"
+        } else if unit = "M" {
+            shifted := AddCalendarMonths(shifted, amount)
+            unitName := amount = 1 ? "month" : "months"
+        } else {
+            shifted := AddCalendarMonths(shifted, amount * 12)
+            unitName := amount = 1 ? "year" : "years"
+        }
+        pasteValue := FormatDynamicDate(shifted, "MM/dd/yyyy")
+        return {
+            Type: "utility",
+            Key: "date:" cleaned,
+            Label: FormatDynamicDate(shifted, "MMMM d, yyyy"),
+            DisplayText: FormatDynamicDate(shifted, "MMMM d, yyyy"),
+            Content: pasteValue,
+            Category: "Date calculator",
+            Preview: amount " " unitName
+                . " from today  •  Enter to paste " pasteValue,
+            EditUrl: "",
+            Details: [],
+            IsUtilityError: false
+        }
+    }
+
+    calculation := ParseArithmetic(cleaned)
+    if !calculation.Recognized
+        return 0
+    if calculation.Error != "" {
+        return {
+            Type: "utility",
+            Key: "calculator:error",
+            Label: calculation.Error,
+            DisplayText: calculation.Error,
+            Content: "",
+            Category: "Calculator",
+            Preview: cleaned,
+            EditUrl: "",
+            Details: [],
+            IsUtilityError: true
+        }
+    }
+
+    result := FormatCalculationNumber(calculation.Value)
+    return {
+        Type: "utility",
+        Key: "calculator:" cleaned,
+        Label: result,
+        DisplayText: result,
+        Content: result,
+        Category: "Calculator",
+        Preview: RegExReplace(cleaned, "^=\s*")
+            . "  •  Enter to paste result",
+        EditUrl: "",
+        Details: [],
+        IsUtilityError: false
+    }
+}
+
+ParseArithmetic(query) {
+    expression := Trim(query)
+    explicit := SubStr(expression, 1, 1) = "="
+    if explicit
+        expression := Trim(SubStr(expression, 2))
+    if expression = ""
+        return {Recognized: false, Error: "", Value: 0}
+    if !RegExMatch(expression, "^[0-9.\s+\-*/()]+$")
+        return {Recognized: false, Error: "", Value: 0}
+    if !explicit && !RegExMatch(expression, "[+\-*/()]")
+        return {Recognized: false, Error: "", Value: 0}
+
+    state := {Text: expression, Position: 1}
+    try {
+        value := ParseArithmeticExpression(state)
+        SkipArithmeticWhitespace(state)
+        if state.Position <= StrLen(state.Text)
+            throw Error("Invalid calculation")
+        return {Recognized: true, Error: "", Value: value}
+    } catch as problem {
+        message := problem.Message = "Cannot divide by zero"
+            ? problem.Message : "Invalid calculation"
+        return {Recognized: true, Error: message, Value: 0}
+    }
+}
+
+SkipArithmeticWhitespace(state) {
+    while RegExMatch(SubStr(state.Text, state.Position, 1), "\s")
+        state.Position += 1
+}
+
+ParseArithmeticExpression(state) {
+    value := ParseArithmeticTerm(state)
+    loop {
+        SkipArithmeticWhitespace(state)
+        operator := SubStr(state.Text, state.Position, 1)
+        if operator != "+" && operator != "-"
+            break
+        state.Position += 1
+        right := ParseArithmeticTerm(state)
+        value := operator = "+" ? value + right : value - right
+    }
+    return value
+}
+
+ParseArithmeticTerm(state) {
+    value := ParseArithmeticPrimary(state)
+    loop {
+        SkipArithmeticWhitespace(state)
+        operator := SubStr(state.Text, state.Position, 1)
+        if operator != "*" && operator != "/"
+            break
+        state.Position += 1
+        right := ParseArithmeticPrimary(state)
+        if operator = "/" && right = 0
+            throw Error("Cannot divide by zero")
+        value := operator = "*" ? value * right : value / right
+    }
+    return value
+}
+
+ParseArithmeticPrimary(state) {
+    SkipArithmeticWhitespace(state)
+    character := SubStr(state.Text, state.Position, 1)
+    if character = "+" || character = "-" {
+        state.Position += 1
+        value := ParseArithmeticPrimary(state)
+        return character = "-" ? -value : value
+    }
+    if character = "(" {
+        state.Position += 1
+        value := ParseArithmeticExpression(state)
+        SkipArithmeticWhitespace(state)
+        if SubStr(state.Text, state.Position, 1) != ")"
+            throw Error("Missing closing parenthesis")
+        state.Position += 1
+        return value
+    }
+
+    start := state.Position
+    dots := 0
+    loop {
+        character := SubStr(state.Text, state.Position, 1)
+        if RegExMatch(character, "\d") {
+            state.Position += 1
+        } else if character = "." && dots = 0 {
+            dots += 1
+            state.Position += 1
+        } else {
+            break
+        }
+    }
+    numberText := SubStr(state.Text, start, state.Position - start)
+    if numberText = "" || numberText = "."
+        throw Error("Expected a number")
+    return numberText + 0
+}
+
+FormatCalculationNumber(value) {
+    if Abs(value) < 0.000000000001
+        value := 0
+    formatted := Format("{:.10f}", value)
+    formatted := RegExReplace(formatted, "(\.\d*?)0+$", "$1")
+    return RegExReplace(formatted, "\.$")
+}
+
 FilterChoices(query) {
     global Snippets, DetailParent
 
@@ -387,6 +565,9 @@ FilterChoices(query) {
 
     InsertionSort ranked, CompareRanked
     choices := []
+    utility := !DetailParent ? BuildUtilityChoice(query) : 0
+    if utility
+        choices.Push(utility)
     for entry in ranked
         choices.Push(entry.Item)
     return choices
@@ -493,6 +674,8 @@ ResultDoubleClicked(control, row) {
 }
 
 ChooseChoice(choice) {
+    if choice.HasOwnProp("IsUtilityError") && choice.IsUtilityError
+        return
     PasteChoice choice
 }
 
@@ -1178,6 +1361,29 @@ RunSelfTests() {
     preserved := ExpandDynamicContent("{unsupported}", "", "20260730120000")
     Assert preserved.Text = "{unsupported}",
         "Unknown placeholders should remain ordinary text."
+
+    fourWeeks := BuildUtilityChoice("4W", "20260730120000")
+    Assert fourWeeks.Content = "08/27/2026",
+        "A bare week duration should calculate a future date."
+    Assert InStr(fourWeeks.Preview, "4 weeks from today"),
+        "A date result should state how its duration was interpreted."
+
+    sixMonths := BuildUtilityChoice("6m", "20260730120000")
+    Assert sixMonths.Content = "01/30/2027",
+        "A bare month duration should use calendar months."
+
+    arithmetic := BuildUtilityChoice("(90 - 10) / 2")
+    Assert arithmetic.Content = "40",
+        "A complete arithmetic expression should calculate without an equals sign."
+    arithmeticWithEquals := BuildUtilityChoice("= 90 / 3")
+    Assert arithmeticWithEquals.Content = "30",
+        "An optional equals sign should also be accepted."
+    Assert !BuildUtilityChoice("30"),
+        "A plain number should remain an ordinary snippet search."
+    divideByZero := BuildUtilityChoice("90 / 0")
+    Assert divideByZero.IsUtilityError
+        && divideByZero.DisplayText = "Cannot divide by zero",
+        "Division by zero should produce a clear non-pasteable result."
 
     directMatch := TestSnippet("doctor note", "Dr. White", [])
     nestedOnlyMatch := TestSnippet("medication", "regular content", [])
