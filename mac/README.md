@@ -113,7 +113,7 @@ pasting it. Press Command-K for a stable list of actions and shortcuts. Actions
 that apply use a filled dot; unavailable actions use a hollow dot and dimmed
 text. The actions
 menu begins with `←`, Left Arrow returns to the selected result, and Escape
-closes Trigger Search completely. The chooser refreshes from the
+closes the main chooser and any open Actions screen together. The chooser refreshes from the
 Sheet whenever it opens, while still appearing immediately from its local
 cache.
 

@@ -9,6 +9,7 @@ local actionsHotkey
 local openDetailsHotkey
 local openLinkHotkey
 local backHotkey
+local escapeHotkey
 local launcherHotkey
 local actionChooser
 local actionChoice
@@ -960,6 +961,9 @@ local function updateChooserHotkeys()
   if openLinkHotkey then
     if visible then openLinkHotkey:enable() else openLinkHotkey:disable() end
   end
+  if escapeHotkey then
+    if visible or actionVisible then escapeHotkey:enable() else escapeHotkey:disable() end
+  end
 end
 
 local function rootPlaceholder()
@@ -1342,7 +1346,8 @@ local function watchKey(event)
   local flags = event:getFlags()
   local typedCharacter = event:getCharacters()
 
-  if chooser and chooser:isVisible() then
+  if (chooser and chooser:isVisible())
+      or (actionChooser and actionChooser:isVisible()) then
     return false
   end
 
@@ -1734,6 +1739,17 @@ function M.start(userConfig)
     end
   end)
 
+  escapeHotkey = hs.hotkey.new({}, "escape", function()
+    actionReturning = false
+    actionChoice = nil
+    detailParent = nil
+    rootQuery = ""
+    if actionChooser and actionChooser:isVisible() then actionChooser:hide() end
+    if chooser and chooser:isVisible() then chooser:hide() end
+    atBoundary = true
+    updateChooserHotkeys()
+  end)
+
   updateLauncherHotkey()
 
   local cachedJson = config.sheetId ~= "" and readFile(config.cachePath) or nil
@@ -1845,6 +1861,9 @@ function M.stop()
     openLinkHotkey:disable(); openLinkHotkey:delete(); openLinkHotkey = nil
   end
   if backHotkey then backHotkey:disable(); backHotkey:delete(); backHotkey = nil end
+  if escapeHotkey then
+    escapeHotkey:disable(); escapeHotkey:delete(); escapeHotkey = nil
+  end
   if launcherHotkey then
     launcherHotkey:disable(); launcherHotkey:delete(); launcherHotkey = nil
   end
