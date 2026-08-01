@@ -110,7 +110,9 @@ Rows use a small, pale version of the Trigger Search lightning logo. Nested
 items additionally show a larger `→` beside their labels.
 Highlight a result and press Command-E to open its exact row or detail cell in
 Google Sheets for editing. Press Command-C to copy the selected text without
-pasting it. Press Command-K for a stable list of actions and shortcuts. Actions
+pasting it. Press Command-P to open the fully expanded text in a scrollable,
+selectable preview without pasting; Escape closes Preview and returns to the
+same result. Press Command-K for a stable list of actions and shortcuts. Actions
 that apply use a filled dot; unavailable actions use a hollow dot and dimmed
 text. The actions
 menu begins with `←`, Left Arrow returns to the selected result, and Escape

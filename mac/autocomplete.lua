@@ -6,6 +6,7 @@ local editHotkey
 local copyHotkey
 local aiHotkey
 local actionsHotkey
+local previewHotkey
 local openDetailsHotkey
 local openLinkHotkey
 local backHotkey
@@ -16,6 +17,10 @@ local actionChoice
 local actionReturnQuery = ""
 local actionReturnRow = 1
 local actionReturning = false
+local previewWebview
+local previewClosing = false
+local previewReturnQuery = ""
+local previewReturnRow = 1
 local rowChoiceImage
 local bulletChoiceImage
 local hollowChoiceImage
@@ -58,6 +63,14 @@ local config = {
 
 local function trim(value)
   return (tostring(value or ""):gsub("^%s+", ""):gsub("%s+$", ""))
+end
+
+local function htmlEscape(value)
+  local escaped = tostring(value or "")
+  escaped = escaped:gsub("&", "&amp;")
+  escaped = escaped:gsub("<", "&lt;")
+  escaped = escaped:gsub(">", "&gt;")
+  return escaped:gsub('"', "&quot;")
 end
 
 local function nestedDisplayText(label)
@@ -951,6 +964,9 @@ local function updateChooserHotkeys()
   if actionsHotkey then
     if visible then actionsHotkey:enable() else actionsHotkey:disable() end
   end
+  if previewHotkey then
+    if visible then previewHotkey:enable() else previewHotkey:disable() end
+  end
   if openDetailsHotkey then
     if visible then openDetailsHotkey:enable() else openDetailsHotkey:disable() end
   end
@@ -1161,8 +1177,92 @@ local function restoreAfterActions()
   chooser:show()
 end
 
+local function restoreAfterPreview()
+  if not chooser then return end
+  chooser:placeholderText(detailParent and ("←  " .. detailParent.groupLabel)
+    or rootPlaceholder())
+  chooser:query(previewReturnQuery)
+  chooser:choices(rankedSnippets(previewReturnQuery))
+  if previewReturnRow and previewReturnRow > 0 then
+    chooser:selectedRow(previewReturnRow)
+  end
+  chooser:show()
+end
+
+local function showPreview(choice, returnQuery, returnRow)
+  if not choice or choice.hasSavedContent == false
+      or trim(choice.content) == "" then
+    hs.alert.show("No saved text is available to preview")
+    return
+  end
+
+  previewReturnQuery = returnQuery or (chooser and chooser:query()) or ""
+  previewReturnRow = returnRow or (chooser and chooser:selectedRow()) or 1
+  local expanded = expandDynamicContent(
+    choice.content, hs.pasteboard.getContents() or "")
+  local title
+  if trim(choice.detailName) ~= "" and trim(choice.groupLabel) ~= "" then
+    title = choice.groupLabel .. " — " .. choice.detailName
+  else
+    title = choice.groupLabel or choice.label or choice.text or "Snippet"
+  end
+  local screen = hs.mouse.getCurrentScreen() or hs.screen.mainScreen()
+  local screenFrame = screen:frame()
+  local width = math.min(760, screenFrame.w - 80)
+  local height = math.min(580, screenFrame.h - 100)
+  local frame = {
+    x = screenFrame.x + (screenFrame.w - width) / 2,
+    y = screenFrame.y + (screenFrame.h - height) / 2,
+    w = width,
+    h = height,
+  }
+  local html = [[
+<!doctype html><html><head><meta charset="utf-8"><style>
+:root { color-scheme: light dark; }
+* { box-sizing: border-box; }
+body { margin: 0; padding: 34px 40px 56px; font: 16px/1.55 -apple-system,
+  BlinkMacSystemFont, "Segoe UI", sans-serif; background: Canvas; color: CanvasText; }
+.eyebrow { color: #888; font-size: 12px; font-weight: 600; letter-spacing: .08em;
+  text-transform: uppercase; }
+h1 { margin: 5px 0 24px; font-size: 24px; line-height: 1.2; }
+.content { white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
+.hint { position: fixed; right: 22px; bottom: 16px; color: #999; font-size: 12px; }
+</style></head><body><div class="eyebrow">Preview</div><h1>]]
+    .. htmlEscape(title) .. [[</h1><div class="content">]]
+    .. htmlEscape(expanded) .. [[</div><div class="hint">Esc to return</div></body></html>]]
+
+  if actionChooser and actionChooser:isVisible() then actionChooser:hide() end
+  if chooser and chooser:isVisible() then chooser:hide() end
+  if previewWebview then
+    previewClosing = true
+    previewWebview:delete()
+    previewWebview = nil
+    previewClosing = false
+  end
+
+  local webview = hs.webview.new(frame)
+    :windowStyle({ "titled", "closable", "resizable" })
+    :windowTitle("Preview — " .. title)
+    :allowTextEntry(true)
+    :closeOnEscape(true)
+    :deleteOnClose(true)
+    :html(html)
+  previewWebview = webview
+  webview:windowCallback(function(action, closedWebview)
+    if action == "closing" and closedWebview == previewWebview then
+      previewWebview = nil
+      if not previewClosing then
+        hs.timer.doAfter(0, restoreAfterPreview)
+      end
+    end
+  end)
+  webview:bringToFront(true):show()
+end
+
 local function performAction(actionId, choice)
   if actionId == "paste" then pasteSnippet(choice)
+  elseif actionId == "preview" then
+    showPreview(choice, actionReturnQuery, actionReturnRow)
   elseif actionId == "copy" then copySnippet(choice)
   elseif actionId == "ai" then launchAiPrompt(choice)
   elseif actionId == "copyAi" then
@@ -1204,6 +1304,7 @@ showActions = function()
   local hasAi = trim(choice.aiPrompt) ~= ""
   local hasLink = extractLaunchUrl(choice.content or "") ~= nil
   add("Paste", "Return", "paste", hasSavedContent)
+  add("Preview", "⌘P", "preview", hasSavedContent)
   add("Copy", "⌘C", "copy", hasSavedContent)
   add("Ask AI", hasSavedContent and ("⌘Return  •  " .. config.aiEngine)
     or ("Return or ⌘Return  •  " .. config.aiEngine), "ai", hasAi)
@@ -1721,6 +1822,12 @@ function M.start(userConfig)
     showActions()
   end)
 
+  previewHotkey = hs.hotkey.new({ "cmd" }, "p", function()
+    if chooser and chooser:isVisible() then
+      showPreview(chooser:selectedRowContents())
+    end
+  end)
+
   openDetailsHotkey = hs.hotkey.new({}, "right", function()
     if chooser and chooser:isVisible() then
       openSelectedAction(chooser:selectedRowContents())
@@ -1859,6 +1966,9 @@ function M.stop()
   if actionsHotkey then
     actionsHotkey:disable(); actionsHotkey:delete(); actionsHotkey = nil
   end
+  if previewHotkey then
+    previewHotkey:disable(); previewHotkey:delete(); previewHotkey = nil
+  end
   if openDetailsHotkey then
     openDetailsHotkey:disable(); openDetailsHotkey:delete(); openDetailsHotkey = nil
   end
@@ -1876,6 +1986,11 @@ function M.stop()
   if mouseWatcher then mouseWatcher:stop(); mouseWatcher = nil end
   if appWatcher then appWatcher:stop(); appWatcher = nil end
   if settingsMenu then settingsMenu:delete(); settingsMenu = nil end
+  if previewWebview then
+    previewClosing = true
+    previewWebview:delete(); previewWebview = nil
+    previewClosing = false
+  end
   if chooser then chooser:delete(); chooser = nil end
   if actionChooser then actionChooser:delete(); actionChooser = nil end
 end

@@ -32,8 +32,10 @@ ordinary Sheet matches and can be read without selecting them.
 Return/Enter always pastes. Right Arrow opens a result whose entire content is
 one recognizable web link. Command-O on Mac or Control-O on Windows explicitly
 opens a single link found within a larger snippet. Command-C on Mac or Control-C
-on Windows copies the selected text without pasting it. Command-K or Control-K
-opens a contextual action menu for the selected result.
+on Windows copies the selected text without pasting it. Command-P on Mac or
+Control-P on Windows opens the full expanded text in a readable, selectable
+preview; Escape returns to the same result. Command-K or Control-K opens a
+contextual action menu for the selected result.
 
 A headered tab can reserve a row whose Label is `AI Prompt`. Text in that row's
 detail columns becomes the prompt template for the same column. Command-Return

@@ -37,6 +37,8 @@ launcher should choose v2 even if another version is also installed.
   to open them and Left to return to the same result.
 - Press Ctrl+E to open the selected item’s exact Google Sheets cell.
 - Press Ctrl+C to copy the selected text without pasting it.
+- Press Ctrl+P to open the fully expanded text in a scrollable, selectable
+  preview without pasting. Escape closes Preview and returns to the same result.
 - Press Ctrl+K to open the stable actions and shortcuts list. A filled dot marks
   an available action and a hollow dot marks an unavailable action, without
   extra warning text. The actions view begins with `←`; Left Arrow returns to the selected

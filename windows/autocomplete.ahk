@@ -2,8 +2,8 @@
 #SingleInstance Force
 Persistent
 
-; Sheet Autocomplete version 0.13.7
-global AppVersion := "0.13.7"
+; Sheet Autocomplete version 0.13.8
+global AppVersion := "0.13.8"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -33,6 +33,7 @@ global AtBoundary := true
 global LastActiveWindow := 0
 global TargetWindow := 0
 global ChooserOpen := false
+global PreviewOpen := false
 global SheetInfos := []
 global Snippets := []
 global VisibleChoices := []
@@ -48,6 +49,7 @@ global ChooserGui := 0
 global SearchBox := 0
 global ResultsView := 0
 global FooterText := 0
+global PreviewGui := 0
 
 if A_Args.Length > 0 && A_Args[1] = "--self-test"
     RunSelfTestsAndExit()
@@ -65,6 +67,7 @@ Left::CloseDetails()
 ^e::EditSelected()
 ^c::CopySelected()
 ^o::OpenSelectedLink()
+^p::PreviewSelected()
 ^Enter::LaunchSelectedAi()
 ^k::ShowActionsMenu()
 ^1::ChooseVisibleByNumber(1)
@@ -76,6 +79,10 @@ Left::CloseDetails()
 ^7::ChooseVisibleByNumber(7)
 ^8::ChooseVisibleByNumber(8)
 ^9::ChooseVisibleByNumber(9)
+#HotIf
+
+#HotIf IsPreviewOpen()
+*Esc::ClosePreview()
 #HotIf
 
 ~LButton::ResetBoundary()
@@ -400,8 +407,13 @@ CancelChooser(*) {
 }
 
 IsChooserOpen(*) {
-    global ChooserOpen
-    return ChooserOpen
+    global ChooserOpen, PreviewOpen
+    return ChooserOpen && !PreviewOpen
+}
+
+IsPreviewOpen(*) {
+    global PreviewOpen
+    return PreviewOpen
 }
 
 SearchChanged(control, info) {
@@ -1269,6 +1281,7 @@ ShowActionsMenu(*) {
     hasLink := choice.HasOwnProp("Content") && ExtractLaunchUrl(choice.Content) != ""
     hasEdit := choice.HasOwnProp("EditUrl") && choice.EditUrl != ""
     actions.Push(ActionChoice("paste", "Paste", "Return", hasSavedContent))
+    actions.Push(ActionChoice("preview", "Preview", "Ctrl+P", hasSavedContent))
     actions.Push(ActionChoice("copy", "Copy", "Ctrl+C", hasSavedContent))
     aiShortcut := hasSavedContent ? "Ctrl+Enter  •  " AiEngine
         : "Enter or Ctrl+Enter  •  " AiEngine
@@ -1309,6 +1322,11 @@ PerformAction(actionId) {
     }
     if actionId = "paste"
         PasteChoice choice
+    else if actionId = "preview" {
+        CloseActions()
+        PreviewChoice choice
+        return
+    }
     else if actionId = "copy"
         CopyChoice choice
     else if actionId = "ai"
@@ -1322,6 +1340,68 @@ PerformAction(actionId) {
         EditSelectedChoice choice
     }
     ActionsForChoice := 0
+}
+
+PreviewSelected(*) {
+    global ActionsForChoice
+
+    choice := ActionsForChoice ? ActionsForChoice : SelectedChoice()
+    if !choice
+        return
+    if ActionsForChoice
+        CloseActions()
+    PreviewChoice choice
+}
+
+PreviewChoice(choice) {
+    global PreviewGui, PreviewOpen, ChooserGui
+
+    if !choice || (choice.HasOwnProp("HasSavedContent")
+        && !choice.HasSavedContent) || Trim(choice.Content) = "" {
+        TrayTip "No saved text is available to preview.", "Trigger Search"
+        return
+    }
+
+    expanded := ExpandDynamicContent(choice.Content, A_Clipboard)
+    title := choice.HasOwnProp("DetailName") && choice.DetailName != ""
+        ? choice.GroupLabel " — " choice.DetailName
+        : (choice.HasOwnProp("GroupLabel") ? choice.GroupLabel : choice.Label)
+
+    if IsObject(PreviewGui)
+        try PreviewGui.Destroy()
+    PreviewGui := Gui("+AlwaysOnTop +ToolWindow", "Preview — " title)
+    PreviewGui.MarginX := 24
+    PreviewGui.MarginY := 20
+    PreviewGui.SetFont("s9 c777777 Bold", "Segoe UI")
+    PreviewGui.Add("Text", "xm w680", "PREVIEW")
+    PreviewGui.SetFont("s16 c222222 Bold", "Segoe UI")
+    PreviewGui.Add("Text", "xm y+5 w680", title)
+    PreviewGui.SetFont("s10 c222222 Norm", "Segoe UI")
+    PreviewGui.Add("Edit", "xm y+16 w680 r24 ReadOnly", expanded.Text)
+    PreviewGui.SetFont("s9 c888888", "Segoe UI")
+    PreviewGui.Add("Text", "xm y+10 w680 Right", "Esc to return")
+    PreviewGui.OnEvent("Close", ClosePreview)
+    PreviewGui.OnEvent("Escape", ClosePreview)
+
+    ChooserGui.Hide()
+    PreviewOpen := true
+    PreviewGui.Show("w728 h590 Center")
+}
+
+ClosePreview(*) {
+    global PreviewGui, PreviewOpen, ChooserGui, SearchBox, ChooserOpen
+
+    if !PreviewOpen
+        return
+    PreviewOpen := false
+    if IsObject(PreviewGui) {
+        try PreviewGui.Destroy()
+        PreviewGui := 0
+    }
+    if ChooserOpen {
+        ChooserGui.Show()
+        SearchBox.Focus()
+    }
 }
 
 CloseActions(*) {
