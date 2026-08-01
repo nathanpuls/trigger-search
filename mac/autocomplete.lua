@@ -16,6 +16,7 @@ local actionChoice
 local actionReturnQuery = ""
 local actionReturnRow = 1
 local actionReturning = false
+local rowChoiceImage
 local bulletChoiceImage
 local hollowChoiceImage
 local settingsMenu
@@ -650,7 +651,7 @@ local function parseSheet(csv, category)
       hasSavedContent = hasContent or not detailName,
       aiPrompt = trim(aiPrompt),
       editUrl = editUrl,
-      image = bulletChoiceImage,
+      image = rowChoiceImage,
     }
   end
 
@@ -928,7 +929,7 @@ rankedSnippets = function(query)
   local choices = {}
   local utility = not detailParent and utilityChoice(query)
   if utility then
-    utility.image = bulletChoiceImage
+    utility.image = rowChoiceImage
     choices[#choices + 1] = utility
   end
   for _, match in ipairs(matches) do choices[#choices + 1] = match.choice end
@@ -1659,6 +1660,8 @@ function M.start(userConfig)
   end
   discoveredSheetNames = nil
 
+  rowChoiceImage = hs.image.imageFromURL(
+    "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzNiAzNiI+PGcgdHJhbnNmb3JtPSJ0cmFuc2xhdGUoOSA5KSBzY2FsZSguNSkiPjxwYXRoIGZpbGw9IiNDMEMwQzAiIGQ9Ik0yMC41IDIgNyAyMC41aDlMMTIuNSAzNCAzMCAxNC41aC05TDI2IDJ6Ii8+PC9nPjwvc3ZnPgo=")
   bulletChoiceImage = hs.image.imageFromURL(
     "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNiAxNiI+PGNpcmNsZSBjeD0iOCIgY3k9IjgiIHI9IjIuNiIgZmlsbD0iIzY2NiIvPjwvc3ZnPg==")
   hollowChoiceImage = hs.image.imageFromURL(

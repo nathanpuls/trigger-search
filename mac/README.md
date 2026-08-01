@@ -106,8 +106,8 @@ Type the configured trigger at the start of a typing run or directly after a
 space, tab, or newline. The trigger is swallowed and the chooser opens blank;
 results appear as soon as you type. Continue typing to filter,
 use the arrow keys to navigate, press Return to paste, or Escape to cancel.
-Rows use a small neutral dot. Nested items additionally show a larger `→`
-beside their labels.
+Rows use a small, pale version of the Trigger Search lightning logo. Nested
+items additionally show a larger `→` beside their labels.
 Highlight a result and press Command-E to open its exact row or detail cell in
 Google Sheets for editing. Press Command-C to copy the selected text without
 pasting it. Press Command-K for a stable list of actions and shortcuts. Actions
