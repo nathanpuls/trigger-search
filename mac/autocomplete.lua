@@ -1022,7 +1022,11 @@ local function pasteSnippet(choice)
     return
   end
   if choice.hasSavedContent == false or trim(choice.content) == "" then
-    hs.alert.show("No saved text. Press ⌘Return to ask AI.")
+    if trim(choice.aiPrompt) ~= "" then
+      launchAiPrompt(choice)
+    else
+      hs.alert.show("No saved text or AI prompt is configured")
+    end
     return
   end
   local oldClipboard = hs.pasteboard.getContents()

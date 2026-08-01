@@ -75,7 +75,9 @@ Press Ctrl+Enter to use the prompt. Choose `ChatGPT`, `Google AI Mode`, or
 `Microsoft Copilot` from the `AI Engine` dropdown in `Settings & Help`.
 ChatGPT opens with a prefilled prompt, Google AI Mode runs the query, and
 Copilot opens with the prompt copied for pasting. Ctrl+K also exposes **Ask
-AI** and **Copy AI prompt** only when the selected result has AI metadata.
+AI** and **Copy AI prompt** only when the selected result has AI metadata. If
+an AI-enabled nested choice has no saved text, Enter runs the AI prompt
+automatically. When saved text exists, Enter still pastes it normally.
 
 ## Launcher shortcut
 

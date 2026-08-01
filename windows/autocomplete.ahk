@@ -2,8 +2,8 @@
 #SingleInstance Force
 Persistent
 
-; Sheet Autocomplete version 0.13.1
-global AppVersion := "0.13.1"
+; Sheet Autocomplete version 0.13.2
+global AppVersion := "0.13.2"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -772,7 +772,10 @@ PasteChoice(choice) {
     global TargetWindow, ChooserGui, ChooserOpen, AtBoundary
 
     if choice.HasOwnProp("HasSavedContent") && !choice.HasSavedContent {
-        TrayTip "No saved text. Press Ctrl+Enter to ask AI.", "Trigger Search"
+        if choice.HasOwnProp("AiPrompt") && Trim(choice.AiPrompt) != ""
+            LaunchAiPrompt choice
+        else
+            TrayTip "No saved text or AI prompt is configured.", "Trigger Search"
         return
     }
     clipboardText := A_Clipboard

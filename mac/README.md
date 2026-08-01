@@ -129,7 +129,9 @@ Press Command-Return on an AI-enabled result. The `AI Engine` dropdown in
 prefilled, Google AI Mode opens and runs the query, and Microsoft Copilot opens
 after copying the prompt so it can be pasted there. The prompt is copied for
 all three engines as a fallback. Command-K also offers **Ask AI** and **Copy AI
-prompt** when applicable.
+prompt** when applicable. When an AI-enabled nested choice has no saved text,
+Return runs its AI prompt automatically instead of showing an empty-value error.
+If saved text exists, Return continues to paste it normally.
 
 Every search includes every visible tab. Tabs organize the Google Sheet and
 appear beneath results as source labels, but they are not separate searchable
