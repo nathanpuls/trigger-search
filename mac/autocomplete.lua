@@ -604,17 +604,11 @@ local function parseSheet(csv, category)
     if detailName and preview ~= "" then
       subText = subText .. "  •  " .. preview
     elseif detailName and trim(aiPrompt) ~= "" then
-      subText = subText .. "  •  AI available"
+      subText = subText .. "  •  Ask AI"
     elseif sheetLabel ~= "" and hasContent
         and preview:lower() ~= label:lower() then
       subText = category .. "  •  " .. preview
     end
-    if extractStandaloneLaunchUrl(content) then
-      subText = subText .. "  •  Right Arrow opens link"
-    elseif extractLaunchUrl(content) then
-      subText = subText .. "  •  ⌘O opens link"
-    end
-
     local sheetGid = type(config.sheetGids) == "table"
       and config.sheetGids[category] or nil
     local editUrl
@@ -729,10 +723,7 @@ local function parseSheet(csv, category)
           detailWords[#detailWords + 1] = parsed[index].content
         end
         root.detailSearch = table.concat(detailWords, " ")
-        root.text = root.text .. "   ›"
-        local noun = detailCount == 1 and "detail" or "details"
-        root.subText = root.subText .. "  •  " .. tostring(detailCount)
-          .. " " .. noun
+        root.text = root.text .. "   ▸"
       end
     end
     end
@@ -955,7 +946,7 @@ local function updateChooserHotkeys()
 end
 
 local function rootPlaceholder()
-  return "Search"
+  return "Search  ·  ⌘K actions"
 end
 
 local function openDetails(choice)

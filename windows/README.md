@@ -27,11 +27,13 @@ launcher should choose v2 even if another version is also installed.
 - `;`, `hello ;`, and a semicolon after Enter or Tab open the chooser.
 - Every search includes every visible Sheet tab. Tabs remain visible as source
   labels but are not separate searchable containers.
-- The search field uses the placeholder **Search**.
+- The search field uses the placeholder **Search**. The footer's **Ctrl+K
+  actions** text is the chooser's single shortcut hint; individual results do
+  not repeat shortcut instructions.
 - Press `Ctrl+1` through `Ctrl+9` to choose one of the first nine visible items.
 - Aliases rank above ordinary label matches.
-- A `›` means an item has nested details. Press Right to open them and Left to
-  return to the same result.
+- A `▸` means an item has nested details. No detail count is shown. Press Right
+  to open them and Left to return to the same result.
 - Press Ctrl+E to open the selected item’s exact Google Sheets cell.
 - Press Ctrl+C to copy the selected text without pasting it.
 - Press Ctrl+K to open a contextual action menu. The compact footer shows only

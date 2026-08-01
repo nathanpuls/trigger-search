@@ -2,8 +2,8 @@
 #SingleInstance Force
 Persistent
 
-; Sheet Autocomplete version 0.13.2
-global AppVersion := "0.13.2"
+; Sheet Autocomplete version 0.13.3
+global AppVersion := "0.13.3"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -2062,13 +2062,6 @@ ParseSheet(csv, info, output) {
             EditUrl: EditUrl(info.Gid, rowNumber, Max(1, editColumn),
                 Max(1, editColumn))
         }
-        if ExtractStandaloneLaunchUrl(content) != ""
-            root.Preview .= (root.Preview != "" ? "  •  " : "")
-                . "Right Arrow opens link"
-        else if ExtractLaunchUrl(content) != ""
-            root.Preview .= (root.Preview != "" ? "  •  " : "")
-                . "Ctrl+O opens link"
-
         if hasHeaders {
           for columnIndex, header in rows[1] {
             detailName := Trim(StrReplace(header, Chr(0xFEFF)))
@@ -2097,25 +2090,16 @@ ParseSheet(csv, info, output) {
                 Details: [],
                 DetailSearch: "",
                 DetailOrder: columnIndex,
-                Preview: Trim(detailContent) != "" ? PreviewText(detailContent) : "AI available",
+                Preview: Trim(detailContent) != "" ? PreviewText(detailContent) : "Ask AI",
                 EditUrl: EditUrl(info.Gid, rowNumber, columnIndex, columnIndex)
             }
-            if ExtractStandaloneLaunchUrl(detailContent) != ""
-                detail.Preview .= (detail.Preview != "" ? "  •  " : "")
-                    . "Right Arrow opens link"
-            else if ExtractLaunchUrl(detailContent) != ""
-                detail.Preview .= (detail.Preview != "" ? "  •  " : "")
-                    . "Ctrl+O opens link"
             root.Details.Push(detail)
             root.DetailSearch .= " " detailName " " detailContent
           }
         }
 
         if root.Details.Length > 0 {
-            root.DisplayText := label "   ›"
-            root.Preview := root.Details.Length " "
-                . (root.Details.Length = 1 ? "detail" : "details")
-                . (root.Preview != "" ? "  •  " root.Preview : "")
+            root.DisplayText := label "   ▸"
         }
         output.Push(root)
     }

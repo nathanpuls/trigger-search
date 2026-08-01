@@ -26,8 +26,8 @@ separated with commas, semicolons, vertical bars, or line breaks.
 
 Optional columns after `Content`, such as `SIG`, `Dose range`, or `Notes`, are
 nested details for the item on that row. A main item with filled details shows
-a `›` after its label and the number of available details beneath it while keeping them hidden
-from the main result list. Press Return or click the medication to paste its
+a `▸` after its label while keeping those details hidden from the main result
+list. The arrow is the only detail indicator; no detail count is shown. Press Return or click the medication to paste its
 ordinary value; press Right Arrow to open only its detail choices. The nested
 search field begins with `←` to show that Left Arrow returns to the same parent
 search and highlighted item. Escape closes the chooser, and the next trigger
@@ -135,7 +135,9 @@ If saved text exists, Return continues to paste it normally.
 
 Every search includes every visible tab. Tabs organize the Google Sheet and
 appear beneath results as source labels, but they are not separate searchable
-containers. The search field uses the placeholder **Search**. When viewing
+containers. The empty search field uses **Search · ⌘K actions** as the chooser's
+single shortcut hint, and it disappears when typing begins. Individual results
+do not repeat shortcut instructions. When viewing
 nested details, press Left Arrow to return to the parent item.
 `hello;` types a normal semicolon. `hello ;` opens the chooser.
 
