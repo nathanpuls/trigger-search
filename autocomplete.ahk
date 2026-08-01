@@ -2,8 +2,8 @@
 #SingleInstance Force
 Persistent
 
-; Sheet Autocomplete version 0.13.0
-global AppVersion := "0.13.0"
+; Sheet Autocomplete version 0.13.1
+global AppVersion := "0.13.1"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -390,10 +390,7 @@ CancelChooser(*) {
 
     if !ChooserOpen
         return
-    if ActionsForChoice {
-        CloseActions()
-        return
-    }
+    ActionsForChoice := 0
     ChooserGui.Hide()
     ChooserOpen := false
     DetailParent := 0
@@ -1268,12 +1265,12 @@ ShowActionsMenu(*) {
         actions.Push(ActionChoice("open", "Open link", "Ctrl+O"))
     if choice.HasOwnProp("EditUrl") && choice.EditUrl != ""
         actions.Push(ActionChoice("edit", "Edit in Google Sheets", "Ctrl+E"))
-    actions.Push(ActionChoice("back", "Back to results", "Escape"))
+    actions.Push(ActionChoice("back", "Back to results", "Left Arrow"))
     SearchBox.Value := ""
     SearchBox.Enabled := false
     SetSearchPlaceholder("Actions for " choice.DisplayText)
     ChooserGui.Title := "Trigger Search — Actions"
-    FooterText.Text := "Escape returns to results"
+    FooterText.Text := "Left Arrow returns  •  Escape closes"
     VisibleChoices := actions
     ResultsView.Delete()
     for index, action in actions

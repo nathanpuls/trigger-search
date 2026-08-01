@@ -36,6 +36,8 @@ launcher should choose v2 even if another version is also installed.
 - Press Ctrl+C to copy the selected text without pasting it.
 - Press Ctrl+K to open a contextual action menu. The compact footer shows only
   this entry point; the menu explains the actions available for that result.
+  In the action menu, Left Arrow returns to the selected result and Escape
+  closes Trigger Search completely.
 - Enter always pastes. If the entire snippet is one recognizable web link,
   Right Arrow opens it in the default browser. Ctrl+O opens the single detected
   link even when it appears within ordinary text. Explicit `http://` or

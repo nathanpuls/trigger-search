@@ -110,7 +110,8 @@ retain the `›` marker beside their labels.
 Highlight a result and press Command-E to open its exact row or detail cell in
 Google Sheets for editing. Press Command-C to copy the selected text without
 pasting it. Press Command-K for a contextual menu containing only the actions
-that apply to the selected result. The chooser refreshes from the
+that apply to the selected result. In that menu, Left Arrow returns to the
+selected result and Escape closes Trigger Search completely. The chooser refreshes from the
 Sheet whenever it opens, while still appearing immediately from its local
 cache.
 

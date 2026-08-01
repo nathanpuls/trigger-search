@@ -14,6 +14,7 @@ local actionChooser
 local actionChoice
 local actionReturnQuery = ""
 local actionReturnRow = 1
+local actionReturning = false
 local settingsMenu
 local mouseWatcher
 local appWatcher
@@ -925,6 +926,7 @@ end
 
 local function updateChooserHotkeys()
   local visible = chooser and chooser:isVisible()
+  local actionVisible = actionChooser and actionChooser:isVisible()
   if editHotkey then
     if visible then editHotkey:enable() else editHotkey:disable() end
   end
@@ -941,7 +943,7 @@ local function updateChooserHotkeys()
     if visible then openDetailsHotkey:enable() else openDetailsHotkey:disable() end
   end
   if backHotkey then
-    if visible and detailParent then
+    if actionVisible or (visible and detailParent) then
       backHotkey:enable()
     else
       backHotkey:disable()
@@ -1176,7 +1178,7 @@ showActions = function()
   end
   if extractLaunchUrl(choice.content or "") then add("Open link", "⌘O", "open") end
   if choice.editUrl then add("Edit in Google Sheets", "⌘E", "edit") end
-  add("Back to results", "Escape", "back")
+  add("Back to results", "Left Arrow", "back")
   chooser:hide()
   actionChooser:placeholderText("Actions for " .. (choice.text or choice.label or "item"))
   actionChooser:choices(actions)
@@ -1643,7 +1645,9 @@ function M.start(userConfig)
 
   actionChooser = hs.chooser.new(function(action)
     if not action then
-      restoreAfterActions()
+      if actionReturning then return end
+      actionChoice = nil
+      atBoundary = true
       return
     end
     performAction(action.actionId, actionChoice)
@@ -1651,6 +1655,8 @@ function M.start(userConfig)
     :searchSubText(true)
     :rows(7)
     :width(config.width)
+    :showCallback(updateChooserHotkeys)
+    :hideCallback(updateChooserHotkeys)
 
   editHotkey = hs.hotkey.new({ "cmd" }, "e", function()
     if chooser and chooser:isVisible() then
@@ -1687,7 +1693,14 @@ function M.start(userConfig)
   end)
 
   backHotkey = hs.hotkey.new({}, "left", function()
-    if chooser and chooser:isVisible() then closeDetails() end
+    if actionChooser and actionChooser:isVisible() then
+      actionReturning = true
+      actionChooser:hide()
+      restoreAfterActions()
+      hs.timer.doAfter(0.05, function() actionReturning = false end)
+    elseif chooser and chooser:isVisible() then
+      closeDetails()
+    end
   end)
 
   updateLauncherHotkey()
