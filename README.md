@@ -32,7 +32,14 @@ ordinary Sheet matches and can be read without selecting them.
 Return/Enter always pastes. Right Arrow opens a result whose entire content is
 one recognizable web link. Command-O on Mac or Control-O on Windows explicitly
 opens a single link found within a larger snippet. Command-C on Mac or Control-C
-on Windows copies the selected text without pasting it. The Sheet can also
+on Windows copies the selected text without pasting it. Command-K or Control-K
+opens a contextual action menu for the selected result.
+
+A headered tab can reserve a row whose Label is `AI Prompt`. Text in that row's
+detail columns becomes the prompt template for the same column. Command-Return
+on Mac or Control-Enter on Windows sends the selected item to the AI engine
+chosen in `Settings & Help`. ChatGPT is the default; Google AI Mode and
+Microsoft Copilot are also available. The Sheet can also
 define an optional launcher shortcut with two dropdowns—modifier and key—while
 keeping the normal printable trigger available.
 
@@ -67,6 +74,8 @@ from that path.
 The configured workbook is public by design. Do not put passwords, patient
 information, private work data, or other secrets in it. Use your own published
 Google Sheet if the included workbook is only being used as an example.
+AI prompts and the selected item name are sent to the selected external AI
+service when the AI action is used.
 
 ## Project status
 

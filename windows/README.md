@@ -33,8 +33,9 @@ launcher should choose v2 even if another version is also installed.
 - A `›` means an item has nested details. Press Right to open them and Left to
   return to the same result.
 - Press Ctrl+E to open the selected item’s exact Google Sheets cell.
-- Press Ctrl+C to copy the selected text without pasting it. This command is
-  shown once in the chooser footer instead of being repeated on every row.
+- Press Ctrl+C to copy the selected text without pasting it.
+- Press Ctrl+K to open a contextual action menu. The compact footer shows only
+  this entry point; the menu explains the actions available for that result.
 - Enter always pastes. If the entire snippet is one recognizable web link,
   Right Arrow opens it in the default browser. Ctrl+O opens the single detected
   link even when it appears within ordinary text. Explicit `http://` or
@@ -58,6 +59,21 @@ For a quick headerless tab, begin on row 1. With one column, each value is both
 the label and content. With two columns, the left value is the label and the
 right value is the content. Headerless tabs do not provide aliases or nesting;
 a headerless tab with more than two populated columns is ignored.
+
+### AI prompts
+
+In a headered tab, place `AI Prompt` in the Label cell of a metadata row
+(normally row 2). Put prompt templates beneath the detail headers they belong
+to. The metadata row is hidden from search. An AI-enabled detail remains
+available even if its saved-value cell is blank. Templates may use
+`{medication}`, `{item}`, or `{label}`; if none is present, Trigger Search adds
+the selected item as context.
+
+Press Ctrl+Enter to use the prompt. Choose `ChatGPT`, `Google AI Mode`, or
+`Microsoft Copilot` from the `AI Engine` dropdown in `Settings & Help`.
+ChatGPT opens with a prefilled prompt, Google AI Mode runs the query, and
+Copilot opens with the prompt copied for pasting. Ctrl+K also exposes **Ask
+AI** and **Copy AI prompt** only when the selected result has AI metadata.
 
 ## Launcher shortcut
 

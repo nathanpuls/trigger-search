@@ -4,10 +4,16 @@ local chooser
 local keyWatcher
 local editHotkey
 local copyHotkey
+local aiHotkey
+local actionsHotkey
 local openDetailsHotkey
 local openLinkHotkey
 local backHotkey
 local launcherHotkey
+local actionChooser
+local actionChoice
+local actionReturnQuery = ""
+local actionReturnRow = 1
 local settingsMenu
 local mouseWatcher
 local appWatcher
@@ -17,6 +23,8 @@ local promptForGoogleSheet
 local rankedSnippets
 local showChooser
 local updateLauncherHotkey
+local showActions
+local launchAiPrompt
 local refreshInProgress = false
 local snippets = {}
 local atBoundary = true
@@ -36,6 +44,7 @@ local config = {
   trigger = ";",
   launcherModifier = "None",
   launcherKey = "None",
+  aiEngine = "ChatGPT",
   cachePath = hs.configdir .. "/autocomplete-snippets-cache.json",
   refreshInterval = 60,
   rows = 10,
@@ -579,13 +588,13 @@ local function parseSheet(csv, category)
   if #rows == 0 then return nil, "the CSV is empty" end
 
   local function addSnippet(parsed, sheetLabel, sheetContent, rowIndex,
-      detailName, detailColumnIndex, baseEditColumnIndex)
+      detailName, detailColumnIndex, baseEditColumnIndex, aiPrompt)
     local label = sheetLabel ~= "" and sheetLabel or trim(sheetContent)
     if label == "" then return end
 
     local hasContent = trim(sheetContent) ~= ""
-    if detailName and not hasContent then return end
-    local content = hasContent and sheetContent or label
+    if detailName and not hasContent and trim(aiPrompt) == "" then return end
+    local content = hasContent and sheetContent or (detailName and "" or label)
     local preview = sheetContent:gsub("%s+", " ")
     if #preview > 90 then preview = preview:sub(1, 87) .. "..." end
     local displayText = detailName or label
@@ -593,6 +602,8 @@ local function parseSheet(csv, category)
     local subText = detailName and (category .. "  •  " .. label) or category
     if detailName and preview ~= "" then
       subText = subText .. "  •  " .. preview
+    elseif detailName and trim(aiPrompt) ~= "" then
+      subText = subText .. "  •  AI available"
     elseif sheetLabel ~= "" and hasContent
         and preview:lower() ~= label:lower() then
       subText = category .. "  •  " .. preview
@@ -616,7 +627,6 @@ local function parseSheet(csv, category)
       editUrl = "https://docs.google.com/spreadsheets/d/"
         .. config.sheetId .. "/edit#gid=" .. tostring(sheetGid)
         .. "&range=" .. editRange
-      subText = subText .. "  •  ⌘C copy"
     end
 
     parsed[#parsed + 1] = {
@@ -630,6 +640,8 @@ local function parseSheet(csv, category)
       rowIndex = rowIndex,
       category = category,
       content = content,
+      hasSavedContent = hasContent or not detailName,
+      aiPrompt = trim(aiPrompt),
       editUrl = editUrl,
     }
   end
@@ -662,17 +674,30 @@ local function parseSheet(csv, category)
 
   local parsed = {}
   local firstDataRow = hasHeaders and 2 or 1
+  local aiPrompts = {}
+  if hasHeaders then
+    for rowIndex = firstDataRow, #rows do
+      local metadataLabel = columns.label and trim(rows[rowIndex][columns.label] or "") or ""
+      if metadataLabel:lower():gsub("[%s_%-]+", "") == "aiprompt" then
+        for columnIndex, value in ipairs(rows[rowIndex]) do
+          if trim(value) ~= "" then aiPrompts[columnIndex] = value end
+        end
+      end
+    end
+  end
   for rowIndex = firstDataRow, #rows do
     local row = rows[rowIndex]
     local sheetLabel = columns.label and trim(row[columns.label] or "") or ""
     local sheetContent = columns.content and (row[columns.content] or "") or ""
     local aliasText = hasHeaders and columns.alias
       and trim(row[columns.alias] or "") or ""
+    local isAiMetadata = sheetLabel:lower():gsub("[%s_%-]+", "") == "aiprompt"
+    if not isAiMetadata then
     local baseEditColumnIndex = trim(sheetContent) ~= ""
       and columns.content or columns.label
     local rootIndex = #parsed + 1
     addSnippet(parsed, sheetLabel, sheetContent, rowIndex, nil, nil,
-      baseEditColumnIndex)
+      baseEditColumnIndex, columns.content and aiPrompts[columns.content])
 
     local parentLabel = sheetLabel ~= "" and sheetLabel or trim(sheetContent)
     if hasHeaders and parentLabel ~= "" then
@@ -682,7 +707,7 @@ local function parseSheet(csv, category)
             and columnIndex ~= columns.alias
             and detailName ~= "" then
           addSnippet(parsed, parentLabel, row[columnIndex] or "", rowIndex,
-            detailName, columnIndex)
+            detailName, columnIndex, nil, aiPrompts[columnIndex])
         end
       end
     end
@@ -708,6 +733,7 @@ local function parseSheet(csv, category)
         root.subText = root.subText .. "  •  " .. tostring(detailCount)
           .. " " .. noun
       end
+    end
     end
   end
 
@@ -765,6 +791,9 @@ local function applySheetSettings(sheetCsvs)
             end
             if key == "launcherkey" then
               config.launcherKey = value ~= "" and value or "None"
+            end
+            if key == "aiengine" and value ~= "" then
+              config.aiEngine = value
             end
           end
         else
@@ -902,6 +931,12 @@ local function updateChooserHotkeys()
   if copyHotkey then
     if visible then copyHotkey:enable() else copyHotkey:disable() end
   end
+  if aiHotkey then
+    if visible then aiHotkey:enable() else aiHotkey:disable() end
+  end
+  if actionsHotkey then
+    if visible then actionsHotkey:enable() else actionsHotkey:disable() end
+  end
   if openDetailsHotkey then
     if visible then openDetailsHotkey:enable() else openDetailsHotkey:disable() end
   end
@@ -984,6 +1019,10 @@ local function pasteSnippet(choice)
     hs.alert.show(choice.text)
     return
   end
+  if choice.hasSavedContent == false or trim(choice.content) == "" then
+    hs.alert.show("No saved text. Press ⌘Return to ask AI.")
+    return
+  end
   local oldClipboard = hs.pasteboard.getContents()
   local expandedContent, cursorLeft = expandDynamicContent(
     choice.content, oldClipboard or "")
@@ -1023,11 +1062,125 @@ end
 
 local function copySnippet(choice)
   if not choice or choice.isUtilityError then return end
+  if choice.hasSavedContent == false or trim(choice.content) == "" then
+    hs.alert.show("No saved text to copy")
+    return
+  end
   local expandedContent = expandDynamicContent(
     choice.content, hs.pasteboard.getContents() or "")
   hs.pasteboard.setContents(expandedContent)
   chooser:hide()
   atBoundary = true
+end
+
+local function urlEncode(value)
+  return (tostring(value or ""):gsub("([^%w%-_%.~])", function(character)
+    return string.format("%%%02X", string.byte(character))
+  end))
+end
+
+local function buildAiPrompt(choice)
+  if not choice or trim(choice.aiPrompt) == "" then return nil end
+  local prompt = choice.aiPrompt
+  local item = choice.groupLabel or choice.label or choice.text or ""
+  local replaced = false
+  local function replace(pattern)
+    local count
+    prompt, count = prompt:gsub(pattern, item)
+    if count > 0 then replaced = true end
+  end
+  replace("{[Mm][Ee][Dd][Ii][Cc][Aa][Tt][Ii][Oo][Nn]}")
+  replace("{[Ii][Tt][Ee][Mm]}")
+  replace("{[Ll][Aa][Bb][Ee][Ll]}")
+  if not replaced and trim(item) ~= "" then
+    local category = (choice.category or ""):lower()
+    local contextName = category:find("med", 1, true) and "Medication" or "Item"
+    prompt = prompt .. "\n\n" .. contextName .. ": " .. item
+  end
+  return prompt
+end
+
+local function copyAiPrompt(choice)
+  local prompt = buildAiPrompt(choice)
+  if not prompt then
+    hs.alert.show("No AI prompt is configured for this item")
+    return false
+  end
+  hs.pasteboard.setContents(prompt)
+  return true
+end
+
+launchAiPrompt = function(choice)
+  local prompt = buildAiPrompt(choice)
+  if not prompt then
+    hs.alert.show("No AI prompt is configured for this item")
+    return
+  end
+  hs.pasteboard.setContents(prompt)
+  chooser:hide()
+  atBoundary = true
+  local engine = trim(config.aiEngine):lower():gsub("[%s_%-]+", "")
+  if engine == "googleaimode" or engine == "googleai" then
+    hs.urlevent.openURL("https://www.google.com/search?udm=50&q=" .. urlEncode(prompt))
+  elseif engine == "microsoftcopilot" or engine == "copilot" then
+    hs.urlevent.openURL("https://copilot.microsoft.com/")
+    hs.alert.show("AI prompt copied — paste it into Copilot")
+  else
+    hs.urlevent.openURL("https://chatgpt.com/?q=" .. urlEncode(prompt))
+  end
+end
+
+local function restoreAfterActions()
+  if not chooser then return end
+  chooser:placeholderText(detailParent and ("←  " .. detailParent.groupLabel .. " details")
+    or rootPlaceholder())
+  chooser:query(actionReturnQuery)
+  chooser:choices(rankedSnippets(actionReturnQuery))
+  if actionReturnRow and actionReturnRow > 0 then chooser:selectedRow(actionReturnRow) end
+  chooser:show()
+end
+
+local function performAction(actionId, choice)
+  if actionId == "paste" then pasteSnippet(choice)
+  elseif actionId == "copy" then copySnippet(choice)
+  elseif actionId == "ai" then launchAiPrompt(choice)
+  elseif actionId == "copyAi" then
+    if copyAiPrompt(choice) then
+      actionChooser:hide()
+      atBoundary = true
+    end
+  elseif actionId == "open" then openChoiceLink(choice, false)
+  elseif actionId == "edit" then editSnippet(choice)
+  elseif actionId == "back" then restoreAfterActions()
+  end
+end
+
+showActions = function()
+  if not chooser or not chooser:isVisible() then return end
+  local choice = chooser:selectedRowContents()
+  if not choice then return end
+  actionChoice = choice
+  actionReturnQuery = chooser:query() or ""
+  actionReturnRow = chooser:selectedRow() or 1
+  local actions = {}
+  local function add(text, subText, actionId)
+    actions[#actions + 1] = { text = text, subText = subText, actionId = actionId }
+  end
+  if choice.hasSavedContent ~= false and trim(choice.content) ~= "" then
+    add("Paste", "Return", "paste")
+    add("Copy", "⌘C", "copy")
+  end
+  if trim(choice.aiPrompt) ~= "" then
+    add("Ask AI", "⌘Return  •  " .. config.aiEngine, "ai")
+    add("Copy AI prompt", "Copy the prepared prompt", "copyAi")
+  end
+  if extractLaunchUrl(choice.content or "") then add("Open link", "⌘O", "open") end
+  if choice.editUrl then add("Edit in Google Sheets", "⌘E", "edit") end
+  add("Back to results", "Escape", "back")
+  chooser:hide()
+  actionChooser:placeholderText("Actions for " .. (choice.text or choice.label or "item"))
+  actionChooser:choices(actions)
+  actionChooser:show()
 end
 
 showChooser = function()
@@ -1488,6 +1641,17 @@ function M.start(userConfig)
       updateChooserHotkeys()
     end)
 
+  actionChooser = hs.chooser.new(function(action)
+    if not action then
+      restoreAfterActions()
+      return
+    end
+    performAction(action.actionId, actionChoice)
+  end)
+    :searchSubText(true)
+    :rows(7)
+    :width(config.width)
+
   editHotkey = hs.hotkey.new({ "cmd" }, "e", function()
     if chooser and chooser:isVisible() then
       editSnippet(chooser:selectedRowContents())
@@ -1498,6 +1662,16 @@ function M.start(userConfig)
     if chooser and chooser:isVisible() then
       copySnippet(chooser:selectedRowContents())
     end
+  end)
+
+  aiHotkey = hs.hotkey.new({ "cmd" }, "return", function()
+    if chooser and chooser:isVisible() then
+      launchAiPrompt(chooser:selectedRowContents())
+    end
+  end)
+
+  actionsHotkey = hs.hotkey.new({ "cmd" }, "k", function()
+    showActions()
   end)
 
   openDetailsHotkey = hs.hotkey.new({}, "right", function()
@@ -1595,6 +1769,14 @@ function M.extractStandaloneLaunchUrl(value)
   return extractStandaloneLaunchUrl(value)
 end
 
+function M.buildAiPrompt(choice)
+  return buildAiPrompt(choice)
+end
+
+function M.urlEncode(value)
+  return urlEncode(value)
+end
+
 function M.parseSheet(csv, category)
   return parseSheet(csv or "", category or "Test")
 end
@@ -1603,6 +1785,10 @@ function M.stop()
   if keyWatcher then keyWatcher:stop(); keyWatcher = nil end
   if editHotkey then editHotkey:disable(); editHotkey:delete(); editHotkey = nil end
   if copyHotkey then copyHotkey:disable(); copyHotkey:delete(); copyHotkey = nil end
+  if aiHotkey then aiHotkey:disable(); aiHotkey:delete(); aiHotkey = nil end
+  if actionsHotkey then
+    actionsHotkey:disable(); actionsHotkey:delete(); actionsHotkey = nil
+  end
   if openDetailsHotkey then
     openDetailsHotkey:disable(); openDetailsHotkey:delete(); openDetailsHotkey = nil
   end
@@ -1618,6 +1804,7 @@ function M.stop()
   if appWatcher then appWatcher:stop(); appWatcher = nil end
   if settingsMenu then settingsMenu:delete(); settingsMenu = nil end
   if chooser then chooser:delete(); chooser = nil end
+  if actionChooser then actionChooser:delete(); actionChooser = nil end
 end
 
 return M

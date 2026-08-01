@@ -2,8 +2,8 @@
 #SingleInstance Force
 Persistent
 
-; Sheet Autocomplete version 0.12.0
-global AppVersion := "0.12.0"
+; Sheet Autocomplete version 0.13.0
+global AppVersion := "0.13.0"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -24,6 +24,7 @@ global TriggerHotkey := ""
 global LauncherModifier := "None"
 global LauncherKey := "None"
 global LauncherHotkey := ""
+global AiEngine := "ChatGPT"
 global Refreshing := false
 global LastRefreshError := ""
 global LastShownRefreshError := ""
@@ -39,10 +40,14 @@ global DetailParent := 0
 global RootQuery := ""
 global ReturnParentKey := ""
 global KeyboardWatcher := 0
+global ActionsForChoice := 0
+global ActionsReturnQuery := ""
+global ActionsReturnKey := ""
 
 global ChooserGui := 0
 global SearchBox := 0
 global ResultsView := 0
+global FooterText := 0
 
 if A_Args.Length > 0 && A_Args[1] = "--self-test"
     RunSelfTestsAndExit()
@@ -60,6 +65,8 @@ Left::CloseDetails()
 ^e::EditSelected()
 ^c::CopySelected()
 ^o::OpenSelectedLink()
+^Enter::LaunchSelectedAi()
+^k::ShowActionsMenu()
 ^1::ChooseVisibleByNumber(1)
 ^2::ChooseVisibleByNumber(2)
 ^3::ChooseVisibleByNumber(3)
@@ -112,7 +119,7 @@ Initialize() {
 }
 
 BuildChooser() {
-    global ChooserGui, SearchBox, ResultsView
+    global ChooserGui, SearchBox, ResultsView, FooterText
 
     ChooserGui := Gui("+AlwaysOnTop +ToolWindow", "Trigger Search")
     ChooserGui.MarginX := 14
@@ -129,7 +136,7 @@ BuildChooser() {
     ResultsView.ModifyCol(2, 225)
     ResultsView.ModifyCol(3, 400)
     ChooserGui.SetFont("s9 c666666", "Segoe UI")
-    ChooserGui.Add("Text", "xm y+6 w730 Center", "Ctrl+C copy selected text")
+    FooterText := ChooserGui.Add("Text", "xm y+6 w730 Center", "Ctrl+K actions")
 
     SearchBox.OnEvent("Change", SearchChanged)
     ResultsView.OnEvent("DoubleClick", ResultDoubleClicked)
@@ -326,7 +333,7 @@ HandleTrigger(*) {
 ShowChooser(*) {
     global Snippets, TargetWindow, ChooserOpen, DetailParent, RootQuery
     global ReturnParentKey, SearchBox, ChooserGui
-    global Refreshing, LastRefreshError, SheetId
+    global Refreshing, LastRefreshError, SheetId, ActionsForChoice, FooterText
 
     if SheetId = "" {
         PromptForGoogleSheet(true)
@@ -353,6 +360,9 @@ ShowChooser(*) {
     DetailParent := 0
     RootQuery := ""
     ReturnParentKey := ""
+    ActionsForChoice := 0
+    SearchBox.Enabled := true
+    FooterText.Text := "Ctrl+K actions"
     UpdateChooserContext()
     SearchBox.Value := ""
     RenderChoices(FilterChoices(""))
@@ -376,9 +386,14 @@ PositionChooser(targetHwnd) {
 
 CancelChooser(*) {
     global ChooserOpen, ChooserGui, DetailParent, RootQuery, AtBoundary
+    global ActionsForChoice
 
     if !ChooserOpen
         return
+    if ActionsForChoice {
+        CloseActions()
+        return
+    }
     ChooserGui.Hide()
     ChooserOpen := false
     DetailParent := 0
@@ -392,7 +407,10 @@ IsChooserOpen(*) {
 }
 
 SearchChanged(control, info) {
-    global DetailParent, RootQuery
+    global DetailParent, RootQuery, ActionsForChoice
+
+    if ActionsForChoice
+        return
 
     query := control.Value
     if !DetailParent
@@ -744,6 +762,10 @@ ResultDoubleClicked(control, row) {
 }
 
 ChooseChoice(choice) {
+    if choice.HasOwnProp("Type") && choice.Type = "action" {
+        PerformAction choice.ActionId
+        return
+    }
     if choice.HasOwnProp("IsUtilityError") && choice.IsUtilityError
         return
     PasteChoice choice
@@ -752,6 +774,10 @@ ChooseChoice(choice) {
 PasteChoice(choice) {
     global TargetWindow, ChooserGui, ChooserOpen, AtBoundary
 
+    if choice.HasOwnProp("HasSavedContent") && !choice.HasSavedContent {
+        TrayTip "No saved text. Press Ctrl+Enter to ask AI.", "Trigger Search"
+        return
+    }
     clipboardText := A_Clipboard
     savedClipboard := ClipboardAll()
     expanded := ExpandDynamicContent(choice.Content, clipboardText)
@@ -1037,6 +1063,12 @@ OpenSelectedAction(*) {
 }
 
 OpenSelectedLink(*) {
+    global ActionsForChoice
+    if ActionsForChoice {
+        OpenChoiceLink ActionsForChoice, false
+        ActionsForChoice := 0
+        return
+    }
     choice := SelectedChoice()
     if choice
         OpenChoiceLink choice, false
@@ -1062,6 +1094,11 @@ CloseDetails(*) {
     global DetailParent, SearchBox, RootQuery, ReturnParentKey
     global ResultsView, VisibleChoices
 
+    global ActionsForChoice
+    if ActionsForChoice {
+        CloseActions()
+        return
+    }
     if !DetailParent
         return
     DetailParent := 0
@@ -1080,7 +1117,14 @@ CloseDetails(*) {
 }
 
 EditSelected(*) {
-    global ChooserGui, ChooserOpen
+    global ChooserGui, ChooserOpen, ActionsForChoice
+
+    if ActionsForChoice {
+        choice := ActionsForChoice
+        ActionsForChoice := 0
+        EditSelectedChoice choice
+        return
+    }
 
     choice := SelectedChoice()
     if !choice || !choice.EditUrl
@@ -1091,17 +1135,220 @@ EditSelected(*) {
 }
 
 CopySelected(*) {
-    global ChooserGui, ChooserOpen, AtBoundary
+    global ChooserGui, ChooserOpen, AtBoundary, ActionsForChoice
+
+    if ActionsForChoice {
+        choice := ActionsForChoice
+        ActionsForChoice := 0
+        CopyChoice choice
+        return
+    }
 
     choice := SelectedChoice()
     if !choice || (choice.HasOwnProp("IsUtilityError") && choice.IsUtilityError)
         return
+    if choice.HasOwnProp("HasSavedContent") && !choice.HasSavedContent {
+        TrayTip "No saved text to copy.", "Trigger Search"
+        return
+    }
     expanded := ExpandDynamicContent(choice.Content, A_Clipboard)
     ChooserGui.Hide()
     ChooserOpen := false
     A_Clipboard := expanded.Text
     ClipWait(1)
     AtBoundary := true
+}
+
+BuildAiPrompt(choice) {
+    if !choice || !choice.HasOwnProp("AiPrompt") || Trim(choice.AiPrompt) = ""
+        return ""
+    prompt := choice.AiPrompt
+    item := choice.HasOwnProp("GroupLabel") ? choice.GroupLabel : choice.Label
+    replaced := false
+    for token in ["{medication}", "{item}", "{label}"] {
+        before := prompt
+        prompt := StrReplace(prompt, token, item, false)
+        prompt := StrReplace(prompt, StrUpper(token), item, false)
+        if prompt != before
+            replaced := true
+    }
+    if !replaced && Trim(item) != "" {
+        contextName := InStr(StrLower(choice.Category), "med") ? "Medication" : "Item"
+        prompt .= "`n`n" contextName ": " item
+    }
+    return prompt
+}
+
+UrlEncode(value) {
+    size := StrPut(value, "UTF-8")
+    buffer := Buffer(size)
+    StrPut value, buffer, "UTF-8"
+    output := ""
+    Loop size - 1 {
+        byte := NumGet(buffer, A_Index - 1, "UChar")
+        if (byte >= 0x30 && byte <= 0x39)
+            || (byte >= 0x41 && byte <= 0x5A)
+            || (byte >= 0x61 && byte <= 0x7A)
+            || byte = 0x2D || byte = 0x2E || byte = 0x5F || byte = 0x7E
+            output .= Chr(byte)
+        else
+            output .= Format("%{:02X}", byte)
+    }
+    return output
+}
+
+LaunchSelectedAi(*) {
+    global ActionsForChoice
+    if ActionsForChoice {
+        choice := ActionsForChoice
+        ActionsForChoice := 0
+        LaunchAiPrompt choice
+        return
+    }
+    choice := SelectedChoice()
+    if choice
+        LaunchAiPrompt choice
+}
+
+LaunchAiPrompt(choice) {
+    global AiEngine, ChooserGui, ChooserOpen, AtBoundary
+    prompt := BuildAiPrompt(choice)
+    if prompt = "" {
+        TrayTip "No AI prompt is configured for this item.", "Trigger Search"
+        return
+    }
+    A_Clipboard := prompt
+    ClipWait 1
+    ChooserGui.Hide()
+    ChooserOpen := false
+    AtBoundary := true
+    engine := RegExReplace(StrLower(Trim(AiEngine)), "[\s_-]+")
+    if engine = "googleaimode" || engine = "googleai"
+        Run "https://www.google.com/search?udm=50&q=" UrlEncode(prompt)
+    else if engine = "microsoftcopilot" || engine = "copilot" {
+        Run "https://copilot.microsoft.com/"
+        TrayTip "AI prompt copied. Paste it into Copilot.", "Trigger Search"
+    } else
+        Run "https://chatgpt.com/?q=" UrlEncode(prompt)
+}
+
+CopyAiPrompt(choice) {
+    global ChooserGui, ChooserOpen, AtBoundary
+    prompt := BuildAiPrompt(choice)
+    if prompt = "" {
+        TrayTip "No AI prompt is configured for this item.", "Trigger Search"
+        return
+    }
+    A_Clipboard := prompt
+    ClipWait 1
+    ChooserGui.Hide()
+    ChooserOpen := false
+    AtBoundary := true
+}
+
+ShowActionsMenu(*) {
+    global ActionsForChoice, ActionsReturnQuery, ActionsReturnKey
+    global SearchBox, VisibleChoices, ResultsView, FooterText, ChooserGui, AiEngine
+    choice := SelectedChoice()
+    if !choice || (choice.HasOwnProp("Type") && choice.Type = "action")
+        return
+    ActionsForChoice := choice
+    ActionsReturnQuery := SearchBox.Value
+    ActionsReturnKey := choice.Key
+    actions := []
+    if (!choice.HasOwnProp("HasSavedContent") || choice.HasSavedContent) {
+        actions.Push(ActionChoice("paste", "Paste", "Return"))
+        actions.Push(ActionChoice("copy", "Copy", "Ctrl+C"))
+    }
+    if choice.HasOwnProp("AiPrompt") && Trim(choice.AiPrompt) != "" {
+        actions.Push(ActionChoice("ai", "Ask AI", "Ctrl+Enter  •  " AiEngine))
+        actions.Push(ActionChoice("copyAi", "Copy AI prompt", "Copy the prepared prompt"))
+    }
+    if choice.HasOwnProp("Content") && ExtractLaunchUrl(choice.Content) != ""
+        actions.Push(ActionChoice("open", "Open link", "Ctrl+O"))
+    if choice.HasOwnProp("EditUrl") && choice.EditUrl != ""
+        actions.Push(ActionChoice("edit", "Edit in Google Sheets", "Ctrl+E"))
+    actions.Push(ActionChoice("back", "Back to results", "Escape"))
+    SearchBox.Value := ""
+    SearchBox.Enabled := false
+    SetSearchPlaceholder("Actions for " choice.DisplayText)
+    ChooserGui.Title := "Trigger Search — Actions"
+    FooterText.Text := "Escape returns to results"
+    VisibleChoices := actions
+    ResultsView.Delete()
+    for index, action in actions
+        ResultsView.Add("", "Ctrl+" index, action.DisplayText, action.Preview)
+    if actions.Length
+        ResultsView.Modify(1, "Select Focus Vis")
+}
+
+ActionChoice(actionId, label, preview) {
+    return {Type: "action", ActionId: actionId, Key: "action:" actionId,
+        Label: label, DisplayText: label, Preview: preview, Content: ""}
+}
+
+PerformAction(actionId) {
+    global ActionsForChoice
+    choice := ActionsForChoice
+    if actionId = "back" {
+        CloseActions()
+        return
+    }
+    if actionId = "paste"
+        PasteChoice choice
+    else if actionId = "copy"
+        CopyChoice choice
+    else if actionId = "ai"
+        LaunchAiPrompt choice
+    else if actionId = "copyAi"
+        CopyAiPrompt choice
+    else if actionId = "open"
+        OpenChoiceLink choice, false
+    else if actionId = "edit" {
+        CloseActions()
+        EditSelectedChoice choice
+    }
+    ActionsForChoice := 0
+}
+
+CloseActions(*) {
+    global ActionsForChoice, ActionsReturnQuery, ActionsReturnKey
+    global SearchBox, ResultsView, VisibleChoices, FooterText
+    if !ActionsForChoice
+        return
+    ActionsForChoice := 0
+    SearchBox.Enabled := true
+    UpdateChooserContext()
+    FooterText.Text := "Ctrl+K actions"
+    SearchBox.Value := ActionsReturnQuery
+    RenderChoices FilterChoices(ActionsReturnQuery)
+    for index, choice in VisibleChoices {
+        if choice.Key = ActionsReturnKey {
+            ResultsView.Modify(0, "-Select -Focus")
+            ResultsView.Modify(index, "Select Focus Vis")
+            break
+        }
+    }
+    SearchBox.Focus()
+}
+
+CopyChoice(choice) {
+    global ChooserGui, ChooserOpen, AtBoundary
+    expanded := ExpandDynamicContent(choice.Content, A_Clipboard)
+    ChooserGui.Hide()
+    ChooserOpen := false
+    A_Clipboard := expanded.Text
+    ClipWait 1
+    AtBoundary := true
+}
+
+EditSelectedChoice(choice) {
+    global ChooserGui, ChooserOpen
+    if !choice || choice.EditUrl = ""
+        return
+    ChooserGui.Hide()
+    ChooserOpen := false
+    Run choice.EditUrl
 }
 
 OpenWorkbook() {
@@ -1492,6 +1739,23 @@ RunSelfTests() {
     Assert InStr(labelOnly[1].EditUrl, "&range=A2"),
         "Editing a Label-only snippet should target its pasted Label cell."
 
+    aiParsed := []
+    ParseSheet '"Label","Alias","Content","Sig"`n'
+        . '"AI Prompt","","","Write a sig for {medication}."`n'
+        . '"Atomoxetine","ato","",""',
+        {Name: "Psych Meds", Gid: "123"}, aiParsed
+    Assert aiParsed.Length = 1,
+        "The AI Prompt metadata row should not appear as a snippet."
+    Assert aiParsed[1].Details.Length = 1,
+        "An AI-enabled empty detail should remain available."
+    Assert !aiParsed[1].Details[1].HasSavedContent,
+        "An AI-only detail should not pretend to contain saved text."
+    Assert BuildAiPrompt(aiParsed[1].Details[1])
+        = "Write a sig for Atomoxetine.",
+        "AI placeholders should receive the selected item label."
+    Assert UrlEncode("A B") = "A%20B",
+        "AI launch URLs should safely encode spaces."
+
     headerlessOne := []
     ParseSheet "apple`nbanana", {Name: "Quick", Gid: "123"}, headerlessOne
     Assert headerlessOne.Length = 2 && headerlessOne[1].Content = "apple",
@@ -1683,7 +1947,7 @@ ApplySheets(infos, csvByName) {
 }
 
 ApplySettings(infos, csvByName) {
-    global LauncherModifier, LauncherKey
+    global LauncherModifier, LauncherKey, AiEngine
     for info in infos {
         normalized := NormalizeSheetName(info.Name)
         if normalized != "settings" && normalized != "settingshelp"
@@ -1709,6 +1973,8 @@ ApplySettings(infos, csvByName) {
                 LauncherModifier := value != "" ? value : "None"
             else if key = "launcherkey"
                 LauncherKey := value != "" ? value : "None"
+            else if key = "aiengine" && value != ""
+                AiEngine := value
         }
         InstallLauncherHotkey LauncherModifier, LauncherKey
     }
@@ -1743,11 +2009,26 @@ ParseSheet(csv, info, output) {
     aliasColumn := hasHeaders && columns.Has("alias") ? columns["alias"] : 0
 
     firstDataRow := hasHeaders ? 2 : 1
+    aiPrompts := Map()
+    if hasHeaders {
+        Loop rows.Length - firstDataRow + 1 {
+            metadataRow := rows[firstDataRow + A_Index - 1]
+            metadataLabel := labelColumn ? Trim(Cell(metadataRow, labelColumn)) : ""
+            if RegExReplace(StrLower(metadataLabel), "[\s_-]+") = "aiprompt" {
+                for columnIndex, value in metadataRow {
+                    if Trim(value) != ""
+                        aiPrompts[columnIndex] := value
+                }
+            }
+        }
+    }
     Loop rows.Length - firstDataRow + 1 {
         rowNumber := firstDataRow + A_Index - 1
         row := rows[rowNumber]
         sheetLabel := labelColumn ? Trim(Cell(row, labelColumn)) : ""
         sheetContent := contentColumn ? Cell(row, contentColumn) : ""
+        if RegExReplace(StrLower(sheetLabel), "[\s_-]+") = "aiprompt"
+            continue
         label := sheetLabel != "" ? sheetLabel : Trim(sheetContent)
         if label = ""
             continue
@@ -1769,6 +2050,9 @@ ParseSheet(csv, info, output) {
             GroupLabel: label,
             DisplayText: label,
             Content: content,
+            HasSavedContent: true,
+            AiPrompt: contentColumn && aiPrompts.Has(contentColumn)
+                ? aiPrompts[contentColumn] : "",
             Category: info.Name,
             Aliases: aliases,
             Details: [],
@@ -1794,7 +2078,8 @@ ParseSheet(csv, info, output) {
                 || normalizedDetailName = "alias"
                 continue
             detailContent := Cell(row, columnIndex)
-            if Trim(detailContent) = ""
+            detailAiPrompt := aiPrompts.Has(columnIndex) ? aiPrompts[columnIndex] : ""
+            if Trim(detailContent) = "" && Trim(detailAiPrompt) = ""
                 continue
 
             detail := {
@@ -1805,12 +2090,14 @@ ParseSheet(csv, info, output) {
                 DisplayText: detailName,
                 DetailName: detailName,
                 Content: detailContent,
+                HasSavedContent: Trim(detailContent) != "",
+                AiPrompt: detailAiPrompt,
                 Category: info.Name,
                 Aliases: [],
                 Details: [],
                 DetailSearch: "",
                 DetailOrder: columnIndex,
-                Preview: PreviewText(detailContent),
+                Preview: Trim(detailContent) != "" ? PreviewText(detailContent) : "AI available",
                 EditUrl: EditUrl(info.Gid, rowNumber, columnIndex, columnIndex)
             }
             if ExtractStandaloneLaunchUrl(detailContent) != ""

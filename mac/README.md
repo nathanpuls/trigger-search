@@ -90,6 +90,7 @@ Google Sheet's `Settings & Help` tab:
 | Trigger | ; |
 | Launcher Modifier | None |
 | Launcher Key | None |
+| AI Engine | ChatGPT |
 
 Replace `;` with another single printable character whenever you prefer. The
 local `trigger` value in `init.lua` remains an offline fallback. The two
@@ -108,10 +109,26 @@ Rows use Hammerspoon's native circular action icon. Nested items additionally
 retain the `›` marker beside their labels.
 Highlight a result and press Command-E to open its exact row or detail cell in
 Google Sheets for editing. Press Command-C to copy the selected text without
-pasting it. The compact row hint shows the copy command; Command-E remains
-available without taking up additional space. The chooser refreshes from the
+pasting it. Press Command-K for a contextual menu containing only the actions
+that apply to the selected result. The chooser refreshes from the
 Sheet whenever it opens, while still appearing immediately from its local
 cache.
+
+### AI prompts
+
+In a headered tab, place `AI Prompt` in the Label cell of a metadata row
+(normally row 2). Put prompt templates beneath the detail headers they belong
+to. That row is hidden from search. An AI-enabled detail remains visible even
+when its saved-value cell is blank. Templates may contain `{medication}`,
+`{item}`, or `{label}`; otherwise Trigger Search appends the selected item as
+context automatically.
+
+Press Command-Return on an AI-enabled result. The `AI Engine` dropdown in
+`Settings & Help` controls what happens: ChatGPT opens with the prompt
+prefilled, Google AI Mode opens and runs the query, and Microsoft Copilot opens
+after copying the prompt so it can be pasted there. The prompt is copied for
+all three engines as a fallback. Command-K also offers **Ask AI** and **Copy AI
+prompt** when applicable.
 
 Every search includes every visible tab. Tabs organize the Google Sheet and
 appear beneath results as source labels, but they are not separate searchable
