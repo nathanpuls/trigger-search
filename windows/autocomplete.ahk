@@ -1181,11 +1181,11 @@ BuildAiPrompt(choice) {
 
 UrlEncode(value) {
     size := StrPut(value, "UTF-8")
-    buffer := Buffer(size)
-    StrPut value, buffer, "UTF-8"
+    encodedBytes := Buffer(size)
+    StrPut value, encodedBytes, "UTF-8"
     output := ""
     Loop size - 1 {
-        byte := NumGet(buffer, A_Index - 1, "UChar")
+        byte := NumGet(encodedBytes, A_Index - 1, "UChar")
         if (byte >= 0x30 && byte <= 0x39)
             || (byte >= 0x41 && byte <= 0x5A)
             || (byte >= 0x61 && byte <= 0x7A)
