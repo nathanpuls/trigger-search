@@ -16,7 +16,7 @@ local actionReturnQuery = ""
 local actionReturnRow = 1
 local actionReturning = false
 local bulletChoiceImage
-local blankChoiceImage
+local hollowChoiceImage
 local settingsMenu
 local mouseWatcher
 local appWatcher
@@ -56,6 +56,17 @@ local config = {
 
 local function trim(value)
   return (tostring(value or ""):gsub("^%s+", ""):gsub("%s+$", ""))
+end
+
+local function nestedDisplayText(label)
+  local display = label .. "   →"
+  local styled = hs.styledtext.new(display, {
+    font = hs.styledtext.defaultFonts.system,
+    color = { white = 0.15, alpha = 1 },
+  })
+  return styled:setStyle({
+    font = { name = ".AppleSystemUIFont", size = 17 },
+  }, -1, -1)
 end
 
 local function stripUrlPunctuation(value)
@@ -726,7 +737,7 @@ local function parseSheet(csv, category)
           detailWords[#detailWords + 1] = parsed[index].content
         end
         root.detailSearch = table.concat(detailWords, " ")
-        root.text = root.text .. "   ▸"
+        root.text = nestedDisplayText(root.text)
       end
     end
     end
@@ -952,7 +963,7 @@ local function updateChooserHotkeys()
 end
 
 local function rootPlaceholder()
-  return "Search  ·  ⌘K actions"
+  return "Search" .. string.rep(" ", 12) .. "⌘K actions"
 end
 
 local function openDetails(choice)
@@ -1178,7 +1189,7 @@ showActions = function()
       subText = displaySubText,
       actionId = actionId,
       valid = available,
-      image = blankChoiceImage,
+      image = available and bulletChoiceImage or hollowChoiceImage,
     }
   end
   local hasSavedContent = choice.hasSavedContent ~= false
@@ -1643,8 +1654,8 @@ function M.start(userConfig)
 
   bulletChoiceImage = hs.image.imageFromURL(
     "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNiAxNiI+PGNpcmNsZSBjeD0iOCIgY3k9IjgiIHI9IjIuNiIgZmlsbD0iIzY2NiIvPjwvc3ZnPg==")
-  blankChoiceImage = hs.image.imageFromURL(
-    "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNiAxNiI+PC9zdmc+")
+  hollowChoiceImage = hs.image.imageFromURL(
+    "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNiAxNiI+PGNpcmNsZSBjeD0iOCIgY3k9IjgiIHI9IjIuOCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjODg4IiBzdHJva2Utd2lkdGg9IjEuMiIvPjwvc3ZnPg==")
 
   chooser = hs.chooser.new(pasteSnippet)
     :placeholderText(rootPlaceholder())
@@ -1781,6 +1792,11 @@ end
 
 function M.refresh()
   refresh()
+end
+
+-- Useful for testing and for users who want to bind an additional launcher.
+function M.show()
+  showChooser()
 end
 
 function M.expandDynamicContent(content, options)

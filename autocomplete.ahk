@@ -2,8 +2,8 @@
 #SingleInstance Force
 Persistent
 
-; Sheet Autocomplete version 0.13.4
-global AppVersion := "0.13.4"
+; Sheet Autocomplete version 0.13.5
+global AppVersion := "0.13.5"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -136,7 +136,7 @@ BuildChooser() {
     ResultsView.ModifyCol(2, 225)
     ResultsView.ModifyCol(3, 400)
     ChooserGui.SetFont("s9 c666666", "Segoe UI")
-    FooterText := ChooserGui.Add("Text", "xm y+6 w730 Center", "Ctrl+K actions")
+    FooterText := ChooserGui.Add("Text", "xm y+6 w730 Right", "Ctrl+K actions")
 
     SearchBox.OnEvent("Change", SearchChanged)
     ResultsView.OnEvent("DoubleClick", ResultDoubleClicked)
@@ -1288,8 +1288,9 @@ ShowActionsMenu(*) {
 }
 
 ActionChoice(actionId, label, preview, available := true) {
+    marker := available ? "●" : "○"
     return {Type: "action", ActionId: actionId, Key: "action:" actionId,
-        Label: label, DisplayText: label, Preview: preview, Content: "",
+        Label: label, DisplayText: marker "  " label, Preview: preview, Content: "",
         Available: available}
 }
 
@@ -2105,7 +2106,7 @@ ParseSheet(csv, info, output) {
         }
 
         if root.Details.Length > 0 {
-            root.DisplayText := label "   ▸"
+            root.DisplayText := label "   →"
         }
         output.Push(root)
     }

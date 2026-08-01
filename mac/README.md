@@ -26,7 +26,7 @@ separated with commas, semicolons, vertical bars, or line breaks.
 
 Optional columns after `Content`, such as `SIG`, `Dose range`, or `Notes`, are
 nested details for the item on that row. A main item with filled details shows
-a `▸` after its label while keeping those details hidden from the main result
+a larger `→` after its label while keeping those details hidden from the main result
 list. The arrow is the only detail indicator; no detail count is shown. Press Return or click the medication to paste its
 ordinary value; press Right Arrow to open only its detail choices. The nested
 search field begins with `←` to show that Left Arrow returns to the same parent
@@ -105,16 +105,21 @@ launcher field to `None` to disable the extra launcher shortcut.
 Type the configured trigger at the start of a typing run or directly after a
 space, tab, or newline. The trigger is swallowed and the chooser opens. Continue typing to filter,
 use the arrow keys to navigate, press Return to paste, or Escape to cancel.
-Rows use Hammerspoon's native circular action icon. Nested items additionally
-retain the `›` marker beside their labels.
+Rows use a small neutral dot. Nested items additionally show a larger `→`
+beside their labels.
 Highlight a result and press Command-E to open its exact row or detail cell in
 Google Sheets for editing. Press Command-C to copy the selected text without
 pasting it. Press Command-K for a stable list of actions and shortcuts. Actions
-that do not apply to the selected result remain visible but dimmed. The actions
+that apply use a filled dot; unavailable actions use a hollow dot and dimmed
+text. The actions
 menu begins with `←`, Left Arrow returns to the selected result, and Escape
 closes Trigger Search completely. The chooser refreshes from the
 Sheet whenever it opens, while still appearing immediately from its local
 cache.
+
+The main search hint places `⌘K actions` toward the right side of the native
+chooser field. Hammerspoon exposes the placeholder as one text value, so this
+uses visual spacing rather than a separately aligned control.
 
 ### AI prompts
 
