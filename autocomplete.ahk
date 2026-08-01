@@ -2,8 +2,8 @@
 #SingleInstance Force
 Persistent
 
-; Sheet Autocomplete version 0.13.5
-global AppVersion := "0.13.5"
+; Sheet Autocomplete version 0.13.6
+global AppVersion := "0.13.6"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -136,7 +136,7 @@ BuildChooser() {
     ResultsView.ModifyCol(2, 225)
     ResultsView.ModifyCol(3, 400)
     ChooserGui.SetFont("s9 c666666", "Segoe UI")
-    FooterText := ChooserGui.Add("Text", "xm y+6 w730 Right", "Ctrl+K actions")
+    FooterText := ChooserGui.Add("Text", "xm y+6 w730 Right Hidden", "")
 
     SearchBox.OnEvent("Change", SearchChanged)
     ResultsView.OnEvent("DoubleClick", ResultDoubleClicked)
@@ -163,7 +163,7 @@ UpdateChooserContext() {
     global ChooserGui, DetailParent
 
     if DetailParent
-        ChooserGui.Title := "Trigger Search — " DetailParent.GroupLabel " details"
+        ChooserGui.Title := "Trigger Search — " DetailParent.GroupLabel
     else
         ChooserGui.Title := "Trigger Search"
     SetSearchPlaceholder("Search")
@@ -362,7 +362,8 @@ ShowChooser(*) {
     ReturnParentKey := ""
     ActionsForChoice := 0
     SearchBox.Enabled := true
-    FooterText.Text := "Ctrl+K actions"
+    FooterText.Text := ""
+    FooterText.Visible := false
     UpdateChooserContext()
     SearchBox.Value := ""
     RenderChoices(FilterChoices(""))
@@ -1279,6 +1280,7 @@ ShowActionsMenu(*) {
     SetSearchPlaceholder("←  Actions for " actionLabel)
     ChooserGui.Title := "Trigger Search — ← Actions"
     FooterText.Text := "Left Arrow returns  •  Escape closes"
+    FooterText.Visible := true
     VisibleChoices := actions
     ResultsView.Delete()
     for index, action in actions
@@ -1326,7 +1328,8 @@ CloseActions(*) {
     ActionsForChoice := 0
     SearchBox.Enabled := true
     UpdateChooserContext()
-    FooterText.Text := "Ctrl+K actions"
+    FooterText.Text := ""
+    FooterText.Visible := false
     SearchBox.Value := ActionsReturnQuery
     RenderChoices FilterChoices(ActionsReturnQuery)
     for index, choice in VisibleChoices {
@@ -2097,7 +2100,7 @@ ParseSheet(csv, info, output) {
                 Details: [],
                 DetailSearch: "",
                 DetailOrder: columnIndex,
-                Preview: Trim(detailContent) != "" ? PreviewText(detailContent) : "Ask AI",
+                Preview: Trim(detailContent) != "" ? PreviewText(detailContent) : "",
                 EditUrl: EditUrl(info.Gid, rowNumber, columnIndex, columnIndex)
             }
             root.Details.Push(detail)

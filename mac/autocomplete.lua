@@ -614,11 +614,9 @@ local function parseSheet(csv, category)
     if #preview > 90 then preview = preview:sub(1, 87) .. "..." end
     local displayText = detailName or label
     local searchLabel = detailName and (label .. " " .. detailName) or label
-    local subText = detailName and (category .. "  •  " .. label) or category
+    local subText = category
     if detailName and preview ~= "" then
       subText = subText .. "  •  " .. preview
-    elseif detailName and trim(aiPrompt) ~= "" then
-      subText = subText .. "  •  Ask AI"
     elseif sheetLabel ~= "" and hasContent
         and preview:lower() ~= label:lower() then
       subText = category .. "  •  " .. preview
@@ -967,7 +965,7 @@ local function updateChooserHotkeys()
 end
 
 local function rootPlaceholder()
-  return "Search" .. string.rep(" ", 12) .. "⌘K actions"
+  return "Search"
 end
 
 local function openDetails(choice)
@@ -977,7 +975,7 @@ local function openDetails(choice)
   returnParentCategory = choice.category
   returnParentRow = choice.rowIndex
   detailParent = choice
-  chooser:placeholderText("←  " .. choice.groupLabel .. " details")
+  chooser:placeholderText("←  " .. choice.groupLabel)
   chooser:query("")
   chooser:choices(rankedSnippets(""))
   updateChooserHotkeys()
@@ -1150,7 +1148,7 @@ end
 
 local function restoreAfterActions()
   if not chooser then return end
-  chooser:placeholderText(detailParent and ("←  " .. detailParent.groupLabel .. " details")
+  chooser:placeholderText(detailParent and ("←  " .. detailParent.groupLabel)
     or rootPlaceholder())
   chooser:query(actionReturnQuery)
   chooser:choices(rankedSnippets(actionReturnQuery))

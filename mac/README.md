@@ -117,10 +117,6 @@ closes the main chooser and any open Actions screen together. The chooser refres
 Sheet whenever it opens, while still appearing immediately from its local
 cache.
 
-The main search hint places `⌘K actions` toward the right side of the native
-chooser field. Hammerspoon exposes the placeholder as one text value, so this
-uses visual spacing rather than a separately aligned control.
-
 ### AI prompts
 
 In a headered tab, place `AI Prompt` in the Label cell of a metadata row
@@ -141,8 +137,7 @@ If saved text exists, Return continues to paste it normally.
 
 Every search includes every visible tab. Tabs organize the Google Sheet and
 appear beneath results as source labels, but they are not separate searchable
-containers. The empty search field uses **Search · ⌘K actions** as the chooser's
-single shortcut hint, and it disappears when typing begins. Individual results
+containers. The empty search field simply says **Search**. Individual results
 do not repeat shortcut instructions. When viewing
 nested details, press Left Arrow to return to the parent item.
 `hello;` types a normal semicolon. `hello ;` opens the chooser.

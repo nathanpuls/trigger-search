@@ -27,9 +27,8 @@ launcher should choose v2 even if another version is also installed.
 - `;`, `hello ;`, and a semicolon after Enter or Tab open the chooser.
 - Every search includes every visible Sheet tab. Tabs remain visible as source
   labels but are not separate searchable containers.
-- The search field uses the placeholder **Search**. The footer's **Ctrl+K
-  actions** text is the chooser's single shortcut hint; individual results do
-  not repeat shortcut instructions.
+- The search field uses the uncluttered placeholder **Search**. Shortcut hints
+  are not repeated on individual results.
 - Press `Ctrl+1` through `Ctrl+9` to choose one of the first nine visible items.
 - Aliases rank above ordinary label matches.
 - A `→` means an item has nested details. No detail count is shown. Press Right
@@ -40,7 +39,6 @@ launcher should choose v2 even if another version is also installed.
   an available action and a hollow dot marks an unavailable action, without
   extra warning text. The actions view begins with `←`; Left Arrow returns to the selected
   result and Escape closes Trigger Search completely.
-- The `Ctrl+K actions` reminder sits at the right edge below the results.
 - Enter always pastes. If the entire snippet is one recognizable web link,
   Right Arrow opens it in the default browser. Ctrl+O opens the single detected
   link even when it appears within ordinary text. Explicit `http://` or
