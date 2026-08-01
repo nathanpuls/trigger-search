@@ -2,8 +2,8 @@
 #SingleInstance Force
 Persistent
 
-; Sheet Autocomplete version 0.13.3
-global AppVersion := "0.13.3"
+; Sheet Autocomplete version 0.13.4
+global AppVersion := "0.13.4"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -760,6 +760,8 @@ ResultDoubleClicked(control, row) {
 
 ChooseChoice(choice) {
     if choice.HasOwnProp("Type") && choice.Type = "action" {
+        if choice.HasOwnProp("Available") && !choice.Available
+            return
         PerformAction choice.ActionId
         return
     }
@@ -1256,23 +1258,26 @@ ShowActionsMenu(*) {
     ActionsReturnQuery := SearchBox.Value
     ActionsReturnKey := choice.Key
     actions := []
-    if (!choice.HasOwnProp("HasSavedContent") || choice.HasSavedContent) {
-        actions.Push(ActionChoice("paste", "Paste", "Return"))
-        actions.Push(ActionChoice("copy", "Copy", "Ctrl+C"))
-    }
-    if choice.HasOwnProp("AiPrompt") && Trim(choice.AiPrompt) != "" {
-        actions.Push(ActionChoice("ai", "Ask AI", "Ctrl+Enter  •  " AiEngine))
-        actions.Push(ActionChoice("copyAi", "Copy AI prompt", "Copy the prepared prompt"))
-    }
-    if choice.HasOwnProp("Content") && ExtractLaunchUrl(choice.Content) != ""
-        actions.Push(ActionChoice("open", "Open link", "Ctrl+O"))
-    if choice.HasOwnProp("EditUrl") && choice.EditUrl != ""
-        actions.Push(ActionChoice("edit", "Edit in Google Sheets", "Ctrl+E"))
-    actions.Push(ActionChoice("back", "Back to results", "Left Arrow"))
+    hasSavedContent := (!choice.HasOwnProp("HasSavedContent")
+        || choice.HasSavedContent) && Trim(choice.Content) != ""
+    hasAi := choice.HasOwnProp("AiPrompt") && Trim(choice.AiPrompt) != ""
+    hasLink := choice.HasOwnProp("Content") && ExtractLaunchUrl(choice.Content) != ""
+    hasEdit := choice.HasOwnProp("EditUrl") && choice.EditUrl != ""
+    actions.Push(ActionChoice("paste", "Paste", "Return", hasSavedContent))
+    actions.Push(ActionChoice("copy", "Copy", "Ctrl+C", hasSavedContent))
+    aiShortcut := hasSavedContent ? "Ctrl+Enter  •  " AiEngine
+        : "Enter or Ctrl+Enter  •  " AiEngine
+    actions.Push(ActionChoice("ai", "Ask AI", aiShortcut, hasAi))
+    actions.Push(ActionChoice("copyAi", "Copy AI prompt",
+        "Copy the prepared prompt", hasAi))
+    actions.Push(ActionChoice("open", "Open link", "Ctrl+O", hasLink))
+    actions.Push(ActionChoice("edit", "Edit in Google Sheets", "Ctrl+E", hasEdit))
     SearchBox.Value := ""
     SearchBox.Enabled := false
-    SetSearchPlaceholder("Actions for " choice.DisplayText)
-    ChooserGui.Title := "Trigger Search — Actions"
+    actionLabel := choice.HasOwnProp("GroupLabel")
+        ? choice.GroupLabel : choice.DisplayText
+    SetSearchPlaceholder("←  Actions for " actionLabel)
+    ChooserGui.Title := "Trigger Search — ← Actions"
     FooterText.Text := "Left Arrow returns  •  Escape closes"
     VisibleChoices := actions
     ResultsView.Delete()
@@ -1282,9 +1287,10 @@ ShowActionsMenu(*) {
         ResultsView.Modify(1, "Select Focus Vis")
 }
 
-ActionChoice(actionId, label, preview) {
+ActionChoice(actionId, label, preview, available := true) {
     return {Type: "action", ActionId: actionId, Key: "action:" actionId,
-        Label: label, DisplayText: label, Preview: preview, Content: ""}
+        Label: label, DisplayText: label, Preview: preview, Content: "",
+        Available: available}
 }
 
 PerformAction(actionId) {

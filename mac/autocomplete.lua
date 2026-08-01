@@ -15,6 +15,8 @@ local actionChoice
 local actionReturnQuery = ""
 local actionReturnRow = 1
 local actionReturning = false
+local bulletChoiceImage
+local blankChoiceImage
 local settingsMenu
 local mouseWatcher
 local appWatcher
@@ -638,6 +640,7 @@ local function parseSheet(csv, category)
       hasSavedContent = hasContent or not detailName,
       aiPrompt = trim(aiPrompt),
       editUrl = editUrl,
+      image = bulletChoiceImage,
     }
   end
 
@@ -910,7 +913,10 @@ rankedSnippets = function(query)
 
   local choices = {}
   local utility = not detailParent and utilityChoice(query)
-  if utility then choices[#choices + 1] = utility end
+  if utility then
+    utility.image = bulletChoiceImage
+    choices[#choices + 1] = utility
+  end
   for _, match in ipairs(matches) do choices[#choices + 1] = match.choice end
   return choices
 end
@@ -1160,22 +1166,35 @@ showActions = function()
   actionReturnQuery = chooser:query() or ""
   actionReturnRow = chooser:selectedRow() or 1
   local actions = {}
-  local function add(text, subText, actionId)
-    actions[#actions + 1] = { text = text, subText = subText, actionId = actionId }
+  local function add(text, subText, actionId, available)
+    local displayText, displaySubText = text, subText
+    if not available then
+      local dim = { color = { white = 0.5, alpha = 1 } }
+      displayText = hs.styledtext.new(text, dim)
+      displaySubText = hs.styledtext.new(subText, dim)
+    end
+    actions[#actions + 1] = {
+      text = displayText,
+      subText = displaySubText,
+      actionId = actionId,
+      valid = available,
+      image = blankChoiceImage,
+    }
   end
-  if choice.hasSavedContent ~= false and trim(choice.content) ~= "" then
-    add("Paste", "Return", "paste")
-    add("Copy", "⌘C", "copy")
-  end
-  if trim(choice.aiPrompt) ~= "" then
-    add("Ask AI", "⌘Return  •  " .. config.aiEngine, "ai")
-    add("Copy AI prompt", "Copy the prepared prompt", "copyAi")
-  end
-  if extractLaunchUrl(choice.content or "") then add("Open link", "⌘O", "open") end
-  if choice.editUrl then add("Edit in Google Sheets", "⌘E", "edit") end
-  add("Back to results", "Left Arrow", "back")
+  local hasSavedContent = choice.hasSavedContent ~= false
+    and trim(choice.content) ~= ""
+  local hasAi = trim(choice.aiPrompt) ~= ""
+  local hasLink = extractLaunchUrl(choice.content or "") ~= nil
+  add("Paste", "Return", "paste", hasSavedContent)
+  add("Copy", "⌘C", "copy", hasSavedContent)
+  add("Ask AI", hasSavedContent and ("⌘Return  •  " .. config.aiEngine)
+    or ("Return or ⌘Return  •  " .. config.aiEngine), "ai", hasAi)
+  add("Copy AI prompt", "Copy the prepared prompt", "copyAi", hasAi)
+  add("Open link", "⌘O", "open", hasLink)
+  add("Edit in Google Sheets", "⌘E", "edit", choice.editUrl ~= nil)
   chooser:hide()
-  actionChooser:placeholderText("Actions for " .. (choice.text or choice.label or "item"))
+  actionChooser:placeholderText("←  Actions for "
+    .. (choice.groupLabel or choice.label or "item"))
   actionChooser:choices(actions)
   actionChooser:show()
 end
@@ -1622,6 +1641,11 @@ function M.start(userConfig)
   end
   discoveredSheetNames = nil
 
+  bulletChoiceImage = hs.image.imageFromURL(
+    "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNiAxNiI+PGNpcmNsZSBjeD0iOCIgY3k9IjgiIHI9IjIuNiIgZmlsbD0iIzY2NiIvPjwvc3ZnPg==")
+  blankChoiceImage = hs.image.imageFromURL(
+    "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNiAxNiI+PC9zdmc+")
+
   chooser = hs.chooser.new(pasteSnippet)
     :placeholderText(rootPlaceholder())
     :searchSubText(true)
@@ -1652,6 +1676,7 @@ function M.start(userConfig)
     :width(config.width)
     :showCallback(updateChooserHotkeys)
     :hideCallback(updateChooserHotkeys)
+    :invalidCallback(function() end)
 
   editHotkey = hs.hotkey.new({ "cmd" }, "e", function()
     if chooser and chooser:isVisible() then
