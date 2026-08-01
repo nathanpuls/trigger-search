@@ -33,11 +33,11 @@ launcher should choose v2 even if another version is also installed.
 - A `›` means an item has nested details. Press Right to open them and Left to
   return to the same result.
 - Press Ctrl+E to open the selected item’s exact Google Sheets cell.
-- If a snippet contains exactly one recognizable web link, Enter opens it in
-  the default browser. Shift+Enter pastes the full snippet instead. Explicit
-  `http://` or `https://` links and bare domains such as `example.com/help`
-  work, including when surrounded by ordinary text. Multiple links paste
-  normally rather than making Trigger Search guess.
+- Enter always pastes. If the entire snippet is one recognizable web link,
+  Right Arrow opens it in the default browser. Ctrl+O opens the single detected
+  link even when it appears within ordinary text. Explicit `http://` or
+  `https://` links and bare domains such as `example.com/help` work. Multiple
+  links are never opened automatically because Trigger Search will not guess.
 - Dates, times, clipboard text, and cursor position can be calculated with the
   same dynamic placeholders as the Mac version.
 - The Sheet is refreshed at startup, whenever the chooser opens, and every 60

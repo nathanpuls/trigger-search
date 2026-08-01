@@ -4,8 +4,8 @@ local chooser
 local keyWatcher
 local editHotkey
 local openDetailsHotkey
+local openLinkHotkey
 local backHotkey
-local forcePasteHotkey
 local launcherHotkey
 local settingsMenu
 local mouseWatcher
@@ -77,6 +77,16 @@ local function extractLaunchUrl(value)
   end
 
   return #candidates == 1 and candidates[1] or nil
+end
+
+local function extractStandaloneLaunchUrl(value)
+  local original = trim(value)
+  local launchUrl = extractLaunchUrl(original)
+  if not launchUrl then return nil end
+  if original == launchUrl or "https://" .. original == launchUrl then
+    return launchUrl
+  end
+  return nil
 end
 
 local function extractSheetId(value)
@@ -586,8 +596,10 @@ local function parseSheet(csv, category)
         and preview:lower() ~= label:lower() then
       subText = category .. "  •  " .. preview
     end
-    if extractLaunchUrl(content) then
-      subText = subText .. "  •  Return opens link  •  Shift-Return pastes"
+    if extractStandaloneLaunchUrl(content) then
+      subText = subText .. "  •  Right Arrow opens link"
+    elseif extractLaunchUrl(content) then
+      subText = subText .. "  •  ⌘O opens link"
     end
 
     local sheetGid = type(config.sheetGids) == "table"
@@ -887,11 +899,7 @@ local function updateChooserHotkeys()
     if visible then editHotkey:enable() else editHotkey:disable() end
   end
   if openDetailsHotkey then
-    if visible and not detailParent then
-      openDetailsHotkey:enable()
-    else
-      openDetailsHotkey:disable()
-    end
+    if visible then openDetailsHotkey:enable() else openDetailsHotkey:disable() end
   end
   if backHotkey then
     if visible and detailParent then
@@ -900,8 +908,8 @@ local function updateChooserHotkeys()
       backHotkey:disable()
     end
   end
-  if forcePasteHotkey then
-    if visible then forcePasteHotkey:enable() else forcePasteHotkey:disable() end
+  if openLinkHotkey then
+    if visible then openLinkHotkey:enable() else openLinkHotkey:disable() end
   end
 end
 
@@ -922,6 +930,33 @@ local function openDetails(choice)
   updateChooserHotkeys()
 end
 
+local function openChoiceLink(choice, standaloneOnly)
+  if not choice or choice.isUtilityError then return false end
+  local expandedContent = expandDynamicContent(
+    choice.content, hs.pasteboard.getContents() or "")
+  local launchUrl
+  if standaloneOnly then
+    launchUrl = extractStandaloneLaunchUrl(expandedContent)
+  else
+    launchUrl = extractLaunchUrl(expandedContent)
+  end
+  if not launchUrl then return false end
+  chooser:hide()
+  atBoundary = true
+  hs.urlevent.openURL(launchUrl)
+  return true
+end
+
+local function openSelectedAction(choice)
+  if not choice then return end
+  if not detailParent and not choice.isDetail and choice.detailCount
+      and choice.detailCount > 0 then
+    openDetails(choice)
+    return
+  end
+  openChoiceLink(choice, true)
+end
+
 local function closeDetails()
   if not detailParent then return end
   detailParent = nil
@@ -939,7 +974,7 @@ local function closeDetails()
   updateChooserHotkeys()
 end
 
-local function pasteSnippet(choice, forcePaste)
+local function pasteSnippet(choice)
   if not choice then return end
   if choice.isUtilityError then
     hs.alert.show(choice.text)
@@ -948,13 +983,6 @@ local function pasteSnippet(choice, forcePaste)
   local oldClipboard = hs.pasteboard.getContents()
   local expandedContent, cursorLeft = expandDynamicContent(
     choice.content, oldClipboard or "")
-  local launchUrl = not forcePaste and extractLaunchUrl(expandedContent) or nil
-  if launchUrl then
-    chooser:hide()
-    atBoundary = true
-    hs.urlevent.openURL(launchUrl)
-    return
-  end
   hs.pasteboard.setContents(expandedContent)
 
   local targetApp = previousApp
@@ -1455,18 +1483,18 @@ function M.start(userConfig)
 
   openDetailsHotkey = hs.hotkey.new({}, "right", function()
     if chooser and chooser:isVisible() then
-      openDetails(chooser:selectedRowContents())
+      openSelectedAction(chooser:selectedRowContents())
+    end
+  end)
+
+  openLinkHotkey = hs.hotkey.new({ "cmd" }, "o", function()
+    if chooser and chooser:isVisible() then
+      openChoiceLink(chooser:selectedRowContents(), false)
     end
   end)
 
   backHotkey = hs.hotkey.new({}, "left", function()
     if chooser and chooser:isVisible() then closeDetails() end
-  end)
-
-  forcePasteHotkey = hs.hotkey.new({ "shift" }, "return", function()
-    if chooser and chooser:isVisible() then
-      pasteSnippet(chooser:selectedRowContents(), true)
-    end
   end)
 
   updateLauncherHotkey()
@@ -1544,6 +1572,10 @@ function M.extractLaunchUrl(value)
   return extractLaunchUrl(value)
 end
 
+function M.extractStandaloneLaunchUrl(value)
+  return extractStandaloneLaunchUrl(value)
+end
+
 function M.parseSheet(csv, category)
   return parseSheet(csv or "", category or "Test")
 end
@@ -1554,10 +1586,10 @@ function M.stop()
   if openDetailsHotkey then
     openDetailsHotkey:disable(); openDetailsHotkey:delete(); openDetailsHotkey = nil
   end
-  if backHotkey then backHotkey:disable(); backHotkey:delete(); backHotkey = nil end
-  if forcePasteHotkey then
-    forcePasteHotkey:disable(); forcePasteHotkey:delete(); forcePasteHotkey = nil
+  if openLinkHotkey then
+    openLinkHotkey:disable(); openLinkHotkey:delete(); openLinkHotkey = nil
   end
+  if backHotkey then backHotkey:disable(); backHotkey:delete(); backHotkey = nil end
   if launcherHotkey then
     launcherHotkey:disable(); launcherHotkey:delete(); launcherHotkey = nil
   end

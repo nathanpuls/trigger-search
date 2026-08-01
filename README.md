@@ -29,9 +29,10 @@ The search field also doubles as a small calculator. Enter a duration such as
 as `90 / 3`. The equals sign is optional. These calculated results appear above
 ordinary Sheet matches and can be read without selecting them.
 
-A result containing one recognizable web link opens in the computer's default
-browser. Shift-Return/Shift-Enter pastes it instead. The Sheet can also define
-an optional launcher shortcut with two dropdowns—modifier and key—while keeping
+Return/Enter always pastes. Right Arrow opens a result whose entire content is
+one recognizable web link. Command-O on Mac or Control-O on Windows explicitly
+opens a single link found within a larger snippet. The Sheet can also define an
+optional launcher shortcut with two dropdowns—modifier and key—while keeping
 the normal printable trigger available.
 
 ## Connect your Google Sheet

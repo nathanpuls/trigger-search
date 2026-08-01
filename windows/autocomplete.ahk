@@ -2,8 +2,8 @@
 #SingleInstance Force
 Persistent
 
-; Sheet Autocomplete version 0.10.0
-global AppVersion := "0.10.0"
+; Sheet Autocomplete version 0.11.0
+global AppVersion := "0.11.0"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -53,13 +53,12 @@ Initialize()
 #HotIf IsChooserOpen()
 Up::MoveSelection(-1)
 Down::MoveSelection(1)
-+Enter::ChooseSelected(true)
-+NumpadEnter::ChooseSelected(true)
 Enter::ChooseSelected()
 *Esc::CancelChooser()
-Right::OpenSelectedDetails()
+Right::OpenSelectedAction()
 Left::CloseDetails()
 ^e::EditSelected()
+^o::OpenSelectedLink()
 ^1::ChooseVisibleByNumber(1)
 ^2::ChooseVisibleByNumber(2)
 ^3::ChooseVisibleByNumber(3)
@@ -727,11 +726,11 @@ SelectedChoice() {
     return VisibleChoices[row]
 }
 
-ChooseSelected(forcePaste := false) {
+ChooseSelected(*) {
     choice := SelectedChoice()
     if !choice
         return
-    ChooseChoice choice, forcePaste
+    ChooseChoice choice
 }
 
 ResultDoubleClicked(control, row) {
@@ -741,28 +740,18 @@ ResultDoubleClicked(control, row) {
         ChooseChoice VisibleChoices[row]
 }
 
-ChooseChoice(choice, forcePaste := false) {
+ChooseChoice(choice) {
     if choice.HasOwnProp("IsUtilityError") && choice.IsUtilityError
         return
-    PasteChoice choice, forcePaste
+    PasteChoice choice
 }
 
-PasteChoice(choice, forcePaste := false) {
+PasteChoice(choice) {
     global TargetWindow, ChooserGui, ChooserOpen, AtBoundary
 
     clipboardText := A_Clipboard
     savedClipboard := ClipboardAll()
     expanded := ExpandDynamicContent(choice.Content, clipboardText)
-    if !forcePaste {
-        launchUrl := ExtractLaunchUrl(expanded.Text)
-        if launchUrl != "" {
-            ChooserGui.Hide()
-            ChooserOpen := false
-            AtBoundary := true
-            Run launchUrl
-            return
-        }
-    }
     ChooserGui.Hide()
     ChooserOpen := false
     A_Clipboard := expanded.Text
@@ -806,6 +795,16 @@ ExtractLaunchUrl(text) {
     }
 
     return candidates.Length = 1 ? candidates[1] : ""
+}
+
+ExtractStandaloneLaunchUrl(text) {
+    original := Trim(text)
+    launchUrl := ExtractLaunchUrl(original)
+    if launchUrl = ""
+        return ""
+    if original = launchUrl || "https://" original = launchUrl
+        return launchUrl
+    return ""
 }
 
 AddLaunchCandidate(candidates, seen, candidate, needsProtocol) {
@@ -1012,14 +1011,18 @@ FormatDynamicDate(timestamp, formatPattern) {
     return output
 }
 
-OpenSelectedDetails(*) {
+OpenSelectedAction(*) {
     global DetailParent, RootQuery, SearchBox, ReturnParentKey
 
-    if DetailParent
-        return
     choice := SelectedChoice()
-    if !choice || !choice.HasOwnProp("Details") || choice.Details.Length = 0
+    if !choice
         return
+
+    if DetailParent || !choice.HasOwnProp("Details")
+        || choice.Details.Length = 0 {
+        OpenChoiceLink choice, true
+        return
+    }
 
     RootQuery := SearchBox.Value
     ReturnParentKey := choice.Key
@@ -1028,6 +1031,28 @@ OpenSelectedDetails(*) {
     SearchBox.Value := ""
     RenderChoices(FilterChoices(""))
     SearchBox.Focus()
+}
+
+OpenSelectedLink(*) {
+    choice := SelectedChoice()
+    if choice
+        OpenChoiceLink choice, false
+}
+
+OpenChoiceLink(choice, standaloneOnly := false) {
+    global ChooserGui, ChooserOpen, AtBoundary
+
+    expanded := ExpandDynamicContent(choice.Content, A_Clipboard)
+    launchUrl := standaloneOnly
+        ? ExtractStandaloneLaunchUrl(expanded.Text)
+        : ExtractLaunchUrl(expanded.Text)
+    if launchUrl = ""
+        return false
+    ChooserGui.Hide()
+    ChooserOpen := false
+    AtBoundary := true
+    Run launchUrl
+    return true
 }
 
 CloseDetails(*) {
@@ -1474,6 +1499,11 @@ RunSelfTests() {
         "Content containing multiple links should paste normally instead of guessing."
     Assert ExtractLaunchUrl("https://one.example and two.example") = "",
         "Mixed explicit and bare links should paste normally instead of guessing."
+    Assert ExtractStandaloneLaunchUrl("example.com/help")
+        = "https://example.com/help",
+        "A link by itself should open with Right Arrow."
+    Assert ExtractStandaloneLaunchUrl("Read example.com/help first") = "",
+        "Text containing a link should not open with Right Arrow."
 
     dynamic := ExpandDynamicContent(
         "Annual: {date format="
@@ -1731,9 +1761,12 @@ ParseSheet(csv, info, output) {
             EditUrl: EditUrl(info.Gid, rowNumber, Max(1, editColumn),
                 Max(1, editColumn))
         }
-        if ExtractLaunchUrl(content) != ""
+        if ExtractStandaloneLaunchUrl(content) != ""
             root.Preview .= (root.Preview != "" ? "  •  " : "")
-                . "Return opens link  •  Shift+Enter pastes"
+                . "Right Arrow opens link"
+        else if ExtractLaunchUrl(content) != ""
+            root.Preview .= (root.Preview != "" ? "  •  " : "")
+                . "Ctrl+O opens link"
 
         if hasHeaders {
           for columnIndex, header in rows[1] {
@@ -1763,9 +1796,12 @@ ParseSheet(csv, info, output) {
                 Preview: PreviewText(detailContent),
                 EditUrl: EditUrl(info.Gid, rowNumber, columnIndex, columnIndex)
             }
-            if ExtractLaunchUrl(detailContent) != ""
+            if ExtractStandaloneLaunchUrl(detailContent) != ""
                 detail.Preview .= (detail.Preview != "" ? "  •  " : "")
-                    . "Return opens link  •  Shift+Enter pastes"
+                    . "Right Arrow opens link"
+            else if ExtractLaunchUrl(detailContent) != ""
+                detail.Preview .= (detail.Preview != "" ? "  •  " : "")
+                    . "Ctrl+O opens link"
             root.Details.Push(detail)
             root.DetailSearch .= " " detailName " " detailContent
           }
