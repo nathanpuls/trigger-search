@@ -31,9 +31,10 @@ ordinary Sheet matches and can be read without selecting them.
 
 Return/Enter always pastes. Right Arrow opens a result whose entire content is
 one recognizable web link. Command-O on Mac or Control-O on Windows explicitly
-opens a single link found within a larger snippet. The Sheet can also define an
-optional launcher shortcut with two dropdowns—modifier and key—while keeping
-the normal printable trigger available.
+opens a single link found within a larger snippet. Command-C on Mac or Control-C
+on Windows copies the selected text without pasting it. The Sheet can also
+define an optional launcher shortcut with two dropdowns—modifier and key—while
+keeping the normal printable trigger available.
 
 ## Connect your Google Sheet
 

@@ -33,6 +33,8 @@ launcher should choose v2 even if another version is also installed.
 - A `›` means an item has nested details. Press Right to open them and Left to
   return to the same result.
 - Press Ctrl+E to open the selected item’s exact Google Sheets cell.
+- Press Ctrl+C to copy the selected text without pasting it. This command is
+  shown once in the chooser footer instead of being repeated on every row.
 - Enter always pastes. If the entire snippet is one recognizable web link,
   Right Arrow opens it in the default browser. Ctrl+O opens the single detected
   link even when it appears within ordinary text. Explicit `http://` or

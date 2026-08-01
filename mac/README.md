@@ -107,8 +107,11 @@ use the arrow keys to navigate, press Return to paste, or Escape to cancel.
 Rows use Hammerspoon's native circular action icon. Nested items additionally
 retain the `›` marker beside their labels.
 Highlight a result and press Command-E to open its exact row or detail cell in
-Google Sheets for editing. The chooser refreshes from the Sheet whenever it
-opens, while still appearing immediately from its local cache.
+Google Sheets for editing. Press Command-C to copy the selected text without
+pasting it. The compact row hint shows the copy command; Command-E remains
+available without taking up additional space. The chooser refreshes from the
+Sheet whenever it opens, while still appearing immediately from its local
+cache.
 
 Every search includes every visible tab. Tabs organize the Google Sheet and
 appear beneath results as source labels, but they are not separate searchable

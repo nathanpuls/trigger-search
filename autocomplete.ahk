@@ -2,8 +2,8 @@
 #SingleInstance Force
 Persistent
 
-; Sheet Autocomplete version 0.11.0
-global AppVersion := "0.11.0"
+; Sheet Autocomplete version 0.12.0
+global AppVersion := "0.12.0"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -58,6 +58,7 @@ Enter::ChooseSelected()
 Right::OpenSelectedAction()
 Left::CloseDetails()
 ^e::EditSelected()
+^c::CopySelected()
 ^o::OpenSelectedLink()
 ^1::ChooseVisibleByNumber(1)
 ^2::ChooseVisibleByNumber(2)
@@ -127,6 +128,8 @@ BuildChooser() {
     ResultsView.ModifyCol(1, 65)
     ResultsView.ModifyCol(2, 225)
     ResultsView.ModifyCol(3, 400)
+    ChooserGui.SetFont("s9 c666666", "Segoe UI")
+    ChooserGui.Add("Text", "xm y+6 w730 Center", "Ctrl+C copy selected text")
 
     SearchBox.OnEvent("Change", SearchChanged)
     ResultsView.OnEvent("DoubleClick", ResultDoubleClicked)
@@ -364,10 +367,10 @@ PositionChooser(targetHwnd) {
     try {
         WinGetPos &x, &y, &width, &height, "ahk_id " targetHwnd
         left := x + Floor((width - 760) / 2)
-        top := y + Max(40, Floor((height - 450) / 3))
-        ChooserGui.Show("w760 h450 x" left " y" top)
+        top := y + Max(40, Floor((height - 475) / 3))
+        ChooserGui.Show("w760 h475 x" left " y" top)
     } catch {
-        ChooserGui.Show("w760 h450 Center")
+        ChooserGui.Show("w760 h475 Center")
     }
 }
 
@@ -1085,6 +1088,20 @@ EditSelected(*) {
     ChooserGui.Hide()
     ChooserOpen := false
     Run choice.EditUrl
+}
+
+CopySelected(*) {
+    global ChooserGui, ChooserOpen, AtBoundary
+
+    choice := SelectedChoice()
+    if !choice || (choice.HasOwnProp("IsUtilityError") && choice.IsUtilityError)
+        return
+    expanded := ExpandDynamicContent(choice.Content, A_Clipboard)
+    ChooserGui.Hide()
+    ChooserOpen := false
+    A_Clipboard := expanded.Text
+    ClipWait(1)
+    AtBoundary := true
 }
 
 OpenWorkbook() {

@@ -3,6 +3,7 @@ local M = {}
 local chooser
 local keyWatcher
 local editHotkey
+local copyHotkey
 local openDetailsHotkey
 local openLinkHotkey
 local backHotkey
@@ -615,7 +616,7 @@ local function parseSheet(csv, category)
       editUrl = "https://docs.google.com/spreadsheets/d/"
         .. config.sheetId .. "/edit#gid=" .. tostring(sheetGid)
         .. "&range=" .. editRange
-      subText = subText .. "  •  ⌘E to edit"
+      subText = subText .. "  •  ⌘C copy"
     end
 
     parsed[#parsed + 1] = {
@@ -898,6 +899,9 @@ local function updateChooserHotkeys()
   if editHotkey then
     if visible then editHotkey:enable() else editHotkey:disable() end
   end
+  if copyHotkey then
+    if visible then copyHotkey:enable() else copyHotkey:disable() end
+  end
   if openDetailsHotkey then
     if visible then openDetailsHotkey:enable() else openDetailsHotkey:disable() end
   end
@@ -1015,6 +1019,15 @@ local function editSnippet(choice)
   if not choice or not choice.editUrl then return end
   chooser:hide()
   hs.urlevent.openURL(choice.editUrl)
+end
+
+local function copySnippet(choice)
+  if not choice or choice.isUtilityError then return end
+  local expandedContent = expandDynamicContent(
+    choice.content, hs.pasteboard.getContents() or "")
+  hs.pasteboard.setContents(expandedContent)
+  chooser:hide()
+  atBoundary = true
 end
 
 showChooser = function()
@@ -1481,6 +1494,12 @@ function M.start(userConfig)
     end
   end)
 
+  copyHotkey = hs.hotkey.new({ "cmd" }, "c", function()
+    if chooser and chooser:isVisible() then
+      copySnippet(chooser:selectedRowContents())
+    end
+  end)
+
   openDetailsHotkey = hs.hotkey.new({}, "right", function()
     if chooser and chooser:isVisible() then
       openSelectedAction(chooser:selectedRowContents())
@@ -1583,6 +1602,7 @@ end
 function M.stop()
   if keyWatcher then keyWatcher:stop(); keyWatcher = nil end
   if editHotkey then editHotkey:disable(); editHotkey:delete(); editHotkey = nil end
+  if copyHotkey then copyHotkey:disable(); copyHotkey:delete(); copyHotkey = nil end
   if openDetailsHotkey then
     openDetailsHotkey:disable(); openDetailsHotkey:delete(); openDetailsHotkey = nil
   end
