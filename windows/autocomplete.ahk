@@ -2,8 +2,8 @@
 #SingleInstance Force
 Persistent
 
-; Sheet Autocomplete version 0.13.6
-global AppVersion := "0.13.6"
+; Sheet Autocomplete version 0.13.7
+global AppVersion := "0.13.7"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -598,6 +598,10 @@ FilterChoices(query) {
     global Snippets, DetailParent
 
     needle := StrLower(Trim(query))
+    ; Keep the root view blank until the user searches. Nested views continue
+    ; to reveal their choices immediately.
+    if !DetailParent && needle = ""
+        return []
     ranked := []
     source := DetailParent ? DetailParent.Details : Snippets
 
@@ -1726,7 +1730,8 @@ RunSelfTests() {
     ]
 
     unfiltered := FilterChoices("")
-    Assert unfiltered.Length = 2, "Empty search should return every snippet."
+    Assert unfiltered.Length = 0,
+        "The main chooser should remain blank until the user searches."
 
     aliasMatch := FilterChoices("email")
     Assert aliasMatch.Length > 0, "Alias search should return a result."
@@ -1758,6 +1763,11 @@ RunSelfTests() {
         "The AI Prompt metadata row should not appear as a snippet."
     Assert aiParsed[1].Details.Length = 1,
         "An AI-enabled empty detail should remain available."
+    DetailParent := aiParsed[1]
+    nestedUnfiltered := FilterChoices("")
+    Assert nestedUnfiltered.Length = 1,
+        "A nested view should show its choices before the user searches."
+    DetailParent := 0
     Assert !aiParsed[1].Details[1].HasSavedContent,
         "An AI-only detail should not pretend to contain saved text."
     Assert BuildAiPrompt(aiParsed[1].Details[1])

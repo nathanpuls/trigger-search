@@ -25,6 +25,8 @@ launcher should choose v2 even if another version is also installed.
 
 - `hello;` types a normal semicolon.
 - `;`, `hello ;`, and a semicolon after Enter or Tab open the chooser.
+- The main chooser opens blank and begins showing results as soon as you type.
+  Nested views still display their choices immediately.
 - Every search includes every visible Sheet tab. Tabs remain visible as source
   labels but are not separate searchable containers.
 - The search field uses the uncluttered placeholder **Search**. Shortcut hints

@@ -103,7 +103,8 @@ launcher field to `None` to disable the extra launcher shortcut.
 ## 3. Use
 
 Type the configured trigger at the start of a typing run or directly after a
-space, tab, or newline. The trigger is swallowed and the chooser opens. Continue typing to filter,
+space, tab, or newline. The trigger is swallowed and the chooser opens blank;
+results appear as soon as you type. Continue typing to filter,
 use the arrow keys to navigate, press Return to paste, or Escape to cancel.
 Rows use a small neutral dot. Nested items additionally show a larger `→`
 beside their labels.
@@ -139,7 +140,8 @@ Every search includes every visible tab. Tabs organize the Google Sheet and
 appear beneath results as source labels, but they are not separate searchable
 containers. The empty search field simply says **Search**. Individual results
 do not repeat shortcut instructions. When viewing
-nested details, press Left Arrow to return to the parent item.
+nested details, their choices appear immediately; press Left Arrow to return
+to the parent item.
 `hello;` types a normal semicolon. `hello ;` opens the chooser.
 
 Return always pastes. When the entire snippet is one recognizable web link,

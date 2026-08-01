@@ -851,6 +851,10 @@ end
 rankedSnippets = function(query)
   local needle = trim(query):lower()
 
+  -- The root chooser is intentionally search-first instead of an alphabetical
+  -- browser. Nested views still reveal their choices immediately.
+  if not detailParent and needle == "" then return {} end
+
   local matches = {}
   for _, snippet in ipairs(snippets) do
     local inCurrentView
