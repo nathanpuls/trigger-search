@@ -40,6 +40,7 @@ local refresh
 local promptForGoogleSheet
 local rankedSnippets
 local showChooser
+local setMainChooserChoices
 local updateLauncherHotkey
 local showActions
 local launchAiPrompt
@@ -53,6 +54,8 @@ local detailParent
 local rootQuery = ""
 local returnParentCategory
 local returnParentRow
+local chooserAnchorPoint
+local chooserVisibleRows = -1
 local sheetSettingKey = "triggerSearchSheetId"
 
 local config = {
@@ -68,6 +71,35 @@ local config = {
   rows = 10,
   width = 42,
 }
+
+local function mainChooserAnchor()
+  local targetWindow = hs.window.focusedWindow()
+  local screen = targetWindow and targetWindow:screen() or hs.screen.mainScreen()
+  local frame = screen:frame()
+  local widthPercent = tonumber(config.width) or 42
+  local chooserWidth = frame.w * widthPercent / 100
+  return {
+    x = frame.x + (frame.w - chooserWidth) / 2,
+    y = frame.y + frame.h * 0.16,
+  }
+end
+
+setMainChooserChoices = function(choices)
+  if not chooser then return end
+  choices = choices or {}
+  local maximumRows = math.max(1, math.floor(tonumber(config.rows) or 10))
+  local visibleRows = math.min(#choices, maximumRows)
+  local sizeChanged = visibleRows ~= chooserVisibleRows
+  chooserVisibleRows = visibleRows
+  chooser:rows(visibleRows)
+  chooser:choices(choices)
+
+  -- hs.chooser recalculates its window frame when shown. Showing an already
+  -- visible chooser at the same point redraws it in place without closing it.
+  if sizeChanged and chooser:isVisible() then
+    chooser:show(chooserAnchorPoint or mainChooserAnchor())
+  end
+end
 
 local function trim(value)
   return (tostring(value or ""):gsub("^%s+", ""):gsub("%s+$", ""))
@@ -865,7 +897,9 @@ local function installSheets(sheetCsvs, source)
   end
   newSnippetTargets = targets
   if updateLauncherHotkey then updateLauncherHotkey() end
-  if chooser then chooser:choices(rankedSnippets(chooser:query() or "")) end
+  if chooser then
+    setMainChooserChoices(rankedSnippets(chooser:query() or ""))
+  end
   print(string.format("Mac autocomplete: loaded %d snippets from %s", #snippets, source))
   return true
 end
@@ -1083,7 +1117,7 @@ local function openDetails(choice)
   detailParent = choice
   chooser:placeholderText("←  " .. choice.groupLabel)
   chooser:query("")
-  chooser:choices(rankedSnippets(""))
+  setMainChooserChoices(rankedSnippets(""))
   updateChooserHotkeys()
 end
 
@@ -1120,7 +1154,7 @@ local function closeDetails()
   chooser:placeholderText(rootPlaceholder())
   chooser:query(rootQuery)
   local choices = rankedSnippets(rootQuery)
-  chooser:choices(choices)
+  setMainChooserChoices(choices)
   for index, choice in ipairs(choices) do
     if not choice.isDetail and choice.category == returnParentCategory
         and choice.rowIndex == returnParentRow then
@@ -1261,9 +1295,9 @@ local function restoreAfterActions()
   chooser:placeholderText(detailParent and ("←  " .. detailParent.groupLabel)
     or rootPlaceholder())
   chooser:query(actionReturnQuery)
-  chooser:choices(rankedSnippets(actionReturnQuery))
+  setMainChooserChoices(rankedSnippets(actionReturnQuery))
   if actionReturnRow and actionReturnRow > 0 then chooser:selectedRow(actionReturnRow) end
-  chooser:show()
+  chooser:show(chooserAnchorPoint or mainChooserAnchor())
 end
 
 local function restoreAfterPreview()
@@ -1271,11 +1305,11 @@ local function restoreAfterPreview()
   chooser:placeholderText(detailParent and ("←  " .. detailParent.groupLabel)
     or rootPlaceholder())
   chooser:query(previewReturnQuery)
-  chooser:choices(rankedSnippets(previewReturnQuery))
+  setMainChooserChoices(rankedSnippets(previewReturnQuery))
   if previewReturnRow and previewReturnRow > 0 then
     chooser:selectedRow(previewReturnRow)
   end
-  chooser:show()
+  chooser:show(chooserAnchorPoint or mainChooserAnchor())
 end
 
 local function showPreview(choice, returnQuery, returnRow)
@@ -1459,8 +1493,9 @@ showChooser = function()
   returnParentRow = nil
   chooser:placeholderText(rootPlaceholder())
   chooser:query("")
-  chooser:choices(rankedSnippets(""))
-  chooser:show()
+  chooserAnchorPoint = mainChooserAnchor()
+  setMainChooserChoices(rankedSnippets(""))
+  chooser:show(chooserAnchorPoint)
   refresh()
 end
 
@@ -1909,7 +1944,7 @@ function M.start(userConfig)
       if not detailParent and not choice.isDetail and choice.detailCount
           and choice.detailCount > 0 then
         openDetails(choice)
-        chooser:show()
+        chooser:show(chooserAnchorPoint or mainChooserAnchor())
       elseif not choice.isUtilityError then
         showActions()
       end
@@ -1919,11 +1954,11 @@ function M.start(userConfig)
   end)
     :placeholderText(rootPlaceholder())
     :searchSubText(true)
-    :rows(config.rows)
+    :rows(0)
     :width(config.width)
     :queryChangedCallback(function(query)
       if not detailParent then rootQuery = query end
-      chooser:choices(rankedSnippets(query))
+      setMainChooserChoices(rankedSnippets(query))
     end)
     :showCallback(function()
       updateChooserHotkeys()
