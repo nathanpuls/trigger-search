@@ -2,8 +2,8 @@
 #SingleInstance Force
 Persistent
 
-; Sheet Autocomplete version 0.13.13
-global AppVersion := "0.13.13"
+; Sheet Autocomplete version 0.13.14
+global AppVersion := "0.13.14"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -40,6 +40,7 @@ global RecentItems := []
 global RecentLimit := 9
 global VisibleChoices := []
 global DetailParent := 0
+global SearchServiceParent := 0
 global RootQuery := ""
 global ReturnParentKey := ""
 global KeyboardWatcher := 0
@@ -178,10 +179,12 @@ SetSearchPlaceholder(text) {
 }
 
 UpdateChooserContext() {
-    global ChooserGui, DetailParent
+    global ChooserGui, DetailParent, SearchServiceParent
 
     if DetailParent
         ChooserGui.Title := "Trigger Search — " DetailParent.GroupLabel
+    else if SearchServiceParent
+        ChooserGui.Title := "Trigger Search — " SearchServiceParent.GroupLabel
     else
         ChooserGui.Title := "Trigger Search"
     SetSearchPlaceholder("Search")
@@ -349,7 +352,7 @@ HandleTrigger(*) {
 }
 
 ShowChooser(*) {
-    global Snippets, TargetWindow, ChooserOpen, DetailParent, RootQuery
+    global Snippets, TargetWindow, ChooserOpen, DetailParent, SearchServiceParent, RootQuery
     global ReturnParentKey, SearchBox, ChooserGui
     global Refreshing, LastRefreshError, SheetId, ActionsForChoice, FooterText
 
@@ -376,6 +379,7 @@ ShowChooser(*) {
     TargetWindow := WinExist("A")
     ChooserOpen := true
     DetailParent := 0
+    SearchServiceParent := 0
     RootQuery := ""
     ReturnParentKey := ""
     ActionsForChoice := 0
@@ -404,7 +408,7 @@ PositionChooser(targetHwnd) {
 }
 
 CancelChooser(*) {
-    global ChooserOpen, ChooserGui, DetailParent, RootQuery, AtBoundary
+    global ChooserOpen, ChooserGui, DetailParent, SearchServiceParent, RootQuery, AtBoundary
     global ActionsForChoice
 
     HideModifierHud()
@@ -414,6 +418,7 @@ CancelChooser(*) {
     ChooserGui.Hide()
     ChooserOpen := false
     DetailParent := 0
+    SearchServiceParent := 0
     RootQuery := ""
     AtBoundary := true
 }
@@ -489,13 +494,13 @@ ShowModifierHud(*) {
 }
 
 SearchChanged(control, info) {
-    global DetailParent, RootQuery, ActionsForChoice
+    global DetailParent, SearchServiceParent, RootQuery, ActionsForChoice
 
     if ActionsForChoice
         return
 
     query := control.Value
-    if !DetailParent
+    if !DetailParent && !SearchServiceParent
         RootQuery := query
     RenderChoices(FilterChoices(query))
 }
@@ -679,9 +684,30 @@ FormatCalculationNumber(value) {
 }
 
 FilterChoices(query) {
-    global Snippets, DetailParent
+    global Snippets, DetailParent, SearchServiceParent
 
     needle := StrLower(Trim(query))
+    if SearchServiceParent {
+        cleaned := Trim(query)
+        if cleaned = ""
+            return []
+        return [{
+            Type: "search-query",
+            Key: "search-query:" SearchServiceParent.Key,
+            Label: cleaned,
+            GroupLabel: SearchServiceParent.GroupLabel,
+            DisplayText: "Search " SearchServiceParent.GroupLabel " for “" cleaned "”",
+            Content: "",
+            HasSavedContent: false,
+            Category: SearchServiceParent.Category,
+            Aliases: [],
+            Details: [],
+            DetailSearch: "",
+            Preview: "Enter to open in the default browser",
+            SearchQuery: cleaned,
+            SearchService: SearchServiceParent
+        }]
+    }
     ; The root view opens with locally remembered Sheet items. Typing searches
     ; the complete workbook; nested views reveal their saved details.
     if !DetailParent && needle = ""
@@ -907,7 +933,7 @@ ChooseSelected(*) {
 }
 
 ResultClicked(control, row) {
-    global VisibleChoices, DetailParent
+    global VisibleChoices, DetailParent, SearchServiceParent
 
     if row < 1 || row > VisibleChoices.Length
         return
@@ -920,6 +946,13 @@ ResultClicked(control, row) {
     if choice.HasOwnProp("IsUtilityError") && choice.IsUtilityError
         return
 
+    if choice.HasOwnProp("IsSearchService") && choice.IsSearchService {
+        control.Modify(0, "-Select -Focus")
+        control.Modify(row, "Select Focus Vis")
+        OpenSelectedAction()
+        return
+    }
+
     control.Modify(0, "-Select -Focus")
     control.Modify(row, "Select Focus Vis")
     if !DetailParent && choice.HasOwnProp("Details")
@@ -930,6 +963,14 @@ ResultClicked(control, row) {
 }
 
 ChooseChoice(choice) {
+    if choice.HasOwnProp("Type") && choice.Type = "search-query" {
+        LaunchSearchQuery choice
+        return
+    }
+    if choice.HasOwnProp("IsSearchService") && choice.IsSearchService {
+        OpenSearchService choice
+        return
+    }
     if choice.HasOwnProp("Type") && choice.Type = "action" {
         if choice.HasOwnProp("Available") && !choice.Available
             return
@@ -1219,11 +1260,17 @@ FormatDynamicDate(timestamp, formatPattern) {
 }
 
 OpenSelectedAction(*) {
-    global DetailParent, RootQuery, SearchBox, ReturnParentKey
+    global DetailParent, SearchServiceParent, RootQuery, SearchBox, ReturnParentKey
 
     choice := SelectedChoice()
     if !choice
         return
+
+    if !DetailParent && !SearchServiceParent
+        && choice.HasOwnProp("IsSearchService") && choice.IsSearchService {
+        OpenSearchService choice
+        return
+    }
 
     if DetailParent || !choice.HasOwnProp("Details")
         || choice.Details.Length = 0 {
@@ -1237,6 +1284,19 @@ OpenSelectedAction(*) {
     UpdateChooserContext()
     SearchBox.Value := ""
     RenderChoices(FilterChoices(""))
+    SearchBox.Focus()
+}
+
+OpenSearchService(choice) {
+    global SearchServiceParent, RootQuery, SearchBox, ReturnParentKey
+
+    RootQuery := SearchBox.Value
+    ReturnParentKey := choice.Key
+    SearchServiceParent := choice
+    UpdateChooserContext()
+    SetSearchPlaceholder("←  " choice.GroupLabel)
+    SearchBox.Value := ""
+    RenderChoices([])
     SearchBox.Focus()
 }
 
@@ -1271,7 +1331,7 @@ OpenChoiceLink(choice, standaloneOnly := false) {
 }
 
 CloseDetails(*) {
-    global DetailParent, SearchBox, RootQuery, ReturnParentKey
+    global DetailParent, SearchServiceParent, SearchBox, RootQuery, ReturnParentKey
     global ResultsView, VisibleChoices
 
     global ActionsForChoice
@@ -1279,9 +1339,12 @@ CloseDetails(*) {
         CloseActions()
         return
     }
-    if !DetailParent
+    if SearchServiceParent
+        SearchServiceParent := 0
+    else if DetailParent
+        DetailParent := 0
+    else
         return
-    DetailParent := 0
     UpdateChooserContext()
     SearchBox.Value := RootQuery
     RenderChoices(FilterChoices(RootQuery))
@@ -1379,6 +1442,29 @@ UrlEncode(value) {
             output .= Format("%{:02X}", byte)
     }
     return output
+}
+
+LaunchSearchQuery(choice) {
+    global ChooserGui, ChooserOpen, AtBoundary
+
+    if !choice || !choice.HasOwnProp("SearchService")
+        return false
+    service := choice.SearchService
+    template := service.HasOwnProp("SearchTemplate")
+        ? Trim(service.SearchTemplate) : ""
+    query := choice.HasOwnProp("SearchQuery") ? Trim(choice.SearchQuery) : ""
+    if query = "" || !InStr(template, "{query}")
+        return false
+    url := StrReplace(template, "{query}", UrlEncode(query))
+    if !RegExMatch(url, "i)^https?://")
+        return false
+    RecordRecent service
+    HideModifierHud()
+    ChooserGui.Hide()
+    ChooserOpen := false
+    AtBoundary := true
+    Run url
+    return true
 }
 
 SearchGoogleQuery(*) {
@@ -1957,7 +2043,7 @@ LooksLikeCsv(csv) {
 }
 
 RefreshOpenChooser() {
-    global ChooserOpen, DetailParent, Snippets, SearchBox
+    global ChooserOpen, DetailParent, SearchServiceParent, Snippets, SearchBox
     global RootQuery, VisibleChoices, ResultsView
 
     if !ChooserOpen
@@ -1966,7 +2052,27 @@ RefreshOpenChooser() {
     selected := SelectedChoice()
     selectedKey := selected && selected.HasOwnProp("Key") ? selected.Key : ""
 
-    if DetailParent {
+    if SearchServiceParent {
+        parentKey := SearchServiceParent.Key
+        refreshedParent := 0
+        for item in Snippets {
+            if item.Key = parentKey {
+                refreshedParent := item
+                break
+            }
+        }
+        if refreshedParent {
+            SearchServiceParent := refreshedParent
+            UpdateChooserContext()
+            SetSearchPlaceholder("←  " refreshedParent.GroupLabel)
+            RenderChoices(FilterChoices(SearchBox.Value))
+        } else {
+            SearchServiceParent := 0
+            UpdateChooserContext()
+            SearchBox.Value := RootQuery
+            RenderChoices(FilterChoices(RootQuery))
+        }
+    } else if DetailParent {
         parentKey := DetailParent.Key
         refreshedParent := 0
         for item in Snippets {
@@ -2064,9 +2170,10 @@ RunSelfTestsAndExit() {
 }
 
 RunSelfTests() {
-    global Snippets, DetailParent, RecentItems
+    global Snippets, DetailParent, SearchServiceParent, RecentItems
 
     DetailParent := 0
+    SearchServiceParent := 0
     Snippets := [
         TestSnippet("meeting", "meet", ["mtg"]),
         TestSnippet("email address", "email@example.com", ["email"])
@@ -2135,6 +2242,28 @@ RunSelfTests() {
     RecentItems := []
     Assert UrlEncode("A B") = "A%20B",
         "AI launch URLs should safely encode spaces."
+
+    searchServices := []
+    ParseSheet '"Service","URL Template"`n'
+        . '"PubMed","https://pubmed.ncbi.nlm.nih.gov/?term={query}"`n'
+        . '"Broken","https://example.com/no-placeholder"`n'
+        . '"Unsafe","javascript:alert({query})"',
+        {Name: "Search & AI", Gid: "456"}, searchServices
+    Assert searchServices.Length = 1,
+        "Search services should require a name, web URL, and {query} placeholder."
+    Assert searchServices[1].IsSearchService
+        && searchServices[1].GroupLabel = "PubMed",
+        "A valid search-service row should become a searchable parent."
+    Snippets := searchServices
+    SearchServiceParent := searchServices[1]
+    queryChoice := FilterChoices("adult ADHD")
+    Assert queryChoice.Length = 1 && queryChoice[1].Type = "search-query",
+        "Search-service query mode should expose one launchable query choice."
+    Assert StrReplace(searchServices[1].SearchTemplate, "{query}",
+        UrlEncode(queryChoice[1].SearchQuery))
+        = "https://pubmed.ncbi.nlm.nih.gov/?term=adult%20ADHD",
+        "Search-service queries should be URL encoded before template replacement."
+    SearchServiceParent := 0
 
     headerlessOne := []
     ParseSheet "apple`nbanana", {Name: "Quick", Gid: "123"}, headerlessOne
@@ -2365,6 +2494,40 @@ ParseSheet(csv, info, output) {
     if rows.Length = 0
         return
     columns := HeaderMap(rows[1])
+    serviceColumn := columns.Has("service") ? columns["service"] : 0
+    templateColumn := columns.Has("url template") ? columns["url template"]
+        : (columns.Has("url") ? columns["url"] : 0)
+    if serviceColumn && templateColumn {
+        Loop rows.Length - 1 {
+            rowNumber := A_Index + 1
+            row := rows[rowNumber]
+            service := Trim(Cell(row, serviceColumn))
+            template := Trim(Cell(row, templateColumn))
+            if service = "" || !InStr(template, "{query}")
+                || !RegExMatch(template, "i)^https?://")
+                continue
+            output.Push({
+                Type: "search-service",
+                Key: info.Gid ":" rowNumber,
+                Label: service,
+                GroupLabel: service,
+                DisplayText: service "   →",
+                Content: "",
+                HasSavedContent: false,
+                AiPrompt: "",
+                Category: info.Name,
+                Aliases: [],
+                Details: [],
+                DetailSearch: "",
+                DetailOrder: 0,
+                Preview: "Enter a query",
+                EditUrl: EditUrl(info.Gid, rowNumber, templateColumn, templateColumn),
+                IsSearchService: true,
+                SearchTemplate: template
+            })
+        }
+        return
+    }
     hasHeaders := columns.Has("label") || columns.Has("content")
     if !hasHeaders {
         rightmostContentColumn := 0

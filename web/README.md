@@ -9,6 +9,8 @@ works as an installable Progressive Web App.
 - Searches every visible autocomplete tab.
 - Uses Sheet tabs as touch-friendly filters on phones.
 - Opens arbitrary nested detail columns.
+- Opens configurable Search & AI services and accepts their queries in a small
+  second-step dialog.
 - Copies saved text to the clipboard.
 - Opens standalone links and launches saved AI prompts in ChatGPT.
 - Shows recent Sheet items when the search is empty.
@@ -28,6 +30,14 @@ directly is not sufficient.
 
 The first visit asks for a complete public Google Sheets link. Publish the
 workbook using **File → Share → Publish to web** before connecting it.
+
+## Search & AI launchers
+
+Add a `Search & AI` Sheet tab with `Service` and `URL Template` headers. Every
+complete HTTP(S) row containing `{query}` becomes a searchable service. Open a
+service by clicking or tapping it, or select it and press Right Arrow. Enter a
+query and submit to open the encoded URL; Left Arrow returns to the results.
+The shorter `URL` header is accepted for existing Sheets.
 
 ## Hosting
 

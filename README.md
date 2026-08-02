@@ -22,6 +22,27 @@ organization and result context without creating separate search modes.
 When the search is empty, both versions show up to nine recently used Sheet
 items, with direct Command-1–9 or Control-1–9 selection.
 
+### Search & AI launchers
+
+Add a tab named `Search & AI` with two columns:
+
+| Service | URL Template |
+|---|---|
+| Google | `https://www.google.com/search?q={query}` |
+| PubMed | `https://pubmed.ncbi.nlm.nih.gov/?term={query}` |
+| ChatGPT | `https://chatgpt.com/?q={query}` |
+
+Each valid row becomes a normal searchable parent item. Select a service and
+press Right Arrow (or click/tap it on the web) to enter a query, then press
+Return/Enter to open the encoded query in the default browser. Left Arrow
+returns to the same service in the main results. The older header `URL` is also
+accepted, but `URL Template` is clearer for new Sheets.
+
+Templates must contain the exact placeholder `{query}` and begin with
+`https://` or `http://`. Incomplete or invalid rows are ignored. This keeps the
+feature generic: add search engines, AI services, documentation sites, or an
+internal HTTP search tool without changing Trigger Search's code.
+
 Both versions also expand the same small
 [Raycast-style dynamic-placeholder subset](https://manual.raycast.com/dynamic-placeholders)
 at paste time: dates and times with formats or relative offsets,

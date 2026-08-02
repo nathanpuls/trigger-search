@@ -45,6 +45,19 @@
     <div id="details-list" class="details-list"></div>
   </dialog>
 
+  <dialog id="search-service-dialog" class="search-service-dialog">
+    <form id="search-service-form">
+      <div class="dialog-head">
+        <button class="back-button" id="search-service-back" type="button" aria-label="Back">←</button>
+        <h2 id="search-service-title"></h2>
+        <button class="close-button" data-close="search-service-dialog" type="button" aria-label="Close">×</button>
+      </div>
+      <label class="sr-only" for="service-query">Search query</label>
+      <input id="service-query" type="search" placeholder="Enter a query" autocomplete="off">
+      <button class="primary-button" type="submit">Search</button>
+    </form>
+  </dialog>
+
   <dialog id="settings-dialog" class="settings-dialog">
     <form id="settings-form">
       <div class="dialog-head">

@@ -78,6 +78,26 @@ the label and content. With two columns, the left value is the label and the
 right value is the content. Headerless tabs do not provide aliases or nesting;
 a headerless tab with more than two populated columns is ignored.
 
+### Search & AI launchers
+
+Create a tab named `Search & AI` with `Service` in column A and `URL Template`
+in column B. Use `{query}` where Trigger Search should place the typed query:
+
+| Service | URL Template |
+|---|---|
+| Google | `https://www.google.com/search?q={query}` |
+| ChatGPT | `https://chatgpt.com/?q={query}` |
+| PubMed | `https://pubmed.ncbi.nlm.nih.gov/?term={query}` |
+
+Each valid row is a searchable parent item. Select one and press Right Arrow,
+type the query, and press Enter to open it in the default browser. Left Arrow
+returns to the same service in the main results. The older `URL` header is also
+accepted; `URL Template` is recommended for clarity.
+
+Rows missing either value, templates without the exact `{query}` placeholder,
+and non-HTTP(S) templates are skipped quietly. Services can therefore be added,
+removed, or rearranged entirely in Google Sheets without editing AutoHotkey.
+
 ### AI prompts
 
 In a headered tab, place `AI Prompt` in the Label cell of a metadata row

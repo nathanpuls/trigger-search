@@ -42,6 +42,27 @@ Headerless tabs intentionally do not support aliases or nested detail columns.
 A headerless tab with more than two populated columns is ignored so an
 unrelated Sheet is not mistaken for snippet data.
 
+### Search & AI launchers
+
+Create a tab named `Search & AI` with `Service` in column A and `URL Template`
+in column B. Put `{query}` where the typed query belongs:
+
+| Service | URL Template |
+|---|---|
+| Google AI | `https://www.google.com/search?q={query}&udm=50` |
+| PubMed | `https://pubmed.ncbi.nlm.nih.gov/?term={query}` |
+| Wikipedia | `https://en.wikipedia.org/w/index.php?search={query}` |
+
+Each complete row appears as a searchable parent item. Select it and press
+Right Arrow to enter query mode. Type a query and press Return to URL-encode it
+and open the service in the default browser. Left Arrow returns to the same
+service in the main results. `URL` is accepted as a backward-compatible header,
+although `URL Template` is recommended.
+
+Rows missing either value, templates without the exact `{query}` placeholder,
+and non-HTTP(S) templates are skipped quietly. Add or remove compatible
+services in the Sheet without changing the Lua code.
+
 Visible tabs are discovered automatically from the public workbook. Add,
 rename, rearrange, or remove a tab in Google Sheets and the chooser will follow
 on its next refresh. `sheetNames` is empty by default and remains available

@@ -12,6 +12,9 @@ const ui = {
   settings: document.querySelector("#settings-dialog"), sheetUrl: document.querySelector("#sheet-url"),
   details: document.querySelector("#details-dialog"), detailsTitle: document.querySelector("#details-title"),
   detailsList: document.querySelector("#details-list"),
+  searchService: document.querySelector("#search-service-dialog"),
+  searchServiceTitle: document.querySelector("#search-service-title"),
+  serviceQuery: document.querySelector("#service-query"),
 };
 
 const trim = value => String(value ?? "").trim();
@@ -61,6 +64,18 @@ function parseTab(csv, category, gid) {
   const rows = parseCsv(csv).filter(row => row.some(cell => trim(cell) !== ""));
   if (!rows.length) return [];
   const headers = rows[0].map(cell => normalize(cell.replace(/^\uFEFF/, "")));
+  const serviceIndex = headers.indexOf("service");
+  const templateIndex = headers.includes("url template") ? headers.indexOf("url template") : headers.indexOf("url");
+  if (serviceIndex >= 0 && templateIndex >= 0) {
+    return rows.slice(1).map((row, offset) => ({ row, offset })).filter(({ row }) => {
+      const service = trim(row[serviceIndex]), template = trim(row[templateIndex]);
+      return service && template.includes("{query}") && /^https?:\/\//i.test(template);
+    }).map(({ row, offset }) => ({
+      key: `${category}:${offset + 2}`, type: "search-service",
+      label: trim(row[serviceIndex]), content: "", aliases: [], category, gid,
+      row: offset + 2, details: [], aiPrompt: "", urlTemplate: trim(row[templateIndex]),
+    }));
+  }
   const labelIndex = headers.indexOf("label"), contentIndex = headers.indexOf("content"), aliasIndex = headers.indexOf("alias");
   const hasHeaders = labelIndex >= 0 || contentIndex >= 0;
   const firstDataRow = hasHeaders ? 1 : 0;
@@ -199,12 +214,13 @@ function renderResults() {
     const node = ui.template.content.firstElementChild.cloneNode(true);
     node.dataset.key = item.key; node.dataset.selected = String(index === state.selectedIndex);
     const title = node.querySelector(".result-title"); title.textContent = item.label;
-    if (item.details.length) { const arrow = document.createElement("span"); arrow.className = "arrow"; arrow.textContent = "→"; title.append(arrow); }
+    if (item.type === "search-service" || item.details.length) { const arrow = document.createElement("span"); arrow.className = "arrow"; arrow.textContent = "→"; title.append(arrow); }
     node.querySelector(".result-meta").textContent = `${item.category}${trim(item.content) !== item.label ? ` · ${item.content.replace(/\s+/g, " ")}` : ""}`;
     const actions = node.querySelector(".result-actions");
-    actions.append(makeButton("Copy", "Copy", () => copyItem(item)));
+    if (item.type === "search-service") actions.append(makeButton("Search", "Enter a query", () => openSearchService(item)));
+    else actions.append(makeButton("Copy", "Copy", () => copyItem(item)));
     const url = standaloneUrl(item.content); if (url) actions.append(makeButton("Open", "Open link", () => { recordRecent(item); openExternal(url); }));
-    node.querySelector(".result-main").addEventListener("click", () => item.details.length ? openDetails(item) : copyItem(item));
+    node.querySelector(".result-main").addEventListener("click", () => item.type === "search-service" ? openSearchService(item) : (item.details.length ? openDetails(item) : copyItem(item)));
     node.addEventListener("focus", () => { state.selectedIndex = index; document.querySelectorAll(".result").forEach((row, rowIndex) => row.dataset.selected = String(rowIndex === index)); });
     ui.results.append(node);
   });
@@ -232,6 +248,22 @@ function askAi(prompt, item) {
   openExternal(`https://chatgpt.com/?q=${encodeURIComponent(prompt)}`);
 }
 
+function openSearchService(item) {
+  state.searchServiceItem = item;
+  ui.searchServiceTitle.textContent = item.label;
+  ui.serviceQuery.value = "";
+  ui.searchService.showModal();
+  requestAnimationFrame(() => ui.serviceQuery.focus());
+}
+
+function launchSearchService() {
+  const item = state.searchServiceItem, query = trim(ui.serviceQuery.value);
+  if (!item || !query || !item.urlTemplate?.includes("{query}")) return;
+  const url = item.urlTemplate.split("{query}").join(encodeURIComponent(query));
+  if (!/^https?:\/\//i.test(url)) return;
+  recordRecent(item); ui.searchService.close(); openExternal(url);
+}
+
 function openDetails(item) {
   ui.detailsTitle.textContent = item.label; ui.detailsList.replaceChildren();
   item.details.forEach(detail => {
@@ -255,6 +287,8 @@ function openSettings(firstRun) {
 
 document.querySelector("#settings-button").addEventListener("click", () => openSettings(false));
 document.querySelector("#details-back").addEventListener("click", () => ui.details.close());
+document.querySelector("#search-service-back").addEventListener("click", () => { ui.searchService.close(); ui.search.focus(); });
+document.querySelector("#search-service-form").addEventListener("submit", event => { event.preventDefault(); launchSearchService(); });
 document.querySelectorAll("[data-close]").forEach(button => button.addEventListener("click", () => document.querySelector(`#${button.dataset.close}`).close()));
 document.querySelector("#disconnect-button").addEventListener("click", () => { localStorage.removeItem("triggerSearch.sheetId"); state.sheetId = ""; state.items = []; state.categories = []; ui.settings.close(); renderTabs(); renderResults(); openSettings(true); });
 document.querySelector("#settings-form").addEventListener("submit", event => {
@@ -265,10 +299,12 @@ document.querySelector("#settings-form").addEventListener("submit", event => {
 
 ui.search.addEventListener("input", () => { state.query = ui.search.value; state.selectedIndex = 0; renderResults(); });
 document.addEventListener("keydown", event => {
-  if (ui.settings.open || ui.details.open) {
-    if (event.key === "Escape" || (ui.details.open && event.key === "ArrowLeft")) {
+  if (ui.settings.open || ui.details.open || ui.searchService.open) {
+    if (event.key === "Escape" || ((ui.details.open || ui.searchService.open) && event.key === "ArrowLeft")) {
       event.preventDefault();
-      ui.settings.open ? ui.settings.close() : ui.details.close();
+      if (ui.settings.open) ui.settings.close();
+      else if (ui.details.open) ui.details.close();
+      else ui.searchService.close();
       if (!ui.settings.open) ui.search.focus();
     }
     return;
@@ -278,8 +314,8 @@ document.addEventListener("keydown", event => {
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "g" && trim(ui.search.value)) { event.preventDefault(); openExternal(`https://www.google.com/search?q=${encodeURIComponent(trim(ui.search.value))}`); return; }
   if ((event.metaKey || event.ctrlKey) && /^[1-9]$/.test(event.key)) { const item = items[Number(event.key) - 1]; if (item) { event.preventDefault(); copyItem(item); } return; }
   if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); const delta = event.key === "ArrowDown" ? 1 : -1; state.selectedIndex = Math.max(0, Math.min(items.length - 1, state.selectedIndex + delta)); renderResults(); document.querySelectorAll(".result")[state.selectedIndex]?.focus(); return; }
-  if (event.key === "ArrowRight") { const item = items[state.selectedIndex]; if (item?.details.length) { event.preventDefault(); openDetails(item); } return; }
-  if (event.key === "Enter" && document.activeElement === ui.search) { const item = items[state.selectedIndex]; if (item) { event.preventDefault(); item.details.length ? openDetails(item) : copyItem(item); } }
+  if (event.key === "ArrowRight") { const item = items[state.selectedIndex]; if (item?.type === "search-service" || item?.details.length) { event.preventDefault(); item.type === "search-service" ? openSearchService(item) : openDetails(item); } return; }
+  if (event.key === "Enter" && document.activeElement === ui.search) { const item = items[state.selectedIndex]; if (item) { event.preventDefault(); item.type === "search-service" ? openSearchService(item) : (item.details.length ? openDetails(item) : copyItem(item)); } }
   if (event.key === "Escape") { ui.search.value = ""; state.query = ""; renderResults(); }
 });
 
