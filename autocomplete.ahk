@@ -2,8 +2,8 @@
 #SingleInstance Force
 Persistent
 
-; Sheet Autocomplete version 0.13.9
-global AppVersion := "0.13.9"
+; Sheet Autocomplete version 0.13.10
+global AppVersion := "0.13.10"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -50,6 +50,7 @@ global SearchBox := 0
 global ResultsView := 0
 global FooterText := 0
 global PreviewGui := 0
+global ModifierHud := 0
 
 if A_Args.Length > 0 && A_Args[1] = "--self-test"
     RunSelfTestsAndExit()
@@ -79,6 +80,8 @@ Left::CloseDetails()
 ^7::ChooseVisibleByNumber(7)
 ^8::ChooseVisibleByNumber(8)
 ^9::ChooseVisibleByNumber(9)
+~*Ctrl::StartModifierHud()
+~*Ctrl Up::HideModifierHud()
 #HotIf
 
 #HotIf IsPreviewOpen()
@@ -396,6 +399,7 @@ CancelChooser(*) {
     global ChooserOpen, ChooserGui, DetailParent, RootQuery, AtBoundary
     global ActionsForChoice
 
+    HideModifierHud()
     if !ChooserOpen
         return
     ActionsForChoice := 0
@@ -414,6 +418,60 @@ IsChooserOpen(*) {
 IsPreviewOpen(*) {
     global PreviewOpen
     return PreviewOpen
+}
+
+StartModifierHud(*) {
+    SetTimer ShowModifierHud, 0
+    SetTimer ShowModifierHud, -300
+}
+
+HideModifierHud(*) {
+    global ModifierHud
+
+    SetTimer ShowModifierHud, 0
+    if IsObject(ModifierHud) {
+        try ModifierHud.Destroy()
+        ModifierHud := 0
+    }
+}
+
+ShowModifierHud(*) {
+    global ModifierHud, ChooserGui, ActionsForChoice
+
+    if !IsChooserOpen() || ActionsForChoice || !GetKeyState("Ctrl", "P")
+        return
+    choice := SelectedChoice()
+    if !choice || (choice.HasOwnProp("IsUtilityError") && choice.IsUtilityError)
+        return
+
+    hasSavedContent := (!choice.HasOwnProp("HasSavedContent")
+        || choice.HasSavedContent) && Trim(choice.Content) != ""
+    actions := []
+    if choice.HasOwnProp("AiPrompt") && Trim(choice.AiPrompt) != ""
+        actions.Push("Enter   Ask AI")
+    if hasSavedContent
+        actions.Push("C       Copy")
+    if choice.HasOwnProp("EditUrl") && choice.EditUrl != ""
+        actions.Push("E       Edit")
+    if choice.HasOwnProp("Content") && ExtractLaunchUrl(choice.Content) != ""
+        actions.Push("O       Open")
+    if hasSavedContent
+        actions.Push("P       Preview")
+    if actions.Length = 0
+        return
+
+    HideModifierHud()
+    ModifierHud := Gui("+AlwaysOnTop -Caption +ToolWindow +Border +E0x08000000")
+    ModifierHud.BackColor := "F3F3F5"
+    ModifierHud.MarginX := 18
+    ModifierHud.MarginY := 14
+    ModifierHud.SetFont("s10 c29292D", "Segoe UI")
+    for index, label in actions
+        ModifierHud.Add("Text", "xm " (index = 1 ? "" : "y+7 ") "w190", label)
+    ChooserGui.GetPos(&chooserX, &chooserY, &chooserWidth, &chooserHeight)
+    hudX := chooserX + chooserWidth - 230
+    hudY := chooserY + 58
+    ModifierHud.Show("NoActivate AutoSize x" hudX " y" hudY)
 }
 
 SearchChanged(control, info) {
@@ -1099,6 +1157,7 @@ OpenSelectedAction(*) {
 
 OpenSelectedLink(*) {
     global ActionsForChoice
+    HideModifierHud()
     if ActionsForChoice {
         OpenChoiceLink ActionsForChoice, false
         ActionsForChoice := 0
@@ -1153,6 +1212,7 @@ CloseDetails(*) {
 
 EditSelected(*) {
     global ChooserGui, ChooserOpen, ActionsForChoice
+    HideModifierHud()
 
     if ActionsForChoice {
         choice := ActionsForChoice
@@ -1171,6 +1231,7 @@ EditSelected(*) {
 
 CopySelected(*) {
     global ChooserGui, ChooserOpen, AtBoundary, ActionsForChoice
+    HideModifierHud()
 
     if ActionsForChoice {
         choice := ActionsForChoice
@@ -1234,6 +1295,7 @@ UrlEncode(value) {
 
 LaunchSelectedAi(*) {
     global ActionsForChoice
+    HideModifierHud()
     if ActionsForChoice {
         choice := ActionsForChoice
         ActionsForChoice := 0
@@ -1284,6 +1346,7 @@ CopyAiPrompt(choice) {
 ShowActionsMenu(*) {
     global ActionsForChoice, ActionsReturnQuery, ActionsReturnKey
     global SearchBox, VisibleChoices, ResultsView, FooterText, ChooserGui, AiEngine
+    HideModifierHud()
     choice := SelectedChoice()
     if !choice || (choice.HasOwnProp("Type") && choice.Type = "action")
         return
@@ -1360,6 +1423,7 @@ PerformAction(actionId) {
 
 PreviewSelected(*) {
     global ActionsForChoice
+    HideModifierHud()
 
     choice := ActionsForChoice ? ActionsForChoice : SelectedChoice()
     if !choice
@@ -1386,6 +1450,7 @@ PreviewChoice(choice) {
     if IsObject(PreviewGui)
         try PreviewGui.Destroy()
     PreviewGui := Gui("+AlwaysOnTop +ToolWindow", "Preview — " title)
+    PreviewGui.BackColor := "F0F0F2"
     PreviewGui.MarginX := 24
     PreviewGui.MarginY := 20
     PreviewGui.SetFont("s9 c777777 Bold", "Segoe UI")
@@ -1393,7 +1458,7 @@ PreviewChoice(choice) {
     PreviewGui.SetFont("s16 c222222 Bold", "Segoe UI")
     PreviewGui.Add("Text", "xm y+5 w680", title)
     PreviewGui.SetFont("s10 c222222 Norm", "Segoe UI")
-    PreviewGui.Add("Edit", "xm y+16 w680 r24 ReadOnly", expanded.Text)
+    PreviewGui.Add("Edit", "xm y+16 w680 r24 ReadOnly BackgroundF0F0F2", expanded.Text)
     PreviewGui.SetFont("s9 c888888", "Segoe UI")
     PreviewGui.Add("Text", "xm y+10 w680 Right", "Esc to return")
     PreviewGui.OnEvent("Close", ClosePreview)

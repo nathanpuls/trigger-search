@@ -115,7 +115,11 @@ Highlight a result and press Command-E to open its exact row or detail cell in
 Google Sheets for editing. Press Command-C to copy the selected text without
 pasting it. Press Command-P to open the fully expanded text in a scrollable,
 selectable preview without pasting; Escape closes Preview and returns to the
-same result. Press Command-K for a stable list of actions and shortcuts. Actions
+same result. Preview uses a soft gray reading surface so it remains visually
+distinct from the underlying application. Hold Command for 300 ms to reveal a
+small contextual shortcut HUD; keep holding it and press Return for AI, C to
+copy, E to edit, O to open, or P to preview. Only applicable actions appear.
+Press Command-K for the complete actions list. Actions
 that apply use a filled dot; unavailable actions use a hollow dot and dimmed
 text. The actions
 menu begins with `←`, Left Arrow returns to the selected result, and Escape

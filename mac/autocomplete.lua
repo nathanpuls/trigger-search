@@ -18,6 +18,8 @@ local actionReturnQuery = ""
 local actionReturnRow = 1
 local actionReturning = false
 local chooserClickPending = false
+local actionHud
+local actionHudTimer
 local previewWebview
 local previewClosing = false
 local previewReturnQuery = ""
@@ -950,9 +952,77 @@ rankedSnippets = function(query)
   return choices
 end
 
+local function hideActionHud()
+  if actionHudTimer then actionHudTimer:stop(); actionHudTimer = nil end
+  if actionHud then actionHud:delete(); actionHud = nil end
+end
+
+local function showActionHud()
+  actionHudTimer = nil
+  if not chooser or not chooser:isVisible() then return end
+  local flags = hs.eventtap.checkKeyboardModifiers()
+  if not flags.cmd or flags.ctrl or flags.alt or flags.shift then return end
+  local choice = chooser:selectedRowContents()
+  if not choice or choice.isUtilityError then return end
+
+  local hasSavedContent = choice.hasSavedContent ~= false
+    and trim(choice.content) ~= ""
+  local actions = {}
+  if trim(choice.aiPrompt) ~= "" then actions[#actions + 1] = "↵   Ask AI" end
+  if hasSavedContent then actions[#actions + 1] = "C   Copy" end
+  if trim(choice.editUrl) ~= "" then actions[#actions + 1] = "E   Edit" end
+  if extractLaunchUrl(choice.content or "") then
+    actions[#actions + 1] = "O   Open"
+  end
+  if hasSavedContent then actions[#actions + 1] = "P   Preview" end
+  if #actions == 0 then return end
+
+  local width, rowHeight, padding = 210, 29, 15
+  local height = (#actions * rowHeight) + (padding * 2)
+  local screen = hs.mouse.getCurrentScreen() or hs.screen.mainScreen()
+  local screenFrame = screen:frame()
+  local chooserWidth = screenFrame.w * (config.width / 100)
+  local preferredX = screenFrame.x + (screenFrame.w + chooserWidth) / 2 + 12
+  local frame = {
+    x = math.min(preferredX, screenFrame.x + screenFrame.w - width - 16),
+    y = screenFrame.y + (screenFrame.h - height) / 2,
+    w = width,
+    h = height,
+  }
+  local elements = {{
+    type = "rectangle",
+    action = "strokeAndFill",
+    roundedRectRadii = { xRadius = 12, yRadius = 12 },
+    fillColor = { white = 0.96, alpha = 0.98 },
+    strokeColor = { white = 0.72, alpha = 0.9 },
+    strokeWidth = 1,
+  }}
+  for index, label in ipairs(actions) do
+    elements[#elements + 1] = {
+      type = "text",
+      text = label,
+      frame = { x = padding, y = padding + ((index - 1) * rowHeight),
+        w = width - (padding * 2), h = rowHeight },
+      textColor = { white = 0.16, alpha = 1 },
+      textFont = ".AppleSystemUIFont",
+      textSize = 14,
+    }
+  end
+  hideActionHud()
+  actionHud = hs.canvas.new(frame):replaceElements(table.unpack(elements))
+    :level("floating"):behavior({ "canJoinAllSpaces", "stationary" })
+    :show()
+end
+
+local function scheduleActionHud()
+  hideActionHud()
+  actionHudTimer = hs.timer.doAfter(0.3, showActionHud)
+end
+
 local function updateChooserHotkeys()
   local visible = chooser and chooser:isVisible()
   local actionVisible = actionChooser and actionChooser:isVisible()
+  if not visible then hideActionHud() end
   if editHotkey then
     if visible then editHotkey:enable() else editHotkey:disable() end
   end
@@ -1222,12 +1292,16 @@ local function showPreview(choice, returnQuery, returnRow)
 :root { color-scheme: light dark; }
 * { box-sizing: border-box; }
 body { margin: 0; padding: 34px 40px 56px; font: 16px/1.55 -apple-system,
-  BlinkMacSystemFont, "Segoe UI", sans-serif; background: Canvas; color: CanvasText; }
+  BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f0f0f2; color: #202024; }
 .eyebrow { color: #888; font-size: 12px; font-weight: 600; letter-spacing: .08em;
   text-transform: uppercase; }
 h1 { margin: 5px 0 24px; font-size: 24px; line-height: 1.2; }
 .content { white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
 .hint { position: fixed; right: 22px; bottom: 16px; color: #999; font-size: 12px; }
+@media (prefers-color-scheme: dark) {
+  body { background: #29292c; color: #f2f2f4; }
+  .eyebrow, .hint { color: #aaa; }
+}
 </style></head><body><div class="eyebrow">Preview</div><h1>]]
     .. htmlEscape(title) .. [[</h1><div class="content">]]
     .. htmlEscape(expanded) .. [[</div><div class="hint">Esc to return</div></body></html>]]
@@ -1449,6 +1523,16 @@ local uncertainKeyCodes = {
 
 local function watchKey(event)
   local flags = event:getFlags()
+  if event:getType() == hs.eventtap.event.types.flagsChanged then
+    if chooser and chooser:isVisible() and flags.cmd
+        and not flags.ctrl and not flags.alt and not flags.shift then
+      scheduleActionHud()
+    else
+      hideActionHud()
+    end
+    return false
+  end
+
   local typedCharacter = event:getCharacters()
 
   if (chooser and chooser:isVisible())
@@ -1900,7 +1984,10 @@ function M.start(userConfig)
       if cacheMatchesSheet then installSheets(cachedSheets, "local cache") end
     end
   end
-  keyWatcher = hs.eventtap.new({ hs.eventtap.event.types.keyDown }, watchKey):start()
+  keyWatcher = hs.eventtap.new({
+    hs.eventtap.event.types.keyDown,
+    hs.eventtap.event.types.flagsChanged,
+  }, watchKey):start()
   mouseWatcher = hs.eventtap.new({
     hs.eventtap.event.types.leftMouseDown,
     hs.eventtap.event.types.rightMouseDown,
@@ -2011,6 +2098,7 @@ function M.stop()
     previewWebview:delete(); previewWebview = nil
     previewClosing = false
   end
+  hideActionHud()
   if chooser then chooser:delete(); chooser = nil end
   if actionChooser then actionChooser:delete(); actionChooser = nil end
 end

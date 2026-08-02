@@ -37,6 +37,13 @@ Control-P on Windows opens the full expanded text in a readable, selectable
 preview; Escape returns to the same result. Command-K or Control-K opens a
 contextual action menu for the selected result.
 
+Holding Command on Mac or Control on Windows for about 300 ms reveals a compact
+contextual shortcut HUD. Continue holding the modifier and press Return/Enter
+for AI, C to copy, E to edit, O to open, or P to preview. The HUD lists only
+actions that apply to the selected result and disappears when the modifier is
+released. Preview uses a soft gray reading surface to stand apart from the
+underlying application.
+
 Mouse use is deliberately exploratory: clicking a nested parent opens its
 details, while clicking a pasteable result opens that result's Actions menu.
 Keyboard Return/Enter and the numbered shortcuts still paste immediately.
