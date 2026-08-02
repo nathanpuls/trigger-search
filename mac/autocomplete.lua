@@ -198,6 +198,16 @@ local function extractStandaloneLaunchUrl(value)
   return nil
 end
 
+local function normalizeSearchTemplate(value)
+  local template = trim(value)
+  if not template:find("{query}", 1, true) then return nil end
+  if template:lower():match("^https?://[^%s]+$") then return template end
+  if template:match("^[%w%-]+%.[%a][%a]+[^%s]*$") then
+    return "https://" .. template
+  end
+  return nil
+end
+
 local function extractSheetId(value)
   value = trim(value)
   local sheetId = value:match("/spreadsheets/d/([%w_%-]+)")
@@ -789,9 +799,9 @@ local function parseSheet(csv, category)
     local parsed = {}
     for rowIndex = firstLauncherRow, #rows do
       local service = trim(rows[rowIndex][serviceColumn] or "")
-      local template = trim(rows[rowIndex][templateColumn] or "")
-      if service ~= "" and template:find("{query}", 1, true)
-          and template:lower():match("^https?://") then
+      local template = normalizeSearchTemplate(
+        rows[rowIndex][templateColumn] or "")
+      if service ~= "" and template then
         local sheetGid = type(config.sheetGids) == "table"
           and config.sheetGids[category] or nil
         local editUrl

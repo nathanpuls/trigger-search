@@ -61,8 +61,9 @@ Right Arrow to enter query mode. Type a query and press Return to URL-encode it
 and open the service in the default browser. Left Arrow returns to the same
 service in the main results.
 
-Rows missing either value, templates without the exact `{query}` placeholder,
-and non-HTTP(S) templates are skipped quietly. Add or remove compatible
+Rows missing either value and templates without the exact `{query}` placeholder
+are skipped quietly. `https://` and `http://` are accepted, and a recognizable
+domain without a protocol automatically uses HTTPS. Add or remove compatible
 services in the Sheet without changing the Lua code. On tabs with other names,
 the same recognized header pairs still identify the layout for backward
 compatibility. Multiple aliases may be

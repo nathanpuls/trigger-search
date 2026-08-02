@@ -64,6 +64,14 @@ function parseCsv(text) {
   return rows;
 }
 
+function normalizeSearchTemplate(value) {
+  const template = trim(value);
+  if (!template.includes("{query}")) return "";
+  if (/^https?:\/\/\S+$/i.test(template)) return template;
+  if (/^(?:[a-z0-9-]+\.)+[a-z]{2,}\S*$/i.test(template)) return `https://${template}`;
+  return "";
+}
+
 function parseTab(csv, category, gid) {
   const rows = parseCsv(csv).filter(row => row.some(cell => trim(cell) !== ""));
   if (!rows.length) return [];
@@ -95,14 +103,15 @@ function parseTab(csv, category, gid) {
   }
   if (serviceIndex >= 0 && templateIndex >= 0 && (isSearchTab || hasLauncherHeaders)) {
     return rows.slice(firstLauncherRow).map((row, offset) => ({ row, offset })).filter(({ row }) => {
-      const service = trim(row[serviceIndex]), template = trim(row[templateIndex]);
-      return service && template.includes("{query}") && /^https?:\/\//i.test(template);
+      const service = trim(row[serviceIndex]), template = normalizeSearchTemplate(row[templateIndex]);
+      return service && template;
     }).map(({ row, offset }) => ({
       key: `${category}:${offset + firstLauncherRow + 1}`, type: "search-service",
       label: trim(row[serviceIndex]), content: "",
       aliases: serviceAliasIndex >= 0 ? trim(row[serviceAliasIndex]).split(/[,;|\n]/).map(trim).filter(Boolean) : [],
       category, gid,
-      row: offset + firstLauncherRow + 1, details: [], aiPrompt: "", urlTemplate: trim(row[templateIndex]),
+      row: offset + firstLauncherRow + 1, details: [], aiPrompt: "",
+      urlTemplate: normalizeSearchTemplate(row[templateIndex]),
     }));
   }
   const labelIndex = headers.indexOf("label"), contentIndex = headers.indexOf("content"), aliasIndex = headers.indexOf("alias");

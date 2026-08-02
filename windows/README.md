@@ -97,8 +97,9 @@ Each valid row is a searchable parent item. Select one and press Right Arrow,
 type the query, and press Enter to open it in the default browser. Left Arrow
 returns to the same service in the main results.
 
-Rows missing either value, templates without the exact `{query}` placeholder,
-and non-HTTP(S) templates are skipped quietly. Services can therefore be added,
+Rows missing either value and templates without the exact `{query}` placeholder
+are skipped quietly. `https://` and `http://` are accepted, and a recognizable
+domain without a protocol automatically uses HTTPS. Services can therefore be added,
 removed, or rearranged entirely in Google Sheets without editing AutoHotkey.
 On tabs with other names, the same recognized header pairs still identify the
 launcher layout for backward compatibility. Multiple

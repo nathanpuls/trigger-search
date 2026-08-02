@@ -41,8 +41,10 @@ press Right Arrow (or click/tap it on the web) to enter a query, then press
 Return/Enter to open the encoded query in the default browser. Left Arrow
 returns to the same service in the main results.
 
-Templates must contain the exact placeholder `{query}` and begin with
-`https://` or `http://`. Incomplete or invalid rows are ignored. This keeps the
+Templates must contain the exact placeholder `{query}`. `https://` and
+`http://` are accepted, but the protocol is optional for recognizable domains:
+`wikipedia.org/w/index.php?search={query}` automatically uses HTTPS. Incomplete
+or invalid rows are ignored. This keeps the
 feature generic: add search engines, AI services, documentation sites, or an
 internal HTTP search tool without changing Trigger Search's code. On tabs with
 other names, the same recognized header pairs still identify the launcher

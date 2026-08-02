@@ -2,8 +2,8 @@
 #SingleInstance Force
 Persistent
 
-; Sheet Autocomplete version 0.13.17
-global AppVersion := "0.13.17"
+; Sheet Autocomplete version 0.13.18
+global AppVersion := "0.13.18"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -2285,6 +2285,15 @@ RunSelfTests() {
     Assert renamedSearchTab.Length = 1
         && renamedSearchTab[1].IsSearchService,
         "Recognized search headers should remain supported on other tab names."
+
+    protocolFreeSearch := []
+    ParseSheet '"Service","URL Template"`n'
+        . '"Wikipedia","en.wikipedia.org/w/index.php?search={query}"',
+        {Name: "Search", Gid: "460"}, protocolFreeSearch
+    Assert protocolFreeSearch.Length = 1
+        && protocolFreeSearch[1].SearchTemplate
+            = "https://en.wikipedia.org/w/index.php?search={query}",
+        "A protocol-free search template should default safely to HTTPS."
     Snippets := searchServices
     aliasChoice := FilterChoices("pm")
     Assert aliasChoice.Length = 1 && aliasChoice[1].GroupLabel = "PubMed",
@@ -2558,9 +2567,8 @@ ParseSheet(csv, info, output) {
             rowNumber := firstLauncherRow + A_Index - 1
             row := rows[rowNumber]
             service := Trim(Cell(row, serviceColumn))
-            template := Trim(Cell(row, templateColumn))
-            if service = "" || !InStr(template, "{query}")
-                || !RegExMatch(template, "i)^https?://")
+            template := NormalizeSearchTemplate(Cell(row, templateColumn))
+            if service = "" || template = ""
                 continue
             aliases := []
             aliasText := aliasColumn ? Cell(row, aliasColumn) : ""
@@ -2769,6 +2777,17 @@ FirstHeaderColumn(columns, names) {
             return columns[name]
     }
     return 0
+}
+
+NormalizeSearchTemplate(value) {
+    template := Trim(value)
+    if !InStr(template, "{query}")
+        return ""
+    if RegExMatch(template, "i)^https?://\S+$")
+        return template
+    if RegExMatch(template, "i)^(?:[a-z0-9-]+\.)+[a-z]{2,}\S*$")
+        return "https://" template
+    return ""
 }
 
 FallbackHeaderColumn(current, preferred, usedColumns) {

@@ -39,8 +39,10 @@ workbook using **File → Share → Publish to web** before connecting it.
 Add a `Search` Sheet tab. Headers are optional: columns A, B, and C mean service,
 URL template, and optional alias. Recognized headers can be rearranged and are
 `Service`/`Label`/`Name`, `URL Template`/`URL`/`Link`, and
-`Alias`/`Nickname`. Every complete HTTP(S) row containing `{query}` becomes a
-searchable service. Open one by clicking or tapping it, or select it and press Right Arrow.
+`Alias`/`Nickname`. Every valid row containing `{query}` becomes a searchable
+service. HTTP(S) protocols are accepted but optional; recognizable bare domains
+automatically use HTTPS. Open one by clicking or tapping it, or select it and
+press Right Arrow.
 Enter a query and submit to open the encoded URL; Left Arrow returns to the
 results. On other tabs, recognized header pairs continue to identify this
 layout for backward compatibility. Separate multiple
