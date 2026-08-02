@@ -1317,7 +1317,7 @@ local function pasteExpandedContent(expandedContent, cursorLeft)
   end)
 end
 
-local function pasteSnippet(choice)
+local function pasteSnippet(choice, forcePaste)
   if not choice then return end
   if choice.isUtilityError then
     hs.alert.show(choice.text)
@@ -1331,6 +1331,7 @@ local function pasteSnippet(choice)
     end
     return
   end
+  if not forcePaste and openChoiceLink(choice, true) then return end
   local expandedContent, cursorLeft = expandDynamicContent(
     choice.content, hs.pasteboard.getContents() or "")
   recordRecent(choice)
@@ -1573,7 +1574,7 @@ local function copyFromPreview()
 end
 
 local function performAction(actionId, choice)
-  if actionId == "paste" then pasteSnippet(choice)
+  if actionId == "paste" then pasteSnippet(choice, true)
   elseif actionId == "preview" then
     showPreview(choice, actionReturnQuery, actionReturnRow)
   elseif actionId == "copy" then copySnippet(choice)

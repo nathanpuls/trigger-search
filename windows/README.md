@@ -54,9 +54,10 @@ launcher should choose v2 even if another version is also installed.
   an available action and a hollow dot marks an unavailable action, without
   extra warning text. The actions view begins with `←`; Left Arrow returns to the selected
   result and Escape closes Trigger Search completely.
-- Enter always pastes. If the entire snippet is one recognizable web link,
-  Right Arrow opens it in the default browser. Ctrl+O opens the single detected
-  link even when it appears within ordinary text. Explicit `http://` or
+- Enter pastes ordinary snippets. If the entire snippet is one recognizable web
+  link, Enter or Right Arrow opens it in the default browser instead; Paste
+  remains available from Actions. Ctrl+O opens the single detected link even
+  when it appears within ordinary text. Explicit `http://` or
   `https://` links and bare domains such as `example.com/help` work. Multiple
   links are never opened automatically because Trigger Search will not guess.
 - Dates, times, clipboard text, and cursor position can be calculated with the

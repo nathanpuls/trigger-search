@@ -189,6 +189,11 @@ function extractSingleUrl(value) {
   return found.size === 1 ? [...found][0] : "";
 }
 
+function standaloneUrl(value) {
+  const original = trim(value), url = extractSingleUrl(original);
+  return url && (original === url || `https://${original}` === url) ? url : "";
+}
+
 function makeButton(label, title, handler) {
   const button = document.createElement("button");
   button.type = "button"; button.className = "action-button"; button.textContent = label; button.title = title;
@@ -211,6 +216,14 @@ function openExternal(url) {
   if (!opened) location.href = url;
 }
 
+function performPrimaryAction(item) {
+  if (item.type === "search-service") { openSearchService(item); return; }
+  if (item.details.length) { openDetails(item); return; }
+  const url = standaloneUrl(item.content);
+  if (url) { recordRecent(item); openExternal(url); return; }
+  openPreview(item);
+}
+
 function renderResults() {
   const items = rankedItems();
   state.selectedIndex = Math.min(state.selectedIndex, Math.max(0, items.length - 1));
@@ -230,7 +243,7 @@ function renderResults() {
     if (item.type === "search-service") actions.append(makeButton("Search", "Enter a query", () => openSearchService(item)));
     else actions.append(makeIconButton("copy", "Copy", () => copyItem(item)));
     const url = extractSingleUrl(item.content); if (url) actions.append(makeIconButton("arrow-square-out", "Open link", () => { recordRecent(item); openExternal(url); }));
-    node.querySelector(".result-main").addEventListener("click", () => item.type === "search-service" ? openSearchService(item) : (item.details.length ? openDetails(item) : openPreview(item)));
+    node.querySelector(".result-main").addEventListener("click", () => performPrimaryAction(item));
     node.addEventListener("focus", () => { state.selectedIndex = index; document.querySelectorAll(".result").forEach((row, rowIndex) => row.dataset.selected = String(rowIndex === index)); });
     ui.results.append(node);
   });
@@ -297,7 +310,10 @@ function openDetails(item) {
     const url = extractSingleUrl(detail.content); if (url) actions.append(makeIconButton("arrow-square-out", "Open link", () => { recordRecent(item); openExternal(url); }));
     if (trim(detail.aiPrompt)) actions.append(makeButton("Ask AI", "Ask ChatGPT", () => askAi(buildAiPrompt(detail.aiPrompt, item), item)));
     if (trim(detail.content)) block.addEventListener("click", event => {
-      if (!event.target.closest("button")) openPreview(item, detail.content, `${item.label} — ${detail.label}`);
+      if (event.target.closest("button")) return;
+      const directUrl = standaloneUrl(detail.content);
+      if (directUrl) { recordRecent(item); openExternal(directUrl); }
+      else openPreview(item, detail.content, `${item.label} — ${detail.label}`);
     });
     block.append(actions); ui.detailsList.append(block);
   });
@@ -342,7 +358,7 @@ document.addEventListener("keydown", event => {
   if ((event.metaKey || event.ctrlKey) && /^[1-9]$/.test(event.key)) { const item = items[Number(event.key) - 1]; if (item) { event.preventDefault(); copyItem(item); } return; }
   if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); const delta = event.key === "ArrowDown" ? 1 : -1; state.selectedIndex = Math.max(0, Math.min(items.length - 1, state.selectedIndex + delta)); renderResults(); document.querySelectorAll(".result")[state.selectedIndex]?.focus(); return; }
   if (event.key === "ArrowRight") { const item = items[state.selectedIndex]; if (item?.type === "search-service" || item?.details.length) { event.preventDefault(); item.type === "search-service" ? openSearchService(item) : openDetails(item); } return; }
-  if (event.key === "Enter" && document.activeElement === ui.search) { const item = items[state.selectedIndex]; if (item) { event.preventDefault(); item.type === "search-service" ? openSearchService(item) : (item.details.length ? openDetails(item) : openPreview(item)); } }
+  if (event.key === "Enter" && document.activeElement === ui.search) { const item = items[state.selectedIndex]; if (item) { event.preventDefault(); performPrimaryAction(item); } }
   if (event.key === "Escape") { ui.search.value = ""; state.query = ""; renderResults(); }
 });
 

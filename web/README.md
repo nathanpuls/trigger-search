@@ -13,8 +13,9 @@ works as an installable Progressive Web App.
   second-step dialog.
 - Opens saved text in a readable preview by default and provides a dedicated
   Phosphor copy button.
-- Opens the one recognizable link in a result, including a link inside ordinary
-  text, and launches saved AI prompts in ChatGPT.
+- Opens a result immediately when its complete saved value is one recognizable
+  link. A single link inside ordinary text remains available through the open
+  icon, while tapping the row previews the text.
 - Shows recent Sheet items when the search is empty.
 - Supports Up/Down to navigate, Right Arrow to open nested details, Left Arrow
   to return, Enter to preview, Command/Control 1–9 to copy, `/` to focus search,

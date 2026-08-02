@@ -58,9 +58,10 @@ The search field also doubles as a small calculator. Enter a duration such as
 as `90 / 3`. The equals sign is optional. These calculated results appear above
 ordinary Sheet matches and can be read without selecting them.
 
-Return/Enter always pastes. Right Arrow opens a result whose entire content is
-one recognizable web link. Command-O on Mac or Control-O on Windows explicitly
-opens a single link found within a larger snippet. Command-C on Mac or Control-C
+Return/Enter pastes ordinary snippets. When the entire saved value is one
+recognizable web link, Return/Enter opens it in the default browser instead.
+Command-O on Mac or Control-O on Windows explicitly opens a single link found
+within a larger snippet. Command-C on Mac or Control-C
 on Windows copies the selected text without pasting it. Command-P on Mac or
 Control-P on Windows opens the full expanded text in a readable, selectable
 preview; Escape returns to the same result. Command-K or Control-K opens a

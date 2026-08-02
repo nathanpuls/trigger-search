@@ -182,9 +182,10 @@ nested details, their choices appear immediately; press Left Arrow to return
 to the parent item.
 `hello;` types a normal semicolon. `hello ;` opens the chooser.
 
-Return always pastes. When the entire snippet is one recognizable web link,
-Right Arrow opens it in the Mac's default browser. Command-O opens the single
-detected link even when it appears within ordinary text. A link may include
+Return pastes ordinary snippets. When the entire snippet is one recognizable
+web link, Return or Right Arrow opens it in the Mac's default browser instead.
+Paste remains available from Actions. Command-O opens the single detected link
+even when it appears within ordinary text. A link may include
 `http://` or `https://`, or it may be a recognizable bare domain such as
 `example.com/help`. Content containing multiple links is never opened
 automatically because Trigger Search will not guess which link was intended.

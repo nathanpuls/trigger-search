@@ -2,8 +2,8 @@
 #SingleInstance Force
 Persistent
 
-; Sheet Autocomplete version 0.13.15
-global AppVersion := "0.13.15"
+; Sheet Autocomplete version 0.13.16
+global AppVersion := "0.13.16"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -978,6 +978,8 @@ ChooseChoice(choice) {
         return
     }
     if choice.HasOwnProp("IsUtilityError") && choice.IsUtilityError
+        return
+    if OpenChoiceLink(choice, true)
         return
     PasteChoice choice
 }
