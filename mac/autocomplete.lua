@@ -7,6 +7,8 @@ local copyHotkey
 local aiHotkey
 local actionsHotkey
 local previewHotkey
+local previewPasteHotkey
+local previewCopyHotkey
 local openDetailsHotkey
 local openLinkHotkey
 local backHotkey
@@ -24,6 +26,9 @@ local previewWebview
 local previewClosing = false
 local previewReturnQuery = ""
 local previewReturnRow = 1
+local previewChoice
+local previewExpandedContent
+local previewCursorLeft = 0
 local rowChoiceImage
 local bulletChoiceImage
 local hollowChoiceImage
@@ -1022,6 +1027,7 @@ end
 local function updateChooserHotkeys()
   local visible = chooser and chooser:isVisible()
   local actionVisible = actionChooser and actionChooser:isVisible()
+  local previewVisible = previewWebview and previewWebview:isVisible()
   if not visible then hideActionHud() end
   if editHotkey then
     if visible then editHotkey:enable() else editHotkey:disable() end
@@ -1037,6 +1043,14 @@ local function updateChooserHotkeys()
   end
   if previewHotkey then
     if visible then previewHotkey:enable() else previewHotkey:disable() end
+  end
+  if previewPasteHotkey then
+    if previewVisible then previewPasteHotkey:enable()
+    else previewPasteHotkey:disable() end
+  end
+  if previewCopyHotkey then
+    if previewVisible then previewCopyHotkey:enable()
+    else previewCopyHotkey:disable() end
   end
   if openDetailsHotkey then
     if visible then openDetailsHotkey:enable() else openDetailsHotkey:disable() end
@@ -1117,23 +1131,8 @@ local function closeDetails()
   updateChooserHotkeys()
 end
 
-local function pasteSnippet(choice)
-  if not choice then return end
-  if choice.isUtilityError then
-    hs.alert.show(choice.text)
-    return
-  end
-  if choice.hasSavedContent == false or trim(choice.content) == "" then
-    if trim(choice.aiPrompt) ~= "" then
-      launchAiPrompt(choice)
-    else
-      hs.alert.show("No saved text or AI prompt is configured")
-    end
-    return
-  end
+local function pasteExpandedContent(expandedContent, cursorLeft)
   local oldClipboard = hs.pasteboard.getContents()
-  local expandedContent, cursorLeft = expandDynamicContent(
-    choice.content, oldClipboard or "")
   hs.pasteboard.setContents(expandedContent)
 
   local targetApp = previousApp
@@ -1160,6 +1159,25 @@ local function pasteSnippet(choice)
       end
     end
   end)
+end
+
+local function pasteSnippet(choice)
+  if not choice then return end
+  if choice.isUtilityError then
+    hs.alert.show(choice.text)
+    return
+  end
+  if choice.hasSavedContent == false or trim(choice.content) == "" then
+    if trim(choice.aiPrompt) ~= "" then
+      launchAiPrompt(choice)
+    else
+      hs.alert.show("No saved text or AI prompt is configured")
+    end
+    return
+  end
+  local expandedContent, cursorLeft = expandDynamicContent(
+    choice.content, hs.pasteboard.getContents() or "")
+  pasteExpandedContent(expandedContent, cursorLeft)
 end
 
 local function editSnippet(choice)
@@ -1269,8 +1287,10 @@ local function showPreview(choice, returnQuery, returnRow)
 
   previewReturnQuery = returnQuery or (chooser and chooser:query()) or ""
   previewReturnRow = returnRow or (chooser and chooser:selectedRow()) or 1
-  local expanded = expandDynamicContent(
+  local expanded, cursorLeft = expandDynamicContent(
     choice.content, hs.pasteboard.getContents() or "")
+  previewExpandedContent = expanded
+  previewCursorLeft = cursorLeft
   local title
   if trim(choice.detailName) ~= "" and trim(choice.groupLabel) ~= "" then
     title = choice.groupLabel .. " — " .. choice.detailName
@@ -1291,20 +1311,18 @@ local function showPreview(choice, returnQuery, returnRow)
 <!doctype html><html><head><meta charset="utf-8"><style>
 :root { color-scheme: light dark; }
 * { box-sizing: border-box; }
-body { margin: 0; padding: 34px 40px 56px; font: 16px/1.55 -apple-system,
+body { margin: 0; padding: 34px 40px 62px; font: 16px/1.55 -apple-system,
   BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f0f0f2; color: #202024; }
-.eyebrow { color: #888; font-size: 12px; font-weight: 600; letter-spacing: .08em;
-  text-transform: uppercase; }
-h1 { margin: 5px 0 24px; font-size: 24px; line-height: 1.2; }
+h1 { margin: 0 0 24px; font-size: 24px; line-height: 1.2; }
 .content { white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
-.hint { position: fixed; right: 22px; bottom: 16px; color: #999; font-size: 12px; }
+.hint { position: fixed; right: 22px; bottom: 16px; color: #888; font-size: 12px; }
 @media (prefers-color-scheme: dark) {
   body { background: #29292c; color: #f2f2f4; }
-  .eyebrow, .hint { color: #aaa; }
+  .hint { color: #aaa; }
 }
-</style></head><body><div class="eyebrow">Preview</div><h1>]]
+</style></head><body><h1>]]
     .. htmlEscape(title) .. [[</h1><div class="content">]]
-    .. htmlEscape(expanded) .. [[</div><div class="hint">Esc to return</div></body></html>]]
+    .. htmlEscape(expanded) .. [[</div><div class="hint">P&nbsp;&nbsp;Paste&nbsp;&nbsp;&nbsp;&nbsp; C&nbsp;&nbsp;Copy&nbsp;&nbsp;&nbsp;&nbsp; Esc&nbsp;&nbsp;Return</div></body></html>]]
 
   if actionChooser and actionChooser:isVisible() then actionChooser:hide() end
   if chooser and chooser:isVisible() then chooser:hide() end
@@ -1314,10 +1332,11 @@ h1 { margin: 5px 0 24px; font-size: 24px; line-height: 1.2; }
     previewWebview = nil
     previewClosing = false
   end
+  previewChoice = choice
 
   local webview = hs.webview.new(frame)
     :windowStyle({ "titled", "closable", "resizable" })
-    :windowTitle("Preview — " .. title)
+    :windowTitle("")
     :allowTextEntry(true)
     :closeOnEscape(true)
     :deleteOnClose(true)
@@ -1326,12 +1345,42 @@ h1 { margin: 5px 0 24px; font-size: 24px; line-height: 1.2; }
   webview:windowCallback(function(action, closedWebview)
     if action == "closing" and closedWebview == previewWebview then
       previewWebview = nil
+      previewChoice = nil
+      previewExpandedContent = nil
+      previewCursorLeft = 0
+      updateChooserHotkeys()
       if not previewClosing then
         hs.timer.doAfter(0, restoreAfterPreview)
       end
     end
   end)
   webview:bringToFront(true):show()
+  if previewPasteHotkey then previewPasteHotkey:enable() end
+  if previewCopyHotkey then previewCopyHotkey:enable() end
+end
+
+local function pasteFromPreview()
+  if not previewChoice or previewExpandedContent == nil then return end
+  local expanded = previewExpandedContent
+  local cursorLeft = previewCursorLeft
+  if previewWebview then
+    previewClosing = true
+    local webview = previewWebview
+    previewWebview = nil
+    webview:delete()
+    previewClosing = false
+  end
+  previewChoice = nil
+  previewExpandedContent = nil
+  previewCursorLeft = 0
+  updateChooserHotkeys()
+  pasteExpandedContent(expanded, cursorLeft)
+end
+
+local function copyFromPreview()
+  if not previewChoice or previewExpandedContent == nil then return end
+  hs.pasteboard.setContents(previewExpandedContent)
+  hs.alert.show("Copied")
 end
 
 local function performAction(actionId, choice)
@@ -1927,6 +1976,9 @@ function M.start(userConfig)
     end
   end)
 
+  previewPasteHotkey = hs.hotkey.new({}, "p", pasteFromPreview)
+  previewCopyHotkey = hs.hotkey.new({}, "c", copyFromPreview)
+
   openDetailsHotkey = hs.hotkey.new({}, "right", function()
     if chooser and chooser:isVisible() then
       openSelectedAction(chooser:selectedRowContents())
@@ -2075,6 +2127,14 @@ function M.stop()
   end
   if previewHotkey then
     previewHotkey:disable(); previewHotkey:delete(); previewHotkey = nil
+  end
+  if previewPasteHotkey then
+    previewPasteHotkey:disable(); previewPasteHotkey:delete()
+    previewPasteHotkey = nil
+  end
+  if previewCopyHotkey then
+    previewCopyHotkey:disable(); previewCopyHotkey:delete()
+    previewCopyHotkey = nil
   end
   if openDetailsHotkey then
     openDetailsHotkey:disable(); openDetailsHotkey:delete(); openDetailsHotkey = nil

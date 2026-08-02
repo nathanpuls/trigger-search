@@ -2,8 +2,8 @@
 #SingleInstance Force
 Persistent
 
-; Sheet Autocomplete version 0.13.10
-global AppVersion := "0.13.10"
+; Sheet Autocomplete version 0.13.11
+global AppVersion := "0.13.11"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -50,6 +50,8 @@ global SearchBox := 0
 global ResultsView := 0
 global FooterText := 0
 global PreviewGui := 0
+global PreviewChoiceValue := 0
+global PreviewExpanded := 0
 global ModifierHud := 0
 
 if A_Args.Length > 0 && A_Args[1] = "--self-test"
@@ -86,6 +88,8 @@ Left::CloseDetails()
 
 #HotIf IsPreviewOpen()
 *Esc::ClosePreview()
+p::PastePreview()
+c::CopyPreview()
 #HotIf
 
 ~LButton::ResetBoundary()
@@ -862,8 +866,6 @@ ChooseChoice(choice) {
 }
 
 PasteChoice(choice) {
-    global TargetWindow, ChooserGui, ChooserOpen, AtBoundary
-
     if choice.HasOwnProp("HasSavedContent") && !choice.HasSavedContent {
         if choice.HasOwnProp("AiPrompt") && Trim(choice.AiPrompt) != ""
             LaunchAiPrompt choice
@@ -872,8 +874,14 @@ PasteChoice(choice) {
         return
     }
     clipboardText := A_Clipboard
-    savedClipboard := ClipboardAll()
     expanded := ExpandDynamicContent(choice.Content, clipboardText)
+    PasteExpanded expanded
+}
+
+PasteExpanded(expanded) {
+    global TargetWindow, ChooserGui, ChooserOpen, AtBoundary
+
+    savedClipboard := ClipboardAll()
     ChooserGui.Hide()
     ChooserOpen := false
     A_Clipboard := expanded.Text
@@ -1434,7 +1442,8 @@ PreviewSelected(*) {
 }
 
 PreviewChoice(choice) {
-    global PreviewGui, PreviewOpen, ChooserGui
+    global PreviewGui, PreviewOpen, ChooserGui, PreviewChoiceValue
+    global PreviewExpanded
 
     if !choice || (choice.HasOwnProp("HasSavedContent")
         && !choice.HasSavedContent) || Trim(choice.Content) = "" {
@@ -1449,28 +1458,29 @@ PreviewChoice(choice) {
 
     if IsObject(PreviewGui)
         try PreviewGui.Destroy()
-    PreviewGui := Gui("+AlwaysOnTop +ToolWindow", "Preview — " title)
+    PreviewGui := Gui("+AlwaysOnTop +ToolWindow", "")
     PreviewGui.BackColor := "F0F0F2"
     PreviewGui.MarginX := 24
     PreviewGui.MarginY := 20
-    PreviewGui.SetFont("s9 c777777 Bold", "Segoe UI")
-    PreviewGui.Add("Text", "xm w680", "PREVIEW")
     PreviewGui.SetFont("s16 c222222 Bold", "Segoe UI")
-    PreviewGui.Add("Text", "xm y+5 w680", title)
+    PreviewGui.Add("Text", "xm w680", title)
     PreviewGui.SetFont("s10 c222222 Norm", "Segoe UI")
     PreviewGui.Add("Edit", "xm y+16 w680 r24 ReadOnly BackgroundF0F0F2", expanded.Text)
     PreviewGui.SetFont("s9 c888888", "Segoe UI")
-    PreviewGui.Add("Text", "xm y+10 w680 Right", "Esc to return")
+    PreviewGui.Add("Text", "xm y+10 w680 Right", "P  Paste     C  Copy     Esc  Return")
     PreviewGui.OnEvent("Close", ClosePreview)
     PreviewGui.OnEvent("Escape", ClosePreview)
 
     ChooserGui.Hide()
+    PreviewChoiceValue := choice
+    PreviewExpanded := expanded
     PreviewOpen := true
     PreviewGui.Show("w728 h590 Center")
 }
 
-ClosePreview(*) {
+ClosePreview(restoreChooser := true) {
     global PreviewGui, PreviewOpen, ChooserGui, SearchBox, ChooserOpen
+    global PreviewChoiceValue, PreviewExpanded
 
     if !PreviewOpen
         return
@@ -1479,10 +1489,32 @@ ClosePreview(*) {
         try PreviewGui.Destroy()
         PreviewGui := 0
     }
-    if ChooserOpen {
+    PreviewChoiceValue := 0
+    PreviewExpanded := 0
+    if restoreChooser && ChooserOpen {
         ChooserGui.Show()
         SearchBox.Focus()
     }
+}
+
+PastePreview(*) {
+    global PreviewChoiceValue, PreviewExpanded
+
+    if !PreviewChoiceValue || !PreviewExpanded
+        return
+    expanded := PreviewExpanded
+    ClosePreview(false)
+    PasteExpanded expanded
+}
+
+CopyPreview(*) {
+    global PreviewChoiceValue, PreviewExpanded
+
+    if !PreviewChoiceValue || !PreviewExpanded
+        return
+    A_Clipboard := PreviewExpanded.Text
+    ClipWait 1
+    TrayTip "Copied", "Trigger Search"
 }
 
 CloseActions(*) {

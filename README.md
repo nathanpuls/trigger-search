@@ -42,7 +42,8 @@ contextual shortcut HUD. Continue holding the modifier and press Return/Enter
 for AI, C to copy, E to edit, O to open, or P to preview. The HUD lists only
 actions that apply to the selected result and disappears when the modifier is
 released. Preview uses a soft gray reading surface to stand apart from the
-underlying application.
+underlying application. Its title appears only once; inside Preview, P pastes
+the displayed text, C copies all of it, and Escape returns to the chooser.
 
 Mouse use is deliberately exploratory: clicking a nested parent opens its
 details, while clicking a pasteable result opens that result's Actions menu.

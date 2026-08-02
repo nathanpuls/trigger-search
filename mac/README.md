@@ -114,8 +114,10 @@ choice. Return and Command-number remain the fast keyboard paths for pasting.
 Highlight a result and press Command-E to open its exact row or detail cell in
 Google Sheets for editing. Press Command-C to copy the selected text without
 pasting it. Press Command-P to open the fully expanded text in a scrollable,
-selectable preview without pasting; Escape closes Preview and returns to the
-same result. Preview uses a soft gray reading surface so it remains visually
+selectable preview without pasting. The reading window shows the snippet title
+only once, with no redundant Preview label or title-bar text. Press P there to
+paste the displayed text, C to copy all of it, or Escape to return to the same
+result. Preview uses a soft gray reading surface so it remains visually
 distinct from the underlying application. Hold Command for 300 ms to reveal a
 small contextual shortcut HUD; keep holding it and press Return for AI, C to
 copy, E to edit, O to open, or P to preview. Only applicable actions appear.
