@@ -40,7 +40,6 @@ local refresh
 local promptForGoogleSheet
 local rankedSnippets
 local showChooser
-local setMainChooserChoices
 local updateLauncherHotkey
 local showActions
 local launchAiPrompt
@@ -54,9 +53,8 @@ local detailParent
 local rootQuery = ""
 local returnParentCategory
 local returnParentRow
-local chooserAnchorPoint
-local chooserVisibleRows = -1
 local sheetSettingKey = "triggerSearchSheetId"
+local recentLimit = 9
 
 local config = {
   sheetId = "",
@@ -68,38 +66,9 @@ local config = {
   aiEngine = "ChatGPT",
   cachePath = hs.configdir .. "/autocomplete-snippets-cache.json",
   refreshInterval = 60,
-  rows = 10,
+  rows = 9,
   width = 42,
 }
-
-local function mainChooserAnchor()
-  local targetWindow = hs.window.focusedWindow()
-  local screen = targetWindow and targetWindow:screen() or hs.screen.mainScreen()
-  local frame = screen:frame()
-  local widthPercent = tonumber(config.width) or 42
-  local chooserWidth = frame.w * widthPercent / 100
-  return {
-    x = frame.x + (frame.w - chooserWidth) / 2,
-    y = frame.y + frame.h * 0.16,
-  }
-end
-
-setMainChooserChoices = function(choices)
-  if not chooser then return end
-  choices = choices or {}
-  local maximumRows = math.max(1, math.floor(tonumber(config.rows) or 10))
-  local visibleRows = math.min(#choices, maximumRows)
-  local sizeChanged = visibleRows ~= chooserVisibleRows
-  chooserVisibleRows = visibleRows
-  chooser:rows(visibleRows)
-  chooser:choices(choices)
-
-  -- hs.chooser recalculates its window frame when shown. Showing an already
-  -- visible chooser at the same point redraws it in place without closing it.
-  if sizeChanged and chooser:isVisible() then
-    chooser:show(chooserAnchorPoint or mainChooserAnchor())
-  end
-end
 
 local function trim(value)
   return (tostring(value or ""):gsub("^%s+", ""):gsub("%s+$", ""))
@@ -122,6 +91,64 @@ local function nestedDisplayText(label)
   return styled:setStyle({
     font = { name = ".AppleSystemUIFont", size = 17 },
   }, -1, -1)
+end
+
+local function recentSettingsKey()
+  if trim(config.sheetId) == "" then return nil end
+  return "triggerSearchRecentItems." .. config.sheetId
+end
+
+local function sameRecentItem(entry, choice)
+  return type(entry) == "table"
+    and trim(entry.category) == trim(choice.category)
+    and trim(entry.groupLabel) == trim(choice.groupLabel)
+    and trim(entry.detailName) == trim(choice.detailName)
+end
+
+local function recordRecent(choice)
+  if not choice or choice.isUtility or choice.isUtilityError
+      or trim(choice.category) == "" or trim(choice.groupLabel) == "" then
+    return
+  end
+  local key = recentSettingsKey()
+  if not key then return end
+  local saved = hs.settings.get(key)
+  if type(saved) ~= "table" then saved = {} end
+  local updated = {{
+    category = choice.category,
+    groupLabel = choice.groupLabel,
+    detailName = choice.detailName or "",
+  }}
+  for _, entry in ipairs(saved) do
+    if not sameRecentItem(entry, choice) and #updated < recentLimit then
+      updated[#updated + 1] = entry
+    end
+  end
+  hs.settings.set(key, updated)
+end
+
+local function recentChoices()
+  local key = recentSettingsKey()
+  local saved = key and hs.settings.get(key) or nil
+  if type(saved) ~= "table" then return {} end
+
+  local choices = {}
+  for _, entry in ipairs(saved) do
+    for _, snippet in ipairs(snippets) do
+      if sameRecentItem(entry, snippet) then
+        local choice = {}
+        for field, value in pairs(snippet) do choice[field] = value end
+        if choice.isDetail then
+          choice.text = choice.groupLabel .. " — " .. choice.detailName
+          choice.label = choice.text
+        end
+        choices[#choices + 1] = choice
+        break
+      end
+    end
+    if #choices >= recentLimit then break end
+  end
+  return choices
 end
 
 local function stripUrlPunctuation(value)
@@ -897,9 +924,7 @@ local function installSheets(sheetCsvs, source)
   end
   newSnippetTargets = targets
   if updateLauncherHotkey then updateLauncherHotkey() end
-  if chooser then
-    setMainChooserChoices(rankedSnippets(chooser:query() or ""))
-  end
+  if chooser then chooser:choices(rankedSnippets(chooser:query() or "")) end
   print(string.format("Mac autocomplete: loaded %d snippets from %s", #snippets, source))
   return true
 end
@@ -907,9 +932,9 @@ end
 rankedSnippets = function(query)
   local needle = trim(query):lower()
 
-  -- The root chooser is intentionally search-first instead of an alphabetical
-  -- browser. Nested views still reveal their choices immediately.
-  if not detailParent and needle == "" then return {} end
+  -- The root chooser opens with locally remembered Sheet items. Typing still
+  -- searches the complete workbook; nested views reveal their saved details.
+  if not detailParent and needle == "" then return recentChoices() end
 
   local matches = {}
   for _, snippet in ipairs(snippets) do
@@ -1117,7 +1142,7 @@ local function openDetails(choice)
   detailParent = choice
   chooser:placeholderText("←  " .. choice.groupLabel)
   chooser:query("")
-  setMainChooserChoices(rankedSnippets(""))
+  chooser:choices(rankedSnippets(""))
   updateChooserHotkeys()
 end
 
@@ -1132,6 +1157,7 @@ local function openChoiceLink(choice, standaloneOnly)
     launchUrl = extractLaunchUrl(expandedContent)
   end
   if not launchUrl then return false end
+  recordRecent(choice)
   chooser:hide()
   atBoundary = true
   hs.urlevent.openURL(launchUrl)
@@ -1154,7 +1180,7 @@ local function closeDetails()
   chooser:placeholderText(rootPlaceholder())
   chooser:query(rootQuery)
   local choices = rankedSnippets(rootQuery)
-  setMainChooserChoices(choices)
+  chooser:choices(choices)
   for index, choice in ipairs(choices) do
     if not choice.isDetail and choice.category == returnParentCategory
         and choice.rowIndex == returnParentRow then
@@ -1211,11 +1237,13 @@ local function pasteSnippet(choice)
   end
   local expandedContent, cursorLeft = expandDynamicContent(
     choice.content, hs.pasteboard.getContents() or "")
+  recordRecent(choice)
   pasteExpandedContent(expandedContent, cursorLeft)
 end
 
 local function editSnippet(choice)
   if not choice or not choice.editUrl then return end
+  recordRecent(choice)
   chooser:hide()
   hs.urlevent.openURL(choice.editUrl)
 end
@@ -1228,6 +1256,7 @@ local function copySnippet(choice)
   end
   local expandedContent = expandDynamicContent(
     choice.content, hs.pasteboard.getContents() or "")
+  recordRecent(choice)
   hs.pasteboard.setContents(expandedContent)
   chooser:hide()
   atBoundary = true
@@ -1266,6 +1295,7 @@ local function copyAiPrompt(choice)
     hs.alert.show("No AI prompt is configured for this item")
     return false
   end
+  recordRecent(choice)
   hs.pasteboard.setContents(prompt)
   return true
 end
@@ -1276,6 +1306,7 @@ launchAiPrompt = function(choice)
     hs.alert.show("No AI prompt is configured for this item")
     return
   end
+  recordRecent(choice)
   hs.pasteboard.setContents(prompt)
   chooser:hide()
   atBoundary = true
@@ -1295,9 +1326,9 @@ local function restoreAfterActions()
   chooser:placeholderText(detailParent and ("←  " .. detailParent.groupLabel)
     or rootPlaceholder())
   chooser:query(actionReturnQuery)
-  setMainChooserChoices(rankedSnippets(actionReturnQuery))
+  chooser:choices(rankedSnippets(actionReturnQuery))
   if actionReturnRow and actionReturnRow > 0 then chooser:selectedRow(actionReturnRow) end
-  chooser:show(chooserAnchorPoint or mainChooserAnchor())
+  chooser:show()
 end
 
 local function restoreAfterPreview()
@@ -1305,11 +1336,11 @@ local function restoreAfterPreview()
   chooser:placeholderText(detailParent and ("←  " .. detailParent.groupLabel)
     or rootPlaceholder())
   chooser:query(previewReturnQuery)
-  setMainChooserChoices(rankedSnippets(previewReturnQuery))
+  chooser:choices(rankedSnippets(previewReturnQuery))
   if previewReturnRow and previewReturnRow > 0 then
     chooser:selectedRow(previewReturnRow)
   end
-  chooser:show(chooserAnchorPoint or mainChooserAnchor())
+  chooser:show()
 end
 
 local function showPreview(choice, returnQuery, returnRow)
@@ -1318,6 +1349,8 @@ local function showPreview(choice, returnQuery, returnRow)
     hs.alert.show("No saved text is available to preview")
     return
   end
+
+  recordRecent(choice)
 
   previewReturnQuery = returnQuery or (chooser and chooser:query()) or ""
   previewReturnRow = returnRow or (chooser and chooser:selectedRow()) or 1
@@ -1493,9 +1526,8 @@ showChooser = function()
   returnParentRow = nil
   chooser:placeholderText(rootPlaceholder())
   chooser:query("")
-  chooserAnchorPoint = mainChooserAnchor()
-  setMainChooserChoices(rankedSnippets(""))
-  chooser:show(chooserAnchorPoint)
+  chooser:choices(rankedSnippets(""))
+  chooser:show()
   refresh()
 end
 
@@ -1919,6 +1951,7 @@ end
 function M.start(userConfig)
   if keyWatcher then M.stop() end
   for key, value in pairs(userConfig or {}) do config[key] = value end
+  config.rows = recentLimit
   local savedSheetId = trim(hs.settings.get(sheetSettingKey))
   if savedSheetId ~= "" then
     config.sheetId = savedSheetId
@@ -1944,7 +1977,7 @@ function M.start(userConfig)
       if not detailParent and not choice.isDetail and choice.detailCount
           and choice.detailCount > 0 then
         openDetails(choice)
-        chooser:show(chooserAnchorPoint or mainChooserAnchor())
+        chooser:show()
       elseif not choice.isUtilityError then
         showActions()
       end
@@ -1954,11 +1987,11 @@ function M.start(userConfig)
   end)
     :placeholderText(rootPlaceholder())
     :searchSubText(true)
-    :rows(0)
+    :rows(config.rows)
     :width(config.width)
     :queryChangedCallback(function(query)
       if not detailParent then rootQuery = query end
-      setMainChooserChoices(rankedSnippets(query))
+      chooser:choices(rankedSnippets(query))
     end)
     :showCallback(function()
       updateChooserHotkeys()

@@ -2,8 +2,8 @@
 #SingleInstance Force
 Persistent
 
-; Sheet Autocomplete version 0.13.11
-global AppVersion := "0.13.11"
+; Sheet Autocomplete version 0.13.12
+global AppVersion := "0.13.12"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -36,6 +36,8 @@ global ChooserOpen := false
 global PreviewOpen := false
 global SheetInfos := []
 global Snippets := []
+global RecentItems := []
+global RecentLimit := 9
 global VisibleChoices := []
 global DetailParent := 0
 global RootQuery := ""
@@ -104,6 +106,7 @@ Initialize() {
     DirCreate CacheDir
     A_IconTip := "Trigger Search v" AppVersion
     LoadSheetConfiguration()
+    LoadRecentItems()
     LoadCache()
     BuildChooser()
     InstallTrigger(Trigger)
@@ -143,7 +146,7 @@ BuildChooser() {
     SearchBox := ChooserGui.Add("Edit", "xm w730 h30 vQuery")
     ResultsView := ChooserGui.Add(
         "ListView",
-        "xm y+8 w730 r12 -Multi -Hdr",
+        "xm y+8 w730 r9 -Multi -Hdr",
         ["Shortcut", "Label", "Details"]
     )
     ResultsView.ModifyCol(1, 65)
@@ -392,10 +395,10 @@ PositionChooser(targetHwnd) {
     try {
         WinGetPos &x, &y, &width, &height, "ahk_id " targetHwnd
         left := x + Floor((width - 760) / 2)
-        top := y + Max(40, Floor((height - 475) / 3))
-        ChooserGui.Show("w760 h475 x" left " y" top)
+        top := y + Max(40, Floor((height - 405) / 3))
+        ChooserGui.Show("w760 h405 x" left " y" top)
     } catch {
-        ChooserGui.Show("w760 h475 Center")
+        ChooserGui.Show("w760 h405 Center")
     }
 }
 
@@ -672,10 +675,10 @@ FilterChoices(query) {
     global Snippets, DetailParent
 
     needle := StrLower(Trim(query))
-    ; Keep the root view blank until the user searches. Nested views continue
-    ; to reveal their choices immediately.
+    ; The root view opens with locally remembered Sheet items. Typing searches
+    ; the complete workbook; nested views reveal their saved details.
     if !DetailParent && needle = ""
-        return []
+        return RecentChoices()
     ranked := []
     source := DetailParent ? DetailParent.Details : Snippets
 
@@ -734,6 +737,72 @@ FilterChoices(query) {
         choices.Push(utility)
     for entry in ranked
         choices.Push(entry.Item)
+    return choices
+}
+
+SameRecentItem(entry, choice) {
+    detailName := choice.HasOwnProp("DetailName") ? choice.DetailName : ""
+    return StrLower(Trim(entry.Category)) = StrLower(Trim(choice.Category))
+        && StrLower(Trim(entry.GroupLabel)) = StrLower(Trim(choice.GroupLabel))
+        && StrLower(Trim(entry.DetailName)) = StrLower(Trim(detailName))
+}
+
+RecordRecent(choice) {
+    global RecentItems, RecentLimit
+
+    if !choice || !choice.HasOwnProp("Category")
+        || !choice.HasOwnProp("GroupLabel")
+        || (choice.HasOwnProp("Type") && choice.Type = "utility")
+        || Trim(choice.Category) = "" || Trim(choice.GroupLabel) = ""
+        return
+
+    detailName := choice.HasOwnProp("DetailName") ? choice.DetailName : ""
+    updated := [{
+        Category: choice.Category,
+        GroupLabel: choice.GroupLabel,
+        DetailName: detailName
+    }]
+    for entry in RecentItems {
+        if !SameRecentItem(entry, choice) && updated.Length < RecentLimit
+            updated.Push(entry)
+    }
+    RecentItems := updated
+    SaveRecentItems()
+}
+
+RecentChoices() {
+    global RecentItems, RecentLimit, Snippets
+
+    choices := []
+    for entry in RecentItems {
+        found := false
+        for root in Snippets {
+            if StrLower(Trim(entry.Category)) != StrLower(Trim(root.Category))
+                || StrLower(Trim(entry.GroupLabel)) != StrLower(Trim(root.GroupLabel))
+                continue
+
+            if Trim(entry.DetailName) = "" {
+                choices.Push(root)
+                found := true
+            } else {
+                for detail in root.Details {
+                    if StrLower(Trim(entry.DetailName))
+                        = StrLower(Trim(detail.DetailName)) {
+                        recent := detail.Clone()
+                        recent.DisplayText := recent.GroupLabel " — " recent.DetailName
+                        recent.Label := recent.DisplayText
+                        choices.Push(recent)
+                        found := true
+                        break
+                    }
+                }
+            }
+            if found
+                break
+        }
+        if choices.Length >= RecentLimit
+            break
+    }
     return choices
 }
 
@@ -873,6 +942,7 @@ PasteChoice(choice) {
             TrayTip "No saved text or AI prompt is configured.", "Trigger Search"
         return
     }
+    RecordRecent choice
     clipboardText := A_Clipboard
     expanded := ExpandDynamicContent(choice.Content, clipboardText)
     PasteExpanded expanded
@@ -1185,6 +1255,7 @@ OpenChoiceLink(choice, standaloneOnly := false) {
         : ExtractLaunchUrl(expanded.Text)
     if launchUrl = ""
         return false
+    RecordRecent choice
     ChooserGui.Hide()
     ChooserOpen := false
     AtBoundary := true
@@ -1232,6 +1303,7 @@ EditSelected(*) {
     choice := SelectedChoice()
     if !choice || !choice.EditUrl
         return
+    RecordRecent choice
     ChooserGui.Hide()
     ChooserOpen := false
     Run choice.EditUrl
@@ -1255,6 +1327,7 @@ CopySelected(*) {
         TrayTip "No saved text to copy.", "Trigger Search"
         return
     }
+    RecordRecent choice
     expanded := ExpandDynamicContent(choice.Content, A_Clipboard)
     ChooserGui.Hide()
     ChooserOpen := false
@@ -1322,6 +1395,7 @@ LaunchAiPrompt(choice) {
         TrayTip "No AI prompt is configured for this item.", "Trigger Search"
         return
     }
+    RecordRecent choice
     A_Clipboard := prompt
     ClipWait 1
     ChooserGui.Hide()
@@ -1344,6 +1418,7 @@ CopyAiPrompt(choice) {
         TrayTip "No AI prompt is configured for this item.", "Trigger Search"
         return
     }
+    RecordRecent choice
     A_Clipboard := prompt
     ClipWait 1
     ChooserGui.Hide()
@@ -1451,6 +1526,8 @@ PreviewChoice(choice) {
         return
     }
 
+    RecordRecent choice
+
     expanded := ExpandDynamicContent(choice.Content, A_Clipboard)
     title := choice.HasOwnProp("DetailName") && choice.DetailName != ""
         ? choice.GroupLabel " — " choice.DetailName
@@ -1541,6 +1618,7 @@ CloseActions(*) {
 
 CopyChoice(choice) {
     global ChooserGui, ChooserOpen, AtBoundary
+    RecordRecent choice
     expanded := ExpandDynamicContent(choice.Content, A_Clipboard)
     ChooserGui.Hide()
     ChooserOpen := false
@@ -1553,6 +1631,7 @@ EditSelectedChoice(choice) {
     global ChooserGui, ChooserOpen
     if !choice || choice.EditUrl = ""
         return
+    RecordRecent choice
     ChooserGui.Hide()
     ChooserOpen := false
     Run choice.EditUrl
@@ -1584,6 +1663,52 @@ LoadSheetConfiguration() {
 SaveSheetConfiguration() {
     global SettingsPath, SheetId
     IniWrite SheetId, SettingsPath, "settings", "sheetId"
+}
+
+RecentSettingsSection() {
+    global SheetId
+    return "recent-" SheetId
+}
+
+LoadRecentItems() {
+    global SettingsPath, SheetId, RecentItems, RecentLimit
+
+    RecentItems := []
+    if SheetId = ""
+        return
+    section := RecentSettingsSection()
+    Loop RecentLimit {
+        category := IniRead(SettingsPath, section, "category" A_Index, "")
+        groupLabel := IniRead(SettingsPath, section, "label" A_Index, "")
+        detailName := IniRead(SettingsPath, section, "detail" A_Index, "")
+        if Trim(category) != "" && Trim(groupLabel) != "" {
+            RecentItems.Push({
+                Category: category,
+                GroupLabel: groupLabel,
+                DetailName: detailName
+            })
+        }
+    }
+}
+
+SaveRecentItems() {
+    global SettingsPath, SheetId, RecentItems, RecentLimit
+
+    if SheetId = ""
+        return
+    section := RecentSettingsSection()
+    Loop RecentLimit {
+        if A_Index <= RecentItems.Length {
+            entry := RecentItems[A_Index]
+            IniWrite entry.Category, SettingsPath, section, "category" A_Index
+            IniWrite entry.GroupLabel, SettingsPath, section, "label" A_Index
+            IniWrite entry.DetailName, SettingsPath, section, "detail" A_Index
+        } else {
+            IniWrite "", SettingsPath, section, "category" A_Index
+            IniWrite "", SettingsPath, section, "label" A_Index
+            IniWrite "", SettingsPath, section, "detail" A_Index
+        }
+    }
 }
 
 ExtractSheetId(value) {
@@ -1634,6 +1759,7 @@ ConnectGoogleSheet(newSheetId, title := "Change Google Sheet") {
     try {
         DownloadWorkbook newSheetId, &infos, &csvByName, &stage
         SheetId := newSheetId
+        LoadRecentItems()
         ApplySheets infos, csvByName
         if Snippets.Length = 0
             throw Error("No usable autocomplete rows were found. Use Label/Content headers, or one or two headerless columns.")
@@ -1650,6 +1776,7 @@ ConnectGoogleSheet(newSheetId, title := "Change Google Sheet") {
         return true
     } catch as problem {
         SheetId := oldSheetId
+        LoadRecentItems()
         SheetInfos := oldInfos
         Snippets := oldSnippets
         InstallTrigger oldTrigger
@@ -1914,7 +2041,7 @@ RunSelfTestsAndExit() {
 }
 
 RunSelfTests() {
-    global Snippets, DetailParent
+    global Snippets, DetailParent, RecentItems
 
     DetailParent := 0
     Snippets := [
@@ -1922,9 +2049,15 @@ RunSelfTests() {
         TestSnippet("email address", "email@example.com", ["email"])
     ]
 
+    RecentItems := [{
+        Category: "Personal",
+        GroupLabel: "email address",
+        DetailName: ""
+    }]
     unfiltered := FilterChoices("")
-    Assert unfiltered.Length = 0,
-        "The main chooser should remain blank until the user searches."
+    Assert unfiltered.Length = 1 && unfiltered[1].Label = "email address",
+        "The empty main chooser should show recently used Sheet items."
+    RecentItems := []
 
     aliasMatch := FilterChoices("email")
     Assert aliasMatch.Length > 0, "Alias search should return a result."
@@ -1966,6 +2099,17 @@ RunSelfTests() {
     Assert BuildAiPrompt(aiParsed[1].Details[1])
         = "Write a sig for Atomoxetine.",
         "AI placeholders should receive the selected item label."
+    Snippets := aiParsed
+    RecentItems := [{
+        Category: "Psych Meds",
+        GroupLabel: "Atomoxetine",
+        DetailName: "Sig"
+    }]
+    recentDetail := FilterChoices("")
+    Assert recentDetail.Length = 1
+        && recentDetail[1].DisplayText = "Atomoxetine — Sig",
+        "A recent nested detail should include its parent label."
+    RecentItems := []
     Assert UrlEncode("A B") = "A%20B",
         "AI launch URLs should safely encode spaces."
 

@@ -103,10 +103,9 @@ launcher field to `None` to disable the extra launcher shortcut.
 ## 3. Use
 
 Type the configured trigger at the start of a typing run or directly after a
-space, tab, or newline. The trigger is swallowed and the chooser opens blank;
-only the compact search bar is shown until you type. It expands just enough to
-show the current results, up to the configured row limit, and collapses again
-when the search is cleared. Continue typing to filter,
+space, tab, or newline. The trigger is swallowed and the chooser opens with up
+to nine recently used Sheet items. Typing searches the complete workbook;
+clearing the query restores the recent items. Continue typing to filter,
 use the arrow keys to navigate, press Return to paste, or Escape to cancel.
 Rows use a small, pale version of the Trigger Search lightning logo. Nested
 items additionally show a larger `→` beside their labels.

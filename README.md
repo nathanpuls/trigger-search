@@ -16,6 +16,8 @@ cache successful responses for offline use, and link results back to their
 exact Sheet cells. Headered tabs additionally support aliases and nested choices.
 Every search covers every visible data tab; tab names remain useful for Sheet
 organization and result context without creating separate search modes.
+When the search is empty, both versions show up to nine recently used Sheet
+items, with direct Command-1–9 or Control-1–9 selection.
 
 Both versions also expand the same small
 [Raycast-style dynamic-placeholder subset](https://manual.raycast.com/dynamic-placeholders)
