@@ -192,7 +192,7 @@ async function loadWorkbook() {
     state.items = data.flatMap(sheet => parseTab(sheet.csv, sheet.name, sheet.gid));
     state.categories = data.map(sheet => sheet.name);
     localStorage.setItem(cacheKey(), JSON.stringify({ items: state.items, categories: state.categories, savedAt: Date.now() }));
-    ui.status.textContent = `${state.items.length} items`;
+    ui.status.textContent = "";
   } catch (error) {
     const cached = JSON.parse(localStorage.getItem(cacheKey()) || "null");
     if (!cached) { ui.status.textContent = error.message; openSettings(false); return; }
@@ -292,10 +292,14 @@ function renderResults() {
     if (item.type === "search-service" || item.details.length) { const arrow = document.createElement("span"); arrow.className = "arrow"; arrow.textContent = "→"; title.append(arrow); }
     node.querySelector(".result-meta").textContent = `${item.category}${trim(item.content) !== item.label ? ` · ${item.content.replace(/\s+/g, " ")}` : ""}`;
     const actions = node.querySelector(".result-actions");
-    if (item.type === "search-service") actions.append(makeButton("Search", "Enter a query", () => openSearchService(item)));
+    if (item.type === "search-service") {
+      const searchButton = makeButton("Search", "Enter a query", () => openSearchService(item));
+      searchButton.classList.add("search-action"); actions.append(searchButton);
+    }
     else actions.append(makeIconButton("copy", "Copy", () => copyItem(item)));
     const url = extractSingleUrl(item.content); if (url) actions.append(makeIconButton("arrow-square-out", "Open link", () => { recordRecent(item); openExternal(url); }));
     const actionsButton = makeButton("•••", "Actions", () => openActions(item));
+    actionsButton.classList.add("more-action");
     actionsButton.setAttribute("aria-label", `Actions for ${item.label}`);
     actions.append(actionsButton);
     node.querySelector(".result-main").addEventListener("click", () => performPrimaryAction(item));
@@ -433,6 +437,9 @@ document.querySelector("#share-button").addEventListener("click", shareCurrentSh
 document.querySelector("#details-back").addEventListener("click", () => ui.details.close());
 document.querySelector("#actions-back").addEventListener("click", () => ui.actions.close());
 document.querySelector("#preview-back").addEventListener("click", () => ui.preview.close());
+ui.preview.addEventListener("click", event => {
+  if (event.target === ui.preview) { ui.preview.close(); ui.search.focus(); }
+});
 document.querySelector("#search-service-back").addEventListener("click", () => { ui.searchService.close(); ui.search.focus(); });
 document.querySelector("#search-service-form").addEventListener("submit", event => { event.preventDefault(); launchSearchService(); });
 document.querySelectorAll("[data-close]").forEach(button => button.addEventListener("click", () => document.querySelector(`#${button.dataset.close}`).close()));
