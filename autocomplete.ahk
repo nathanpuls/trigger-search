@@ -2,8 +2,8 @@
 #SingleInstance Force
 Persistent
 
-; Sheet Autocomplete version 0.13.16
-global AppVersion := "0.13.16"
+; Sheet Autocomplete version 0.13.17
+global AppVersion := "0.13.17"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -2259,6 +2259,32 @@ RunSelfTests() {
     Assert searchServices[1].Aliases.Length = 2
         && searchServices[1].Aliases[1] = "pm",
         "Search services should support optional aliases."
+
+    headerlessSearch := []
+    ParseSheet 'Google,"https://www.google.com/search?q={query}",g`n'
+        . 'Broken,"https://example.com/no-placeholder",bad',
+        {Name: "Search", Gid: "457"}, headerlessSearch
+    Assert headerlessSearch.Length = 1
+        && headerlessSearch[1].GroupLabel = "Google"
+        && headerlessSearch[1].Aliases[1] = "g",
+        "The Search tab should support headerless Service, URL, and Alias columns."
+
+    flexibleSearchHeaders := []
+    ParseSheet '"Nickname","Link","Name"`n'
+        . '"docs","https://example.com/search?q={query}","Docs"',
+        {Name: "Search", Gid: "458"}, flexibleSearchHeaders
+    Assert flexibleSearchHeaders.Length = 1
+        && flexibleSearchHeaders[1].GroupLabel = "Docs"
+        && flexibleSearchHeaders[1].Aliases[1] = "docs",
+        "Search launcher header synonyms should work in any column order."
+
+    renamedSearchTab := []
+    ParseSheet '"Name","Link"`n'
+        . '"Knowledge Base","https://example.com/find?q={query}"',
+        {Name: "Reference Tools", Gid: "459"}, renamedSearchTab
+    Assert renamedSearchTab.Length = 1
+        && renamedSearchTab[1].IsSearchService,
+        "Recognized search headers should remain supported on other tab names."
     Snippets := searchServices
     aliasChoice := FilterChoices("pm")
     Assert aliasChoice.Length = 1 && aliasChoice[1].GroupLabel = "PubMed",
@@ -2502,13 +2528,34 @@ ParseSheet(csv, info, output) {
     if rows.Length = 0
         return
     columns := HeaderMap(rows[1])
-    serviceColumn := columns.Has("service") ? columns["service"] : 0
-    templateColumn := columns.Has("url template") ? columns["url template"]
-        : (columns.Has("url") ? columns["url"] : 0)
-    aliasColumn := columns.Has("alias") ? columns["alias"] : 0
-    if serviceColumn && templateColumn {
-        Loop rows.Length - 1 {
-            rowNumber := A_Index + 1
+    serviceColumn := FirstHeaderColumn(columns, ["service", "label", "name"])
+    templateColumn := FirstHeaderColumn(columns, ["url template", "url", "link"])
+    aliasColumn := FirstHeaderColumn(columns, ["alias", "nickname"])
+    isSearchTab := StrLower(Trim(info.Name)) = "search"
+    hasLauncherHeaders := serviceColumn || templateColumn || aliasColumn
+    firstLauncherRow := 2
+    if isSearchTab {
+        if hasLauncherHeaders {
+            usedColumns := Map()
+            if serviceColumn
+                usedColumns[serviceColumn] := true
+            if templateColumn
+                usedColumns[templateColumn] := true
+            if aliasColumn
+                usedColumns[aliasColumn] := true
+            serviceColumn := FallbackHeaderColumn(serviceColumn, 1, usedColumns)
+            templateColumn := FallbackHeaderColumn(templateColumn, 2, usedColumns)
+            aliasColumn := FallbackHeaderColumn(aliasColumn, 3, usedColumns)
+        } else {
+            serviceColumn := 1
+            templateColumn := 2
+            aliasColumn := 3
+            firstLauncherRow := 1
+        }
+    }
+    if serviceColumn && templateColumn && (isSearchTab || hasLauncherHeaders) {
+        Loop rows.Length - firstLauncherRow + 1 {
+            rowNumber := firstLauncherRow + A_Index - 1
             row := rows[rowNumber]
             service := Trim(Cell(row, serviceColumn))
             template := Trim(Cell(row, templateColumn))
@@ -2714,6 +2761,30 @@ HeaderMap(headerRow) {
             columns[normalized] := index
     }
     return columns
+}
+
+FirstHeaderColumn(columns, names) {
+    for name in names {
+        if columns.Has(name)
+            return columns[name]
+    }
+    return 0
+}
+
+FallbackHeaderColumn(current, preferred, usedColumns) {
+    if current
+        return current
+    if !usedColumns.Has(preferred) {
+        usedColumns[preferred] := true
+        return preferred
+    }
+    Loop 3 {
+        if !usedColumns.Has(A_Index) {
+            usedColumns[A_Index] := true
+            return A_Index
+        }
+    }
+    return preferred
 }
 
 Cell(row, index) {

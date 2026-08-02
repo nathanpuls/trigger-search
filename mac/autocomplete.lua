@@ -744,12 +744,50 @@ local function parseSheet(csv, category)
     columns[normalizedName] = index
   end
 
-  local serviceColumn = columns.service
-  local templateColumn = columns["url template"] or columns.url
-  local aliasColumn = columns.alias
-  if serviceColumn and templateColumn then
+  local function firstNamedColumn(names)
+    for _, name in ipairs(names) do
+      if columns[name] then return columns[name] end
+    end
+    return nil
+  end
+
+  local isSearchTab = trim(category):lower() == "search"
+  local serviceColumn = firstNamedColumn({ "service", "label", "name" })
+  local templateColumn = firstNamedColumn({ "url template", "url", "link" })
+  local aliasColumn = firstNamedColumn({ "alias", "nickname" })
+  local hasLauncherHeaders = serviceColumn or templateColumn or aliasColumn
+  local firstLauncherRow = 2
+  if isSearchTab then
+    if hasLauncherHeaders then
+      local usedColumns = {}
+      if serviceColumn then usedColumns[serviceColumn] = true end
+      if templateColumn then usedColumns[templateColumn] = true end
+      if aliasColumn then usedColumns[aliasColumn] = true end
+      local function fallbackColumn(current, preferred)
+        if current then return current end
+        if not usedColumns[preferred] then
+          usedColumns[preferred] = true
+          return preferred
+        end
+        for columnIndex = 1, 3 do
+          if not usedColumns[columnIndex] then
+            usedColumns[columnIndex] = true
+            return columnIndex
+          end
+        end
+        return preferred
+      end
+      serviceColumn = fallbackColumn(serviceColumn, 1)
+      templateColumn = fallbackColumn(templateColumn, 2)
+      aliasColumn = fallbackColumn(aliasColumn, 3)
+    else
+      serviceColumn, templateColumn, aliasColumn = 1, 2, 3
+      firstLauncherRow = 1
+    end
+  end
+  if serviceColumn and templateColumn and (isSearchTab or hasLauncherHeaders) then
     local parsed = {}
-    for rowIndex = 2, #rows do
+    for rowIndex = firstLauncherRow, #rows do
       local service = trim(rows[rowIndex][serviceColumn] or "")
       local template = trim(rows[rowIndex][templateColumn] or "")
       if service ~= "" and template:find("{query}", 1, true)

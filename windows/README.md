@@ -81,9 +81,11 @@ a headerless tab with more than two populated columns is ignored.
 
 ### Search launchers
 
-Create a tab named `Search` with `Service` in column A, `URL Template` in column
-B, and an optional `Alias` column. Use `{query}` where Trigger Search should
-place the typed query:
+Create a tab named `Search`. Headers are optional: without them, column A is the
+service name, column B is the URL template, and column C is an optional alias.
+With headers, columns may be rearranged and use `Service`, `Label`, or `Name`;
+`URL Template`, `URL`, or `Link`; and `Alias` or `Nickname`. Use `{query}` where
+Trigger Search should place the typed query:
 
 | Service | URL Template | Alias |
 |---|---|---|
@@ -93,13 +95,13 @@ place the typed query:
 
 Each valid row is a searchable parent item. Select one and press Right Arrow,
 type the query, and press Enter to open it in the default browser. Left Arrow
-returns to the same service in the main results. The older `URL` header is also
-accepted; `URL Template` is recommended for clarity.
+returns to the same service in the main results.
 
 Rows missing either value, templates without the exact `{query}` placeholder,
 and non-HTTP(S) templates are skipped quietly. Services can therefore be added,
 removed, or rearranged entirely in Google Sheets without editing AutoHotkey.
-The headers identify the layout, so the tab itself may be renamed. Multiple
+On tabs with other names, the same recognized header pairs still identify the
+launcher layout for backward compatibility. Multiple
 aliases may be separated by commas, semicolons, vertical bars, or line breaks;
 exact alias matches rank first.
 

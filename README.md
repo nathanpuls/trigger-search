@@ -24,7 +24,11 @@ items, with direct Command-1–9 or Control-1–9 selection.
 
 ### Search launchers
 
-Add a tab named `Search` with these columns:
+The simplest setup is a tab named `Search`. Headers are optional: without them,
+column A is the service name, column B is the URL template, and column C is an
+optional alias. With headers, columns may be rearranged and use these names:
+`Service`, `Label`, or `Name`; `URL Template`, `URL`, or `Link`; and `Alias` or
+`Nickname`.
 
 | Service | URL Template | Alias (optional) |
 |---|---|---|
@@ -35,14 +39,14 @@ Add a tab named `Search` with these columns:
 Each valid row becomes a normal searchable parent item. Select a service and
 press Right Arrow (or click/tap it on the web) to enter a query, then press
 Return/Enter to open the encoded query in the default browser. Left Arrow
-returns to the same service in the main results. The older header `URL` is also
-accepted, but `URL Template` is clearer for new Sheets.
+returns to the same service in the main results.
 
 Templates must contain the exact placeholder `{query}` and begin with
 `https://` or `http://`. Incomplete or invalid rows are ignored. This keeps the
 feature generic: add search engines, AI services, documentation sites, or an
-internal HTTP search tool without changing Trigger Search's code. The tab name
-is not hard-coded; the `Service` and URL headers identify this special layout.
+internal HTTP search tool without changing Trigger Search's code. On tabs with
+other names, the same recognized header pairs still identify the launcher
+layout for backward compatibility.
 Aliases use the same comma, semicolon, vertical-bar, or line-break separators
 as ordinary snippets, and exact alias matches rank first.
 

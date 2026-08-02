@@ -44,8 +44,11 @@ unrelated Sheet is not mistaken for snippet data.
 
 ### Search launchers
 
-Create a tab named `Search` with `Service` in column A, `URL Template` in column
-B, and an optional `Alias` column. Put `{query}` where the typed query belongs:
+Create a tab named `Search`. Headers are optional: without them, column A is the
+service name, column B is the URL template, and column C is an optional alias.
+With headers, columns may be rearranged and use `Service`, `Label`, or `Name`;
+`URL Template`, `URL`, or `Link`; and `Alias` or `Nickname`. Put `{query}` where
+the typed query belongs:
 
 | Service | URL Template | Alias |
 |---|---|---|
@@ -56,13 +59,13 @@ B, and an optional `Alias` column. Put `{query}` where the typed query belongs:
 Each complete row appears as a searchable parent item. Select it and press
 Right Arrow to enter query mode. Type a query and press Return to URL-encode it
 and open the service in the default browser. Left Arrow returns to the same
-service in the main results. `URL` is accepted as a backward-compatible header,
-although `URL Template` is recommended.
+service in the main results.
 
 Rows missing either value, templates without the exact `{query}` placeholder,
 and non-HTTP(S) templates are skipped quietly. Add or remove compatible
-services in the Sheet without changing the Lua code. The layout is recognized
-by its headers, so renaming the tab does not break it. Multiple aliases may be
+services in the Sheet without changing the Lua code. On tabs with other names,
+the same recognized header pairs still identify the layout for backward
+compatibility. Multiple aliases may be
 separated by commas, semicolons, vertical bars, or line breaks; exact matches
 rank first.
 

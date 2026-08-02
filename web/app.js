@@ -68,19 +68,41 @@ function parseTab(csv, category, gid) {
   const rows = parseCsv(csv).filter(row => row.some(cell => trim(cell) !== ""));
   if (!rows.length) return [];
   const headers = rows[0].map(cell => normalize(cell.replace(/^\uFEFF/, "")));
-  const serviceIndex = headers.indexOf("service");
-  const templateIndex = headers.includes("url template") ? headers.indexOf("url template") : headers.indexOf("url");
-  const serviceAliasIndex = headers.indexOf("alias");
-  if (serviceIndex >= 0 && templateIndex >= 0) {
-    return rows.slice(1).map((row, offset) => ({ row, offset })).filter(({ row }) => {
+  const firstHeaderIndex = names => names.map(name => headers.indexOf(name)).find(index => index >= 0) ?? -1;
+  const isSearchTab = normalize(category) === "search";
+  let serviceIndex = firstHeaderIndex(["service", "label", "name"]);
+  let templateIndex = firstHeaderIndex(["url template", "url", "link"]);
+  let serviceAliasIndex = firstHeaderIndex(["alias", "nickname"]);
+  const hasLauncherHeaders = serviceIndex >= 0 || templateIndex >= 0 || serviceAliasIndex >= 0;
+  let firstLauncherRow = 1;
+  if (isSearchTab) {
+    if (hasLauncherHeaders) {
+      const used = new Set([serviceIndex, templateIndex, serviceAliasIndex].filter(index => index >= 0));
+      const fallbackIndex = (current, preferred) => {
+        if (current >= 0) return current;
+        if (!used.has(preferred)) { used.add(preferred); return preferred; }
+        for (let index = 0; index < 3; index += 1) {
+          if (!used.has(index)) { used.add(index); return index; }
+        }
+        return preferred;
+      };
+      serviceIndex = fallbackIndex(serviceIndex, 0);
+      templateIndex = fallbackIndex(templateIndex, 1);
+      serviceAliasIndex = fallbackIndex(serviceAliasIndex, 2);
+    } else {
+      serviceIndex = 0; templateIndex = 1; serviceAliasIndex = 2; firstLauncherRow = 0;
+    }
+  }
+  if (serviceIndex >= 0 && templateIndex >= 0 && (isSearchTab || hasLauncherHeaders)) {
+    return rows.slice(firstLauncherRow).map((row, offset) => ({ row, offset })).filter(({ row }) => {
       const service = trim(row[serviceIndex]), template = trim(row[templateIndex]);
       return service && template.includes("{query}") && /^https?:\/\//i.test(template);
     }).map(({ row, offset }) => ({
-      key: `${category}:${offset + 2}`, type: "search-service",
+      key: `${category}:${offset + firstLauncherRow + 1}`, type: "search-service",
       label: trim(row[serviceIndex]), content: "",
       aliases: serviceAliasIndex >= 0 ? trim(row[serviceAliasIndex]).split(/[,;|\n]/).map(trim).filter(Boolean) : [],
       category, gid,
-      row: offset + 2, details: [], aiPrompt: "", urlTemplate: trim(row[templateIndex]),
+      row: offset + firstLauncherRow + 1, details: [], aiPrompt: "", urlTemplate: trim(row[templateIndex]),
     }));
   }
   const labelIndex = headers.indexOf("label"), contentIndex = headers.indexOf("content"), aliasIndex = headers.indexOf("alias");
