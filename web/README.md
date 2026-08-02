@@ -6,17 +6,19 @@ works as an installable Progressive Web App.
 
 ## What it does
 
-- Searches every visible autocomplete tab.
-- Uses Sheet tabs as touch-friendly filters on phones.
+- Searches every visible Sheet tab together while keeping each tab name as
+  result context.
 - Opens arbitrary nested detail columns.
 - Opens configurable Search & AI services and accepts their queries in a small
   second-step dialog.
-- Copies saved text to the clipboard.
-- Opens standalone links and launches saved AI prompts in ChatGPT.
+- Opens saved text in a readable preview by default and provides a dedicated
+  Phosphor copy button.
+- Opens the one recognizable link in a result, including a link inside ordinary
+  text, and launches saved AI prompts in ChatGPT.
 - Shows recent Sheet items when the search is empty.
 - Supports Up/Down to navigate, Right Arrow to open nested details, Left Arrow
-  to return, Enter, Command/Control 1–9, Command/Control-K to focus search, and
-  Command/Control-G to Google the typed phrase on desktop.
+  to return, Enter to preview, Command/Control 1–9 to copy, `/` to focus search,
+  and Command/Control-G to Google the typed phrase on desktop.
 - Falls back to the last successful local cache when the Sheet is unavailable.
 
 The browser cannot paste into another application. The web workflow is copy,

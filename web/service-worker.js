@@ -1,5 +1,5 @@
-const CACHE = "trigger-search-web-v1";
-const ASSETS = ["./", "./index.html", "./app.css", "./app.js", "./icon.svg", "./icon-180.png", "./manifest.webmanifest"];
+const CACHE = "trigger-search-web-v2";
+const ASSETS = ["./", "./index.html", "./app.css", "./app.js", "./icon.svg", "./icon-180.png", "./icons/copy.svg", "./icons/arrow-square-out.svg", "./manifest.webmanifest"];
 
 self.addEventListener("install", event => {
   event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(ASSETS)));

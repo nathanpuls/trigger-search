@@ -2,11 +2,11 @@
 
 const state = {
   sheetId: localStorage.getItem("triggerSearch.sheetId") || "",
-  items: [], categories: [], activeCategory: "All", query: "", selectedIndex: 0,
+  items: [], categories: [], query: "", selectedIndex: 0,
 };
 
 const ui = {
-  search: document.querySelector("#search"), tabs: document.querySelector("#tabs"),
+  search: document.querySelector("#search"),
   status: document.querySelector("#status"), results: document.querySelector("#results"),
   template: document.querySelector("#result-template"), toast: document.querySelector("#toast"),
   settings: document.querySelector("#settings-dialog"), sheetUrl: document.querySelector("#sheet-url"),
@@ -15,6 +15,10 @@ const ui = {
   searchService: document.querySelector("#search-service-dialog"),
   searchServiceTitle: document.querySelector("#search-service-title"),
   serviceQuery: document.querySelector("#service-query"),
+  preview: document.querySelector("#preview-dialog"),
+  previewTitle: document.querySelector("#preview-title"),
+  previewBody: document.querySelector("#preview-body"),
+  previewActions: document.querySelector("#preview-actions"),
 };
 
 const trim = value => String(value ?? "").trim();
@@ -140,8 +144,7 @@ async function loadWorkbook() {
     state.items = cached.items || []; state.categories = cached.categories || [];
     ui.status.textContent = `Offline copy · ${state.items.length} items`;
   }
-  if (state.activeCategory !== "All" && !state.categories.includes(state.activeCategory)) state.activeCategory = "All";
-  renderTabs(); renderResults();
+  renderResults();
 }
 
 function recentItems() {
@@ -156,9 +159,8 @@ function recordRecent(item) {
 
 function rankedItems() {
   const query = normalize(state.query);
-  const source = state.activeCategory === "All" ? state.items : state.items.filter(item => item.category === state.activeCategory);
-  if (!query) return recentItems().filter(item => state.activeCategory === "All" || item.category === state.activeCategory);
-  return source.map(item => {
+  if (!query) return recentItems();
+  return state.items.map(item => {
     const label = normalize(item.label), aliases = item.aliases.map(normalize), content = normalize(item.content);
     let rank = 99;
     if (aliases.includes(query)) rank = 0;
@@ -173,26 +175,31 @@ function rankedItems() {
   }).filter(match => match.rank < 99).sort((a, b) => a.rank - b.rank || a.item.label.localeCompare(b.item.label)).map(match => match.item);
 }
 
-function renderTabs() {
-  ui.tabs.replaceChildren();
-  ["All", ...state.categories].forEach(category => {
-    const button = document.createElement("button");
-    button.type = "button"; button.className = "tab"; button.textContent = category;
-    button.setAttribute("aria-selected", String(category === state.activeCategory));
-    button.addEventListener("click", () => { state.activeCategory = category; state.selectedIndex = 0; renderTabs(); renderResults(); });
-    ui.tabs.append(button);
-  });
-}
-
-function standaloneUrl(value) {
-  const text = trim(value);
-  return /^(https?:\/\/|www\.)[^\s]+$/i.test(text) ? (text.startsWith("www.") ? `https://${text}` : text) : "";
+function extractSingleUrl(value) {
+  const text = String(value || ""), found = new Set();
+  const clean = candidate => candidate.replace(/[)\]}.,;:!?]+$/, "");
+  for (const match of text.matchAll(/https?:\/\/[^\s<>"']+/gi)) found.add(clean(match[0]));
+  for (const match of text.matchAll(/(?:^|[^\w@])([\w-]+\.[a-z]{2,}[\w._~:/?#[\]@!$&'()*+,;=%-]*)/gi)) {
+    const candidate = clean(match[1]);
+    if (![...found].some(url => url.includes(candidate))) found.add(`https://${candidate}`);
+  }
+  return found.size === 1 ? [...found][0] : "";
 }
 
 function makeButton(label, title, handler) {
   const button = document.createElement("button");
   button.type = "button"; button.className = "action-button"; button.textContent = label; button.title = title;
   button.addEventListener("click", event => { event.stopPropagation(); handler(); });
+  return button;
+}
+
+function makeIconButton(icon, title, handler) {
+  const button = makeButton("", title, handler);
+  button.classList.add("icon-action");
+  button.setAttribute("aria-label", title);
+  const image = document.createElement("img");
+  image.src = `icons/${icon}.svg`; image.alt = "";
+  button.append(image);
   return button;
 }
 
@@ -218,9 +225,9 @@ function renderResults() {
     node.querySelector(".result-meta").textContent = `${item.category}${trim(item.content) !== item.label ? ` · ${item.content.replace(/\s+/g, " ")}` : ""}`;
     const actions = node.querySelector(".result-actions");
     if (item.type === "search-service") actions.append(makeButton("Search", "Enter a query", () => openSearchService(item)));
-    else actions.append(makeButton("Copy", "Copy", () => copyItem(item)));
-    const url = standaloneUrl(item.content); if (url) actions.append(makeButton("Open", "Open link", () => { recordRecent(item); openExternal(url); }));
-    node.querySelector(".result-main").addEventListener("click", () => item.type === "search-service" ? openSearchService(item) : (item.details.length ? openDetails(item) : copyItem(item)));
+    else actions.append(makeIconButton("copy", "Copy", () => copyItem(item)));
+    const url = extractSingleUrl(item.content); if (url) actions.append(makeIconButton("arrow-square-out", "Open link", () => { recordRecent(item); openExternal(url); }));
+    node.querySelector(".result-main").addEventListener("click", () => item.type === "search-service" ? openSearchService(item) : (item.details.length ? openDetails(item) : openPreview(item)));
     node.addEventListener("focus", () => { state.selectedIndex = index; document.querySelectorAll(".result").forEach((row, rowIndex) => row.dataset.selected = String(rowIndex === index)); });
     ui.results.append(node);
   });
@@ -248,6 +255,18 @@ function askAi(prompt, item) {
   openExternal(`https://chatgpt.com/?q=${encodeURIComponent(prompt)}`);
 }
 
+function openPreview(item, content = item.content, title = item.label) {
+  state.previewItem = item;
+  ui.previewTitle.textContent = title;
+  ui.previewBody.textContent = content;
+  ui.previewActions.replaceChildren();
+  ui.previewActions.append(makeIconButton("copy", "Copy", () => copyText(content, item)));
+  const url = extractSingleUrl(content);
+  if (url) ui.previewActions.append(makeIconButton("arrow-square-out", "Open link", () => { recordRecent(item); openExternal(url); }));
+  recordRecent(item);
+  ui.preview.showModal();
+}
+
 function openSearchService(item) {
   state.searchServiceItem = item;
   ui.searchServiceTitle.textContent = item.label;
@@ -271,9 +290,12 @@ function openDetails(item) {
     const heading = document.createElement("h3"); heading.textContent = detail.label; block.append(heading);
     const text = document.createElement("p"); text.className = "detail-text"; text.textContent = detail.content || "Ask AI"; block.append(text);
     const actions = document.createElement("div"); actions.className = "detail-actions";
-    if (trim(detail.content)) actions.append(makeButton("Copy", "Copy", () => copyText(detail.content, item)));
-    const url = standaloneUrl(detail.content); if (url) actions.append(makeButton("Open", "Open link", () => { recordRecent(item); openExternal(url); }));
+    if (trim(detail.content)) actions.append(makeIconButton("copy", "Copy", () => copyText(detail.content, item)));
+    const url = extractSingleUrl(detail.content); if (url) actions.append(makeIconButton("arrow-square-out", "Open link", () => { recordRecent(item); openExternal(url); }));
     if (trim(detail.aiPrompt)) actions.append(makeButton("Ask AI", "Ask ChatGPT", () => askAi(buildAiPrompt(detail.aiPrompt, item), item)));
+    if (trim(detail.content)) block.addEventListener("click", event => {
+      if (!event.target.closest("button")) openPreview(item, detail.content, `${item.label} — ${detail.label}`);
+    });
     block.append(actions); ui.detailsList.append(block);
   });
   ui.details.showModal();
@@ -287,10 +309,11 @@ function openSettings(firstRun) {
 
 document.querySelector("#settings-button").addEventListener("click", () => openSettings(false));
 document.querySelector("#details-back").addEventListener("click", () => ui.details.close());
+document.querySelector("#preview-back").addEventListener("click", () => ui.preview.close());
 document.querySelector("#search-service-back").addEventListener("click", () => { ui.searchService.close(); ui.search.focus(); });
 document.querySelector("#search-service-form").addEventListener("submit", event => { event.preventDefault(); launchSearchService(); });
 document.querySelectorAll("[data-close]").forEach(button => button.addEventListener("click", () => document.querySelector(`#${button.dataset.close}`).close()));
-document.querySelector("#disconnect-button").addEventListener("click", () => { localStorage.removeItem("triggerSearch.sheetId"); state.sheetId = ""; state.items = []; state.categories = []; ui.settings.close(); renderTabs(); renderResults(); openSettings(true); });
+document.querySelector("#disconnect-button").addEventListener("click", () => { localStorage.removeItem("triggerSearch.sheetId"); state.sheetId = ""; state.items = []; state.categories = []; ui.settings.close(); renderResults(); openSettings(true); });
 document.querySelector("#settings-form").addEventListener("submit", event => {
   event.preventDefault(); const id = parseSheetId(ui.sheetUrl.value);
   if (!id) { showToast("That does not look like a Google Sheets link"); return; }
@@ -299,25 +322,26 @@ document.querySelector("#settings-form").addEventListener("submit", event => {
 
 ui.search.addEventListener("input", () => { state.query = ui.search.value; state.selectedIndex = 0; renderResults(); });
 document.addEventListener("keydown", event => {
-  if (ui.settings.open || ui.details.open || ui.searchService.open) {
-    if (event.key === "Escape" || ((ui.details.open || ui.searchService.open) && event.key === "ArrowLeft")) {
+  if (ui.settings.open || ui.details.open || ui.searchService.open || ui.preview.open) {
+    if (event.key === "Escape" || ((ui.details.open || ui.searchService.open || ui.preview.open) && event.key === "ArrowLeft")) {
       event.preventDefault();
-      if (ui.settings.open) ui.settings.close();
+      if (ui.preview.open) ui.preview.close();
+      else if (ui.searchService.open) ui.searchService.close();
       else if (ui.details.open) ui.details.close();
-      else ui.searchService.close();
+      else ui.settings.close();
       if (!ui.settings.open) ui.search.focus();
     }
     return;
   }
   const items = rankedItems();
-  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") { event.preventDefault(); ui.search.focus(); return; }
+  if (event.key === "/" && document.activeElement !== ui.search) { event.preventDefault(); ui.search.focus(); return; }
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "g" && trim(ui.search.value)) { event.preventDefault(); openExternal(`https://www.google.com/search?q=${encodeURIComponent(trim(ui.search.value))}`); return; }
   if ((event.metaKey || event.ctrlKey) && /^[1-9]$/.test(event.key)) { const item = items[Number(event.key) - 1]; if (item) { event.preventDefault(); copyItem(item); } return; }
   if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); const delta = event.key === "ArrowDown" ? 1 : -1; state.selectedIndex = Math.max(0, Math.min(items.length - 1, state.selectedIndex + delta)); renderResults(); document.querySelectorAll(".result")[state.selectedIndex]?.focus(); return; }
   if (event.key === "ArrowRight") { const item = items[state.selectedIndex]; if (item?.type === "search-service" || item?.details.length) { event.preventDefault(); item.type === "search-service" ? openSearchService(item) : openDetails(item); } return; }
-  if (event.key === "Enter" && document.activeElement === ui.search) { const item = items[state.selectedIndex]; if (item) { event.preventDefault(); item.type === "search-service" ? openSearchService(item) : (item.details.length ? openDetails(item) : copyItem(item)); } }
+  if (event.key === "Enter" && document.activeElement === ui.search) { const item = items[state.selectedIndex]; if (item) { event.preventDefault(); item.type === "search-service" ? openSearchService(item) : (item.details.length ? openDetails(item) : openPreview(item)); } }
   if (event.key === "Escape") { ui.search.value = ""; state.query = ""; renderResults(); }
 });
 
 if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js"));
-renderTabs(); renderResults(); loadWorkbook();
+renderResults(); loadWorkbook();
