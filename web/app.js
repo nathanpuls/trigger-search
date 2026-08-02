@@ -70,13 +70,16 @@ function parseTab(csv, category, gid) {
   const headers = rows[0].map(cell => normalize(cell.replace(/^\uFEFF/, "")));
   const serviceIndex = headers.indexOf("service");
   const templateIndex = headers.includes("url template") ? headers.indexOf("url template") : headers.indexOf("url");
+  const serviceAliasIndex = headers.indexOf("alias");
   if (serviceIndex >= 0 && templateIndex >= 0) {
     return rows.slice(1).map((row, offset) => ({ row, offset })).filter(({ row }) => {
       const service = trim(row[serviceIndex]), template = trim(row[templateIndex]);
       return service && template.includes("{query}") && /^https?:\/\//i.test(template);
     }).map(({ row, offset }) => ({
       key: `${category}:${offset + 2}`, type: "search-service",
-      label: trim(row[serviceIndex]), content: "", aliases: [], category, gid,
+      label: trim(row[serviceIndex]), content: "",
+      aliases: serviceAliasIndex >= 0 ? trim(row[serviceAliasIndex]).split(/[,;|\n]/).map(trim).filter(Boolean) : [],
+      category, gid,
       row: offset + 2, details: [], aiPrompt: "", urlTemplate: trim(row[templateIndex]),
     }));
   }

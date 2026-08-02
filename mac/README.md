@@ -42,16 +42,16 @@ Headerless tabs intentionally do not support aliases or nested detail columns.
 A headerless tab with more than two populated columns is ignored so an
 unrelated Sheet is not mistaken for snippet data.
 
-### Search & AI launchers
+### Search launchers
 
-Create a tab named `Search & AI` with `Service` in column A and `URL Template`
-in column B. Put `{query}` where the typed query belongs:
+Create a tab named `Search` with `Service` in column A, `URL Template` in column
+B, and an optional `Alias` column. Put `{query}` where the typed query belongs:
 
-| Service | URL Template |
-|---|---|
-| Google AI | `https://www.google.com/search?q={query}&udm=50` |
-| PubMed | `https://pubmed.ncbi.nlm.nih.gov/?term={query}` |
-| Wikipedia | `https://en.wikipedia.org/w/index.php?search={query}` |
+| Service | URL Template | Alias |
+|---|---|---|
+| Google AI | `https://www.google.com/search?q={query}&udm=50` | gai |
+| PubMed | `https://pubmed.ncbi.nlm.nih.gov/?term={query}` | pm |
+| Wikipedia | `https://en.wikipedia.org/w/index.php?search={query}` | wiki |
 
 Each complete row appears as a searchable parent item. Select it and press
 Right Arrow to enter query mode. Type a query and press Return to URL-encode it
@@ -61,7 +61,10 @@ although `URL Template` is recommended.
 
 Rows missing either value, templates without the exact `{query}` placeholder,
 and non-HTTP(S) templates are skipped quietly. Add or remove compatible
-services in the Sheet without changing the Lua code.
+services in the Sheet without changing the Lua code. The layout is recognized
+by its headers, so renaming the tab does not break it. Multiple aliases may be
+separated by commas, semicolons, vertical bars, or line breaks; exact matches
+rank first.
 
 Visible tabs are discovered automatically from the public workbook. Add,
 rename, rearrange, or remove a tab in Google Sheets and the chooser will follow

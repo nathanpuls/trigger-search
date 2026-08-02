@@ -78,16 +78,17 @@ the label and content. With two columns, the left value is the label and the
 right value is the content. Headerless tabs do not provide aliases or nesting;
 a headerless tab with more than two populated columns is ignored.
 
-### Search & AI launchers
+### Search launchers
 
-Create a tab named `Search & AI` with `Service` in column A and `URL Template`
-in column B. Use `{query}` where Trigger Search should place the typed query:
+Create a tab named `Search` with `Service` in column A, `URL Template` in column
+B, and an optional `Alias` column. Use `{query}` where Trigger Search should
+place the typed query:
 
-| Service | URL Template |
-|---|---|
-| Google | `https://www.google.com/search?q={query}` |
-| ChatGPT | `https://chatgpt.com/?q={query}` |
-| PubMed | `https://pubmed.ncbi.nlm.nih.gov/?term={query}` |
+| Service | URL Template | Alias |
+|---|---|---|
+| Google | `https://www.google.com/search?q={query}` | g |
+| ChatGPT | `https://chatgpt.com/?q={query}` | ai |
+| PubMed | `https://pubmed.ncbi.nlm.nih.gov/?term={query}` | pm |
 
 Each valid row is a searchable parent item. Select one and press Right Arrow,
 type the query, and press Enter to open it in the default browser. Left Arrow
@@ -97,6 +98,9 @@ accepted; `URL Template` is recommended for clarity.
 Rows missing either value, templates without the exact `{query}` placeholder,
 and non-HTTP(S) templates are skipped quietly. Services can therefore be added,
 removed, or rearranged entirely in Google Sheets without editing AutoHotkey.
+The headers identify the layout, so the tab itself may be renamed. Multiple
+aliases may be separated by commas, semicolons, vertical bars, or line breaks;
+exact alias matches rank first.
 
 ### AI prompts
 

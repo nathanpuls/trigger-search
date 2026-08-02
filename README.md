@@ -22,15 +22,15 @@ organization and result context without creating separate search modes.
 When the search is empty, both versions show up to nine recently used Sheet
 items, with direct Command-1–9 or Control-1–9 selection.
 
-### Search & AI launchers
+### Search launchers
 
-Add a tab named `Search & AI` with two columns:
+Add a tab named `Search` with these columns:
 
-| Service | URL Template |
-|---|---|
-| Google | `https://www.google.com/search?q={query}` |
-| PubMed | `https://pubmed.ncbi.nlm.nih.gov/?term={query}` |
-| ChatGPT | `https://chatgpt.com/?q={query}` |
+| Service | URL Template | Alias (optional) |
+|---|---|---|
+| Google | `https://www.google.com/search?q={query}` | g |
+| PubMed | `https://pubmed.ncbi.nlm.nih.gov/?term={query}` | pm |
+| ChatGPT | `https://chatgpt.com/?q={query}` | ai |
 
 Each valid row becomes a normal searchable parent item. Select a service and
 press Right Arrow (or click/tap it on the web) to enter a query, then press
@@ -41,7 +41,10 @@ accepted, but `URL Template` is clearer for new Sheets.
 Templates must contain the exact placeholder `{query}` and begin with
 `https://` or `http://`. Incomplete or invalid rows are ignored. This keeps the
 feature generic: add search engines, AI services, documentation sites, or an
-internal HTTP search tool without changing Trigger Search's code.
+internal HTTP search tool without changing Trigger Search's code. The tab name
+is not hard-coded; the `Service` and URL headers identify this special layout.
+Aliases use the same comma, semicolon, vertical-bar, or line-break separators
+as ordinary snippets, and exact alias matches rank first.
 
 Both versions also expand the same small
 [Raycast-style dynamic-placeholder subset](https://manual.raycast.com/dynamic-placeholders)

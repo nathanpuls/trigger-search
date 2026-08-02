@@ -746,6 +746,7 @@ local function parseSheet(csv, category)
 
   local serviceColumn = columns.service
   local templateColumn = columns["url template"] or columns.url
+  local aliasColumn = columns.alias
   if serviceColumn and templateColumn then
     local parsed = {}
     for rowIndex = 2, #rows do
@@ -761,6 +762,12 @@ local function parseSheet(csv, category)
             .. config.sheetId .. "/edit#gid=" .. tostring(sheetGid)
             .. "&range=" .. columnLetter(templateColumn) .. tostring(rowIndex)
         end
+        local aliases = {}
+        local aliasText = aliasColumn and trim(rows[rowIndex][aliasColumn] or "") or ""
+        for alias in aliasText:gmatch("[^,;|\n]+") do
+          alias = trim(alias):lower()
+          if alias ~= "" then aliases[#aliases + 1] = alias end
+        end
         parsed[#parsed + 1] = {
           text = nestedDisplayText(service),
           subText = category .. "  •  Enter a query",
@@ -775,7 +782,7 @@ local function parseSheet(csv, category)
           hasSavedContent = false,
           aiPrompt = "",
           editUrl = editUrl,
-          aliases = {},
+          aliases = aliases,
           detailCount = 0,
           detailSearch = "",
           searchTemplate = template,

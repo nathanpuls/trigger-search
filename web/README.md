@@ -9,7 +9,7 @@ works as an installable Progressive Web App.
 - Searches every visible Sheet tab together while keeping each tab name as
   result context.
 - Opens arbitrary nested detail columns.
-- Opens configurable Search & AI services and accepts their queries in a small
+- Opens configurable search and AI services and accepts their queries in a small
   second-step dialog.
 - Opens saved text in a readable preview by default and provides a dedicated
   Phosphor copy button.
@@ -33,13 +33,15 @@ directly is not sufficient.
 The first visit asks for a complete public Google Sheets link. Publish the
 workbook using **File → Share → Publish to web** before connecting it.
 
-## Search & AI launchers
+## Search launchers
 
-Add a `Search & AI` Sheet tab with `Service` and `URL Template` headers. Every
-complete HTTP(S) row containing `{query}` becomes a searchable service. Open a
-service by clicking or tapping it, or select it and press Right Arrow. Enter a
-query and submit to open the encoded URL; Left Arrow returns to the results.
-The shorter `URL` header is accepted for existing Sheets.
+Add a `Search` Sheet tab with `Service`, `URL Template`, and optional `Alias`
+headers. Every complete HTTP(S) row containing `{query}` becomes a searchable
+service. Open one by clicking or tapping it, or select it and press Right Arrow.
+Enter a query and submit to open the encoded URL; Left Arrow returns to the
+results. The shorter `URL` header is accepted for existing Sheets. The layout
+is recognized by its headers rather than its tab name. Separate multiple
+aliases with commas, semicolons, vertical bars, or line breaks.
 
 ## Hosting
 

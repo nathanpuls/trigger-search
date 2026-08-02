@@ -2,8 +2,8 @@
 #SingleInstance Force
 Persistent
 
-; Sheet Autocomplete version 0.13.14
-global AppVersion := "0.13.14"
+; Sheet Autocomplete version 0.13.15
+global AppVersion := "0.13.15"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -2244,17 +2244,23 @@ RunSelfTests() {
         "AI launch URLs should safely encode spaces."
 
     searchServices := []
-    ParseSheet '"Service","URL Template"`n'
-        . '"PubMed","https://pubmed.ncbi.nlm.nih.gov/?term={query}"`n'
-        . '"Broken","https://example.com/no-placeholder"`n'
-        . '"Unsafe","javascript:alert({query})"',
-        {Name: "Search & AI", Gid: "456"}, searchServices
+    ParseSheet '"Service","URL Template","Alias"`n'
+        . '"PubMed","https://pubmed.ncbi.nlm.nih.gov/?term={query}","pm; literature"`n'
+        . '"Broken","https://example.com/no-placeholder","bad"`n'
+        . '"Unsafe","javascript:alert({query})","unsafe"',
+        {Name: "Search", Gid: "456"}, searchServices
     Assert searchServices.Length = 1,
         "Search services should require a name, web URL, and {query} placeholder."
     Assert searchServices[1].IsSearchService
         && searchServices[1].GroupLabel = "PubMed",
         "A valid search-service row should become a searchable parent."
+    Assert searchServices[1].Aliases.Length = 2
+        && searchServices[1].Aliases[1] = "pm",
+        "Search services should support optional aliases."
     Snippets := searchServices
+    aliasChoice := FilterChoices("pm")
+    Assert aliasChoice.Length = 1 && aliasChoice[1].GroupLabel = "PubMed",
+        "A search-service alias should find its parent item."
     SearchServiceParent := searchServices[1]
     queryChoice := FilterChoices("adult ADHD")
     Assert queryChoice.Length = 1 && queryChoice[1].Type = "search-query",
@@ -2497,6 +2503,7 @@ ParseSheet(csv, info, output) {
     serviceColumn := columns.Has("service") ? columns["service"] : 0
     templateColumn := columns.Has("url template") ? columns["url template"]
         : (columns.Has("url") ? columns["url"] : 0)
+    aliasColumn := columns.Has("alias") ? columns["alias"] : 0
     if serviceColumn && templateColumn {
         Loop rows.Length - 1 {
             rowNumber := A_Index + 1
@@ -2506,6 +2513,13 @@ ParseSheet(csv, info, output) {
             if service = "" || !InStr(template, "{query}")
                 || !RegExMatch(template, "i)^https?://")
                 continue
+            aliases := []
+            aliasText := aliasColumn ? Cell(row, aliasColumn) : ""
+            Loop Parse, aliasText, ",;|`n`r" {
+                alias := StrLower(Trim(A_LoopField))
+                if alias != ""
+                    aliases.Push(alias)
+            }
             output.Push({
                 Type: "search-service",
                 Key: info.Gid ":" rowNumber,
@@ -2516,7 +2530,7 @@ ParseSheet(csv, info, output) {
                 HasSavedContent: false,
                 AiPrompt: "",
                 Category: info.Name,
-                Aliases: [],
+                Aliases: aliases,
                 Details: [],
                 DetailSearch: "",
                 DetailOrder: 0,
