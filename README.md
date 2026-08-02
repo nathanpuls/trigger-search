@@ -9,6 +9,8 @@ AutoHotkey v2—without OAuth, sign-in, a browser extension, or a dedicated app.
 - **macOS:** See [`mac/README.md`](mac/README.md) and install Hammerspoon.
 - **Windows:** See [`windows/README.md`](windows/README.md) and install
   AutoHotkey v2.
+- **Web/mobile:** See [`web/README.md`](web/README.md) for the responsive,
+  installable copy/open companion.
 
 Both versions read visible category tabs through Google Sheets' public CSV
 endpoints, support full headered tabs or simple one/two-column headerless tabs,
@@ -81,6 +83,7 @@ replace either choice.
 ```text
 mac/                  Hammerspoon implementation and examples
 windows/              AutoHotkey v2 implementation and instructions
+web/                  Responsive Progressive Web App for phones and desktops
 .github/workflows/    Windows syntax and runtime validation
 autocomplete.ahk      Temporary compatibility bridge for older Windows installs
 ```
