@@ -12,8 +12,9 @@ works as an installable Progressive Web App.
 - Copies saved text to the clipboard.
 - Opens standalone links and launches saved AI prompts in ChatGPT.
 - Shows recent Sheet items when the search is empty.
-- Supports Arrow keys, Enter, Command/Control 1–9, Command/Control-K to focus
-  search, and Command/Control-G to Google the typed phrase on desktop.
+- Supports Up/Down to navigate, Right Arrow to open nested details, Left Arrow
+  to return, Enter, Command/Control 1–9, Command/Control-K to focus search, and
+  Command/Control-G to Google the typed phrase on desktop.
 - Falls back to the last successful local cache when the Sheet is unavailable.
 
 The browser cannot paste into another application. The web workflow is copy,

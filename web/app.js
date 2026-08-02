@@ -265,12 +265,20 @@ document.querySelector("#settings-form").addEventListener("submit", event => {
 
 ui.search.addEventListener("input", () => { state.query = ui.search.value; state.selectedIndex = 0; renderResults(); });
 document.addEventListener("keydown", event => {
-  if (ui.settings.open || ui.details.open) { if (event.key === "Escape") { ui.settings.open ? ui.settings.close() : ui.details.close(); } return; }
+  if (ui.settings.open || ui.details.open) {
+    if (event.key === "Escape" || (ui.details.open && event.key === "ArrowLeft")) {
+      event.preventDefault();
+      ui.settings.open ? ui.settings.close() : ui.details.close();
+      if (!ui.settings.open) ui.search.focus();
+    }
+    return;
+  }
   const items = rankedItems();
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") { event.preventDefault(); ui.search.focus(); return; }
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "g" && trim(ui.search.value)) { event.preventDefault(); openExternal(`https://www.google.com/search?q=${encodeURIComponent(trim(ui.search.value))}`); return; }
   if ((event.metaKey || event.ctrlKey) && /^[1-9]$/.test(event.key)) { const item = items[Number(event.key) - 1]; if (item) { event.preventDefault(); copyItem(item); } return; }
   if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); const delta = event.key === "ArrowDown" ? 1 : -1; state.selectedIndex = Math.max(0, Math.min(items.length - 1, state.selectedIndex + delta)); renderResults(); document.querySelectorAll(".result")[state.selectedIndex]?.focus(); return; }
+  if (event.key === "ArrowRight") { const item = items[state.selectedIndex]; if (item?.details.length) { event.preventDefault(); openDetails(item); } return; }
   if (event.key === "Enter" && document.activeElement === ui.search) { const item = items[state.selectedIndex]; if (item) { event.preventDefault(); item.details.length ? openDetails(item) : copyItem(item); } }
   if (event.key === "Escape") { ui.search.value = ""; state.query = ""; renderResults(); }
 });
