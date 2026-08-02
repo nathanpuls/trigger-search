@@ -15,6 +15,9 @@ const ui = {
   searchService: document.querySelector("#search-service-dialog"),
   searchServiceTitle: document.querySelector("#search-service-title"),
   serviceQuery: document.querySelector("#service-query"),
+  actions: document.querySelector("#actions-dialog"),
+  actionsTitle: document.querySelector("#actions-title"),
+  actionsList: document.querySelector("#actions-list"),
   preview: document.querySelector("#preview-dialog"),
   previewTitle: document.querySelector("#preview-title"),
   previewBody: document.querySelector("#preview-body"),
@@ -292,6 +295,9 @@ function renderResults() {
     if (item.type === "search-service") actions.append(makeButton("Search", "Enter a query", () => openSearchService(item)));
     else actions.append(makeIconButton("copy", "Copy", () => copyItem(item)));
     const url = extractSingleUrl(item.content); if (url) actions.append(makeIconButton("arrow-square-out", "Open link", () => { recordRecent(item); openExternal(url); }));
+    const actionsButton = makeButton("•••", "Actions", () => openActions(item));
+    actionsButton.setAttribute("aria-label", `Actions for ${item.label}`);
+    actions.append(actionsButton);
     node.querySelector(".result-main").addEventListener("click", () => performPrimaryAction(item));
     node.addEventListener("focus", () => { state.selectedIndex = index; document.querySelectorAll(".result").forEach((row, rowIndex) => row.dataset.selected = String(rowIndex === index)); });
     ui.results.append(node);
@@ -308,7 +314,15 @@ async function copyText(text, item) {
 }
 
 function copyItem(item) { return copyText(item.content, item); }
-function showToast(message) { ui.toast.textContent = message; ui.toast.classList.add("visible"); clearTimeout(showToast.timer); showToast.timer = setTimeout(() => ui.toast.classList.remove("visible"), 1300); }
+function showToast(message) {
+  ui.toast.textContent = message; ui.toast.classList.add("visible");
+  if (ui.toast.showPopover && !ui.toast.matches(":popover-open")) ui.toast.showPopover();
+  clearTimeout(showToast.timer);
+  showToast.timer = setTimeout(() => {
+    ui.toast.classList.remove("visible");
+    if (ui.toast.hidePopover && ui.toast.matches(":popover-open")) ui.toast.hidePopover();
+  }, 1300);
+}
 
 function buildAiPrompt(template, item) {
   const replaced = template.replace(/\{(?:medication|item|label)\}/gi, item.label);
@@ -353,7 +367,9 @@ function openDetails(item) {
   item.details.forEach(detail => {
     const block = document.createElement("section"); block.className = "detail";
     const heading = document.createElement("h3"); heading.textContent = detail.label; block.append(heading);
-    const text = document.createElement("p"); text.className = "detail-text"; text.textContent = detail.content || "Ask AI"; block.append(text);
+    if (trim(detail.content)) {
+      const text = document.createElement("p"); text.className = "detail-text"; text.textContent = detail.content; block.append(text);
+    }
     const actions = document.createElement("div"); actions.className = "detail-actions";
     if (trim(detail.content)) actions.append(makeIconButton("copy", "Copy", () => copyText(detail.content, item)));
     const url = extractSingleUrl(detail.content); if (url) actions.append(makeIconButton("arrow-square-out", "Open link", () => { recordRecent(item); openExternal(url); }));
@@ -367,6 +383,31 @@ function openDetails(item) {
     block.append(actions); ui.detailsList.append(block);
   });
   ui.details.showModal();
+}
+
+function openActions(item) {
+  state.actionsItem = item;
+  ui.actionsTitle.textContent = `Actions · ${item.label}`;
+  ui.actionsList.replaceChildren();
+  const add = (label, shortcut, handler) => {
+    const button = document.createElement("button");
+    button.type = "button"; button.className = "action-row"; button.dataset.shortcut = shortcut.toLowerCase();
+    const text = document.createElement("span"); text.textContent = label;
+    const key = document.createElement("kbd"); key.textContent = shortcut;
+    button.append(text, key);
+    button.addEventListener("click", () => { ui.actions.close(); handler(); });
+    ui.actionsList.append(button);
+  };
+  if (item.type === "search-service") add("Search", "↵", () => openSearchService(item));
+  else if (item.details.length) add("View details", "→", () => openDetails(item));
+  if (trim(item.content)) {
+    add("Preview", "P", () => openPreview(item));
+    add("Copy", "C", () => copyItem(item));
+  }
+  const url = extractSingleUrl(item.content);
+  if (url) add("Open link", "O", () => { recordRecent(item); openExternal(url); });
+  if (trim(item.aiPrompt)) add("Ask AI", "A", () => askAi(buildAiPrompt(item.aiPrompt, item), item));
+  ui.actions.showModal();
 }
 
 function openSettings(firstRun) {
@@ -390,6 +431,7 @@ async function shareCurrentSheet() {
 document.querySelector("#settings-button").addEventListener("click", () => openSettings(false));
 document.querySelector("#share-button").addEventListener("click", shareCurrentSheet);
 document.querySelector("#details-back").addEventListener("click", () => ui.details.close());
+document.querySelector("#actions-back").addEventListener("click", () => ui.actions.close());
 document.querySelector("#preview-back").addEventListener("click", () => ui.preview.close());
 document.querySelector("#search-service-back").addEventListener("click", () => { ui.searchService.close(); ui.search.focus(); });
 document.querySelector("#search-service-form").addEventListener("submit", event => { event.preventDefault(); launchSearchService(); });
@@ -403,6 +445,16 @@ document.querySelector("#settings-form").addEventListener("submit", event => {
 
 ui.search.addEventListener("input", () => { state.query = ui.search.value; state.selectedIndex = 0; renderResults(); });
 document.addEventListener("keydown", event => {
+  if (ui.actions.open) {
+    if (event.key === "Escape" || event.key === "ArrowLeft") {
+      event.preventDefault(); ui.actions.close(); ui.search.focus(); return;
+    }
+    const shortcut = event.key === "Enter" ? "↵" : event.key === "ArrowRight" ? "→" : event.key.toLowerCase();
+    const action = [...ui.actionsList.querySelectorAll(".action-row")]
+      .find(button => button.dataset.shortcut === shortcut);
+    if (action) { event.preventDefault(); action.click(); }
+    return;
+  }
   if (ui.settings.open || ui.details.open || ui.searchService.open || ui.preview.open) {
     if (event.key === "Escape" || ((ui.details.open || ui.searchService.open || ui.preview.open) && event.key === "ArrowLeft")) {
       event.preventDefault();
@@ -415,6 +467,11 @@ document.addEventListener("keydown", event => {
     return;
   }
   const items = rankedItems();
+  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+    const item = items[state.selectedIndex];
+    if (item) { event.preventDefault(); openActions(item); }
+    return;
+  }
   if (event.key === "/" && document.activeElement !== ui.search) { event.preventDefault(); ui.search.focus(); return; }
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "g" && trim(ui.search.value)) { event.preventDefault(); openExternal(`https://www.google.com/search?q=${encodeURIComponent(trim(ui.search.value))}`); return; }
   if ((event.metaKey || event.ctrlKey) && /^[1-9]$/.test(event.key)) { const item = items[Number(event.key) - 1]; if (item) { event.preventDefault(); copyItem(item); } return; }

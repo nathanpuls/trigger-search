@@ -21,6 +21,9 @@ works as an installable Progressive Web App.
   to return, Enter to preview, Command/Control 1–9 to copy, `/` to focus search,
   and Command/Control-G to Google the typed phrase on desktop.
 - Falls back to the last successful local cache when the Sheet is unavailable.
+- Shows contextual actions from each result's `•••` button. On desktop,
+  Command-K or Control-K opens the same menu for the selected result; its
+  displayed single-key shortcuts work while the menu is open.
 
 The browser cannot paste into another application. The web workflow is copy,
 switch applications, and paste.

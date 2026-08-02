@@ -32,7 +32,7 @@
     </main>
   </div>
 
-  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <div class="toast" id="toast" role="status" aria-live="polite" popover="manual"></div>
 
   <dialog id="details-dialog" class="sheet-dialog">
     <div class="dialog-head">
@@ -64,6 +64,15 @@
       <input id="service-query" type="search" placeholder="Enter a query" autocomplete="off">
       <button class="primary-button" type="submit">Search</button>
     </form>
+  </dialog>
+
+  <dialog id="actions-dialog" class="sheet-dialog actions-dialog">
+    <div class="dialog-head">
+      <button class="back-button" id="actions-back" type="button" aria-label="Back">←</button>
+      <h2 id="actions-title">Actions</h2>
+      <button class="close-button" data-close="actions-dialog" type="button" aria-label="Close">×</button>
+    </div>
+    <div id="actions-list" class="actions-list"></div>
   </dialog>
 
   <dialog id="settings-dialog" class="settings-dialog">

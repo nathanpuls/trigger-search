@@ -42,8 +42,8 @@ button { color: inherit; }
 .action-button:hover { border-color: #aaa; }
 .empty-state { padding: 56px 0; color: var(--muted); text-align: center; }
 
-.toast { position: fixed; left: 50%; bottom: calc(22px + env(safe-area-inset-bottom)); z-index: 30; transform: translate(-50%, 14px); padding: 10px 15px; border-radius: 999px; background: #111; color: white; font-size: 13px; opacity: 0; pointer-events: none; transition: .18s ease; }
-.toast.visible { opacity: 1; transform: translate(-50%, 0); }
+.toast { position: fixed; inset: auto auto calc(22px + env(safe-area-inset-bottom)) 50%; margin: 0; z-index: 30; transform: translate(-50%, 14px); padding: 10px 15px; border: 0; border-radius: 999px; background: #111; color: white; font-size: 13px; opacity: 0; pointer-events: none; transition: .18s ease; }
+.toast.visible, .toast:popover-open { opacity: 1; transform: translate(-50%, 0); }
 
 dialog { color: var(--ink); }
 dialog::backdrop { background: rgba(0,0,0,.22); backdrop-filter: blur(2px); }
@@ -57,6 +57,11 @@ dialog::backdrop { background: rgba(0,0,0,.22); backdrop-filter: blur(2px); }
 .detail h3 { margin: 0 0 8px; font-size: 15px; }
 .detail-text { margin: 0; color: #333; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
 .detail-actions { display: flex; gap: 8px; margin-top: 13px; }
+.actions-list { padding: 8px 18px 18px; }
+.action-row { width: 100%; min-height: 50px; display: flex; align-items: center; justify-content: space-between; border: 0; border-bottom: 1px solid var(--line); background: transparent; cursor: pointer; text-align: left; }
+.action-row:last-child { border-bottom: 0; }
+.action-row:hover, .action-row:focus-visible { background: var(--soft); outline: 0; }
+.action-row kbd { min-width: 30px; color: var(--muted); font: 13px ui-monospace, SFMono-Regular, Menlo, monospace; text-align: center; }
 .preview-body { min-height: 140px; max-height: calc(82dvh - 130px); overflow: auto; padding: 22px 20px; color: #272727; line-height: 1.58; white-space: pre-wrap; overflow-wrap: anywhere; }
 .preview-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 18px calc(12px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); }
 
