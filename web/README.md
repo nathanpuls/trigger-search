@@ -61,3 +61,9 @@ Everything in this folder is static and can be hosted with Cloudflare Pages,
 GitHub Pages, Netlify, or another HTTPS static host. The current deployment is
 <https://trigger-search.pages.dev/>. Do not configure a private Sheet: the web
 version intentionally uses public, no-sign-in endpoints.
+
+## Brand assets
+
+The website header uses `menu-icon.svg`, the same plain lightning-bolt mark as
+the Mac menu bar. `icon.svg` and `icon-180.png` retain the square treatment for
+the browser favicon and installed home-screen/PWA icon.

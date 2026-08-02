@@ -98,6 +98,20 @@ Microsoft Copilot are also available. The Sheet can also
 define an optional launcher shortcut with two dropdowns—modifier and key—while
 keeping the normal printable trigger available.
 
+### Launcher shortcut settings
+
+In the Sheet's `Settings & Help` tab, `Launcher Modifier` and `Launcher Key`
+normally combine into one shortcut; the plus sign is inferred. Examples include
+`Alt/Option` + `Space`, `Control` + `K`, and `None` + `F6`.
+
+On Mac, the Launcher Key dropdown also includes `Right Option (tap)` and
+`Right Command (tap)`. Either choice opens Trigger Search when that modifier is
+tapped by itself, while combinations such as Option-click and Command-C retain
+their normal behavior. `Launcher Modifier` is ignored for these two tap-only
+choices. They are Mac-only; use a standard two-key combination or F1–F12 on
+Windows. Set the launcher fields to `None` to rely only on the printable
+trigger.
+
 ## Connect your Google Sheet
 
 Publish your workbook with **File → Share → Publish to web** in Google Sheets.
