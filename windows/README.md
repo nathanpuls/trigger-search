@@ -46,8 +46,10 @@ launcher should choose v2 even if another version is also installed.
   preview, press P to paste the displayed text, C to copy all of it, or Escape
   to return to the same result.
 - Hold Ctrl for 300 ms to reveal the contextual shortcut HUD; keep holding it
-  and press Enter for AI, C to copy, E to edit, O to open, or P to preview.
-  Only actions available for the selected result appear.
+  and press Enter for AI, C to copy, E to edit, G to search Google, O to open,
+  or P to preview. Ctrl+G searches Google for the literal text currently typed
+  in the launcher, even when it does not match a Sheet item. Other actions
+  appear only when applicable.
 - Press Ctrl+K to open the stable actions and shortcuts list. A filled dot marks
   an available action and a hollow dot marks an unavailable action, without
   extra warning text. The actions view begins with `←`; Left Arrow returns to the selected

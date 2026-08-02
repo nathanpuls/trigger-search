@@ -2,8 +2,8 @@
 #SingleInstance Force
 Persistent
 
-; Sheet Autocomplete version 0.13.12
-global AppVersion := "0.13.12"
+; Sheet Autocomplete version 0.13.13
+global AppVersion := "0.13.13"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -72,6 +72,7 @@ Left::CloseDetails()
 ^e::EditSelected()
 ^c::CopySelected()
 ^o::OpenSelectedLink()
+^g::SearchGoogleQuery()
 ^p::PreviewSelected()
 ^Enter::LaunchSelectedAi()
 ^k::ShowActionsMenu()
@@ -443,24 +444,30 @@ HideModifierHud(*) {
 }
 
 ShowModifierHud(*) {
-    global ModifierHud, ChooserGui, ActionsForChoice
+    global ModifierHud, ChooserGui, ActionsForChoice, SearchBox
 
     if !IsChooserOpen() || ActionsForChoice || !GetKeyState("Ctrl", "P")
         return
     choice := SelectedChoice()
-    if !choice || (choice.HasOwnProp("IsUtilityError") && choice.IsUtilityError)
+    query := Trim(SearchBox.Value)
+    if query = "" && (!choice
+        || (choice.HasOwnProp("IsUtilityError") && choice.IsUtilityError))
         return
+    if choice && choice.HasOwnProp("IsUtilityError") && choice.IsUtilityError
+        choice := 0
 
-    hasSavedContent := (!choice.HasOwnProp("HasSavedContent")
+    hasSavedContent := choice && (!choice.HasOwnProp("HasSavedContent")
         || choice.HasSavedContent) && Trim(choice.Content) != ""
     actions := []
-    if choice.HasOwnProp("AiPrompt") && Trim(choice.AiPrompt) != ""
+    if query != ""
+        actions.Push("G       Search Google")
+    if choice && choice.HasOwnProp("AiPrompt") && Trim(choice.AiPrompt) != ""
         actions.Push("Enter   Ask AI")
     if hasSavedContent
         actions.Push("C       Copy")
-    if choice.HasOwnProp("EditUrl") && choice.EditUrl != ""
+    if choice && choice.HasOwnProp("EditUrl") && choice.EditUrl != ""
         actions.Push("E       Edit")
-    if choice.HasOwnProp("Content") && ExtractLaunchUrl(choice.Content) != ""
+    if choice && choice.HasOwnProp("Content") && ExtractLaunchUrl(choice.Content) != ""
         actions.Push("O       Open")
     if hasSavedContent
         actions.Push("P       Preview")
@@ -1372,6 +1379,22 @@ UrlEncode(value) {
             output .= Format("%{:02X}", byte)
     }
     return output
+}
+
+SearchGoogleQuery(*) {
+    global SearchBox, ChooserGui, ChooserOpen, AtBoundary
+
+    phrase := Trim(SearchBox.Value)
+    if phrase = "" {
+        TrayTip "Type a Google search first.", "Trigger Search"
+        return false
+    }
+    HideModifierHud()
+    ChooserGui.Hide()
+    ChooserOpen := false
+    AtBoundary := true
+    Run "https://www.google.com/search?q=" UrlEncode(phrase)
+    return true
 }
 
 LaunchSelectedAi(*) {

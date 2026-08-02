@@ -39,10 +39,15 @@ Control-P on Windows opens the full expanded text in a readable, selectable
 preview; Escape returns to the same result. Command-K or Control-K opens a
 contextual action menu for the selected result.
 
+Command-G on Mac or Control-G on Windows searches Google for the literal text
+currently typed into Trigger Search, even when it does not match a Sheet item.
+The search opens in the system's default browser.
+
 Holding Command on Mac or Control on Windows for about 300 ms reveals a compact
 contextual shortcut HUD. Continue holding the modifier and press Return/Enter
-for AI, C to copy, E to edit, O to open, or P to preview. The HUD lists only
-actions that apply to the selected result and disappears when the modifier is
+for AI, C to copy, E to edit, G to search Google, O to open, or P to preview.
+Google remains available for arbitrary typed text; the other HUD actions depend
+on the selected result. The HUD disappears when the modifier is
 released. Preview uses a soft gray reading surface to stand apart from the
 underlying application. Its title appears only once; inside Preview, P pastes
 the displayed text, C copies all of it, and Escape returns to the chooser.

@@ -11,6 +11,7 @@ local previewPasteHotkey
 local previewCopyHotkey
 local openDetailsHotkey
 local openLinkHotkey
+local googleSearchHotkey
 local backHotkey
 local escapeHotkey
 local launcherHotkey
@@ -1027,15 +1028,18 @@ local function showActionHud()
   local flags = hs.eventtap.checkKeyboardModifiers()
   if not flags.cmd or flags.ctrl or flags.alt or flags.shift then return end
   local choice = chooser:selectedRowContents()
-  if not choice or choice.isUtilityError then return end
+  local query = trim(chooser:query())
+  if query == "" and (not choice or choice.isUtilityError) then return end
+  if choice and choice.isUtilityError then choice = nil end
 
-  local hasSavedContent = choice.hasSavedContent ~= false
+  local hasSavedContent = choice and choice.hasSavedContent ~= false
     and trim(choice.content) ~= ""
   local actions = {}
-  if trim(choice.aiPrompt) ~= "" then actions[#actions + 1] = "↵   Ask AI" end
+  if query ~= "" then actions[#actions + 1] = "G   Search Google" end
+  if choice and trim(choice.aiPrompt) ~= "" then actions[#actions + 1] = "↵   Ask AI" end
   if hasSavedContent then actions[#actions + 1] = "C   Copy" end
-  if trim(choice.editUrl) ~= "" then actions[#actions + 1] = "E   Edit" end
-  if extractLaunchUrl(choice.content or "") then
+  if choice and trim(choice.editUrl) ~= "" then actions[#actions + 1] = "E   Edit" end
+  if choice and extractLaunchUrl(choice.content or "") then
     actions[#actions + 1] = "O   Open"
   end
   if hasSavedContent then actions[#actions + 1] = "P   Preview" end
@@ -1123,6 +1127,9 @@ local function updateChooserHotkeys()
   end
   if openLinkHotkey then
     if visible then openLinkHotkey:enable() else openLinkHotkey:disable() end
+  end
+  if googleSearchHotkey then
+    if visible then googleSearchHotkey:enable() else googleSearchHotkey:disable() end
   end
   if escapeHotkey then
     if visible or actionVisible then escapeHotkey:enable() else escapeHotkey:disable() end
@@ -1266,6 +1273,18 @@ local function urlEncode(value)
   return (tostring(value or ""):gsub("([^%w%-_%.~])", function(character)
     return string.format("%%%02X", string.byte(character))
   end))
+end
+
+local function searchGoogleQuery()
+  if not chooser or not chooser:isVisible() then return end
+  local phrase = trim(chooser:query())
+  if phrase == "" then
+    hs.alert.show("Type a Google search first")
+    return
+  end
+  chooser:hide()
+  atBoundary = true
+  hs.urlevent.openURL("https://www.google.com/search?q=" .. urlEncode(phrase))
 end
 
 local function buildAiPrompt(choice)
@@ -2059,6 +2078,8 @@ function M.start(userConfig)
     end
   end)
 
+  googleSearchHotkey = hs.hotkey.new({ "cmd" }, "g", searchGoogleQuery)
+
   backHotkey = hs.hotkey.new({}, "left", function()
     if actionChooser and actionChooser:isVisible() then
       actionReturning = true
@@ -2209,6 +2230,10 @@ function M.stop()
   end
   if openLinkHotkey then
     openLinkHotkey:disable(); openLinkHotkey:delete(); openLinkHotkey = nil
+  end
+  if googleSearchHotkey then
+    googleSearchHotkey:disable(); googleSearchHotkey:delete()
+    googleSearchHotkey = nil
   end
   if backHotkey then backHotkey:disable(); backHotkey:delete(); backHotkey = nil end
   if escapeHotkey then

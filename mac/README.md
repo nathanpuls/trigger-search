@@ -121,7 +121,9 @@ paste the displayed text, C to copy all of it, or Escape to return to the same
 result. Preview uses a soft gray reading surface so it remains visually
 distinct from the underlying application. Hold Command for 300 ms to reveal a
 small contextual shortcut HUD; keep holding it and press Return for AI, C to
-copy, E to edit, O to open, or P to preview. Only applicable actions appear.
+copy, E to edit, G to search Google, O to open, or P to preview. Command-G
+searches Google for the literal text currently typed in the launcher, even when
+it does not match a Sheet item. Other actions appear only when applicable.
 Press Command-K for the complete actions list. Actions
 that apply use a filled dot; unavailable actions use a hollow dot and dimmed
 text. The actions
