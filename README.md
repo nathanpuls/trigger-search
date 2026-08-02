@@ -10,7 +10,8 @@ AutoHotkey v2—without OAuth, sign-in, a browser extension, or a dedicated app.
 - **Windows:** See [`windows/README.md`](windows/README.md) and install
   AutoHotkey v2.
 - **Web/mobile:** See [`web/README.md`](web/README.md) for the responsive,
-  installable copy/open companion.
+  installable copy/open companion, or open
+  [trigger-search.pages.dev](https://trigger-search.pages.dev/).
 
 Both versions read visible category tabs through Google Sheets' public CSV
 endpoints, support full headered tabs or simple one/two-column headerless tabs,

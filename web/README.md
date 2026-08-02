@@ -30,9 +30,7 @@ workbook using **File → Share → Publish to web** before connecting it.
 
 ## Hosting
 
-Everything in this folder is static and can be hosted with GitHub Pages,
-Cloudflare Pages, Netlify, or another HTTPS static host. Do not configure a
-private Sheet: the web version intentionally uses public, no-sign-in endpoints.
-
-This repository includes a GitHub Pages workflow that publishes the `web`
-folder after web changes reach `main`.
+Everything in this folder is static and can be hosted with Cloudflare Pages,
+GitHub Pages, Netlify, or another HTTPS static host. The current deployment is
+<https://trigger-search.pages.dev/>. Do not configure a private Sheet: the web
+version intentionally uses public, no-sign-in endpoints.
