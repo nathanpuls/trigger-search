@@ -12,10 +12,15 @@ jobs:
 
       - name: Download current AutoHotkey v2
         shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           $release = Invoke-RestMethod `
             -Uri "https://api.github.com/repos/AutoHotkey/AutoHotkey/releases/latest" `
-            -Headers @{ "User-Agent" = "sheet-autocomplete-validation" }
+            -Headers @{
+              "User-Agent" = "sheet-autocomplete-validation"
+              "Authorization" = "Bearer $env:GITHUB_TOKEN"
+            }
           $asset = $release.assets |
             Where-Object { $_.name -match '^AutoHotkey_.*\.zip$' } |
             Select-Object -First 1
