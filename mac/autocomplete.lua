@@ -15,6 +15,9 @@ local googleSearchHotkey
 local backHotkey
 local escapeHotkey
 local launcherHotkey
+local launcherTapKeyCode
+local launcherTapPressed = false
+local launcherTapArmed = false
 local actionChooser
 local actionChoice
 local actionReturnQuery = ""
@@ -1709,10 +1712,23 @@ updateLauncherHotkey = function()
     launcherHotkey:delete()
     launcherHotkey = nil
   end
+  launcherTapKeyCode = nil
+  launcherTapPressed = false
+  launcherTapArmed = false
 
   local modifierName = trim(config.launcherModifier):lower()
     :gsub("[%s_/%-]+", "")
-  local keyName = trim(config.launcherKey):lower():gsub("[%s_%-]+", "")
+  local rawKeyName = trim(config.launcherKey):lower()
+  local tapKeyName = rawKeyName:gsub("[%s_%-%(%)]+", "")
+  if tapKeyName == "rightoptiontap" or tapKeyName == "rightalttap" then
+    launcherTapKeyCode = 61
+    return
+  elseif tapKeyName == "rightcommandtap" or tapKeyName == "rightcmdtap" then
+    launcherTapKeyCode = 54
+    return
+  end
+
+  local keyName = rawKeyName:gsub("[%s_%-]+", "")
   if keyName == "" or keyName == "none" then return end
 
   local modifiers = {}
@@ -1812,6 +1828,20 @@ local uncertainKeyCodes = {
 local function watchKey(event)
   local flags = event:getFlags()
   if event:getType() == hs.eventtap.event.types.flagsChanged then
+    if launcherTapKeyCode and event:getKeyCode() == launcherTapKeyCode then
+      if launcherTapPressed then
+        local shouldOpen = launcherTapArmed
+        launcherTapPressed = false
+        launcherTapArmed = false
+        if shouldOpen then hs.timer.doAfter(0, showChooser) end
+      else
+        launcherTapPressed = true
+        launcherTapArmed = true
+      end
+    elseif launcherTapArmed then
+      launcherTapArmed = false
+    end
+
     if chooser and chooser:isVisible() and flags.cmd
         and not flags.ctrl and not flags.alt and not flags.shift then
       scheduleActionHud()
@@ -1820,6 +1850,8 @@ local function watchKey(event)
     end
     return false
   end
+
+  if launcherTapArmed then launcherTapArmed = false end
 
   local typedCharacter = event:getCharacters()
 
@@ -2298,6 +2330,7 @@ function M.start(userConfig)
     hs.eventtap.event.types.rightMouseDown,
     hs.eventtap.event.types.otherMouseDown,
   }, function(event)
+    if launcherTapArmed then launcherTapArmed = false end
     if event:getType() == hs.eventtap.event.types.leftMouseDown
         and chooser and chooser:isVisible() then
       chooserClickPending = true

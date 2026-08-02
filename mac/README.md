@@ -124,6 +124,10 @@ Replace `;` with another single printable character whenever you prefer. The
 local `trigger` value in `init.lua` remains an offline fallback. The two
 launcher dropdowns form a shortcut automatically; do not type a plus sign.
 Examples include `Alt/Option` + `Space`, `Control` + `K`, or `None` + `F6`.
+For a one-key launcher, choose `Right Option (tap)` or `Right Command (tap)`
+as the Launcher Key. Tap that modifier by itself to open Trigger Search; using
+it as part of another keyboard shortcut continues to behave normally. The
+Launcher Modifier value is ignored for these two tap choices.
 For safety, a single ordinary letter, number, Space, Return, or Tab is not
 accepted without a modifier. A single F1–F12 key is allowed. Set either
 launcher field to `None` to disable the extra launcher shortcut.
