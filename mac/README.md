@@ -108,6 +108,9 @@ results appear as soon as you type. Continue typing to filter,
 use the arrow keys to navigate, press Return to paste, or Escape to cancel.
 Rows use a small, pale version of the Trigger Search lightning logo. Nested
 items additionally show a larger `→` beside their labels.
+Clicking a nested parent opens its details. Clicking a pasteable result opens
+its contextual Actions menu, so mouse use never pastes without an explicit
+choice. Return and Command-number remain the fast keyboard paths for pasting.
 Highlight a result and press Command-E to open its exact row or detail cell in
 Google Sheets for editing. Press Command-C to copy the selected text without
 pasting it. Press Command-P to open the fully expanded text in a scrollable,

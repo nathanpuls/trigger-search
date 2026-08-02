@@ -2,8 +2,8 @@
 #SingleInstance Force
 Persistent
 
-; Sheet Autocomplete version 0.13.8
-global AppVersion := "0.13.8"
+; Sheet Autocomplete version 0.13.9
+global AppVersion := "0.13.9"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -146,7 +146,7 @@ BuildChooser() {
     FooterText := ChooserGui.Add("Text", "xm y+6 w730 Right Hidden", "")
 
     SearchBox.OnEvent("Change", SearchChanged)
-    ResultsView.OnEvent("DoubleClick", ResultDoubleClicked)
+    ResultsView.OnEvent("Click", ResultClicked)
     ChooserGui.OnEvent("Close", (*) => CancelChooser())
     ChooserGui.OnEvent("Escape", (*) => CancelChooser())
 
@@ -768,11 +768,27 @@ ChooseSelected(*) {
     ChooseChoice choice
 }
 
-ResultDoubleClicked(control, row) {
-    global VisibleChoices
+ResultClicked(control, row) {
+    global VisibleChoices, DetailParent
 
-    if row >= 1 && row <= VisibleChoices.Length
-        ChooseChoice VisibleChoices[row]
+    if row < 1 || row > VisibleChoices.Length
+        return
+
+    choice := VisibleChoices[row]
+    if choice.HasOwnProp("Type") && choice.Type = "action" {
+        ChooseChoice choice
+        return
+    }
+    if choice.HasOwnProp("IsUtilityError") && choice.IsUtilityError
+        return
+
+    control.Modify(0, "-Select -Focus")
+    control.Modify(row, "Select Focus Vis")
+    if !DetailParent && choice.HasOwnProp("Details")
+        && choice.Details.Length > 0
+        OpenSelectedAction()
+    else
+        ShowActionsMenu()
 }
 
 ChooseChoice(choice) {

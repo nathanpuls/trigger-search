@@ -35,6 +35,9 @@ launcher should choose v2 even if another version is also installed.
 - Aliases rank above ordinary label matches.
 - A `→` means an item has nested details. No detail count is shown. Press Right
   to open them and Left to return to the same result.
+- Clicking a nested parent opens its details. Clicking a pasteable result opens
+  its contextual Actions menu, so mouse use never pastes without an explicit
+  choice. Enter and Ctrl+number remain the fast keyboard paths for pasting.
 - Press Ctrl+E to open the selected item’s exact Google Sheets cell.
 - Press Ctrl+C to copy the selected text without pasting it.
 - Press Ctrl+P to open the fully expanded text in a scrollable, selectable

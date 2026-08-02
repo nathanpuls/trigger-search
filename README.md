@@ -37,6 +37,10 @@ Control-P on Windows opens the full expanded text in a readable, selectable
 preview; Escape returns to the same result. Command-K or Control-K opens a
 contextual action menu for the selected result.
 
+Mouse use is deliberately exploratory: clicking a nested parent opens its
+details, while clicking a pasteable result opens that result's Actions menu.
+Keyboard Return/Enter and the numbered shortcuts still paste immediately.
+
 A headered tab can reserve a row whose Label is `AI Prompt`. Text in that row's
 detail columns becomes the prompt template for the same column. Command-Return
 on Mac or Control-Enter on Windows sends the selected item to the AI engine

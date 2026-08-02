@@ -17,6 +17,7 @@ local actionChoice
 local actionReturnQuery = ""
 local actionReturnRow = 1
 local actionReturning = false
+local chooserClickPending = false
 local previewWebview
 local previewClosing = false
 local previewReturnQuery = ""
@@ -1768,7 +1769,21 @@ function M.start(userConfig)
   hollowChoiceImage = hs.image.imageFromURL(
     "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNiAxNiI+PGNpcmNsZSBjeD0iOCIgY3k9IjgiIHI9IjIuOCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjODg4IiBzdHJva2Utd2lkdGg9IjEuMiIvPjwvc3ZnPg==")
 
-  chooser = hs.chooser.new(pasteSnippet)
+  chooser = hs.chooser.new(function(choice)
+    if not choice then return end
+    if chooserClickPending then
+      chooserClickPending = false
+      if not detailParent and not choice.isDetail and choice.detailCount
+          and choice.detailCount > 0 then
+        openDetails(choice)
+        chooser:show()
+      elseif not choice.isUtilityError then
+        showActions()
+      end
+      return
+    end
+    pasteSnippet(choice)
+  end)
     :placeholderText(rootPlaceholder())
     :searchSubText(true)
     :rows(config.rows)
@@ -1890,7 +1905,12 @@ function M.start(userConfig)
     hs.eventtap.event.types.leftMouseDown,
     hs.eventtap.event.types.rightMouseDown,
     hs.eventtap.event.types.otherMouseDown,
-  }, function()
+  }, function(event)
+    if event:getType() == hs.eventtap.event.types.leftMouseDown
+        and chooser and chooser:isVisible() then
+      chooserClickPending = true
+      hs.timer.doAfter(0.4, function() chooserClickPending = false end)
+    end
     -- Web editors such as Gmail often update their focused Accessibility
     -- element just after the click. Re-check once focus settles; if the app
     -- exposes no cursor context, treat the click as a new typing run.
