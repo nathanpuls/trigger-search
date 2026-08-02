@@ -102,9 +102,10 @@ keeping the normal printable trigger available.
 
 Publish your workbook with **File → Share → Publish to web** in Google Sheets.
 The first time Trigger Search runs, paste the complete Sheet link into its setup
-window and confirm. Trigger Search extracts the spreadsheet ID,
-checks the public data, and saves the choice only on that computer—no code
-editing is required.
+window and confirm. Trigger Search extracts the spreadsheet ID and checks the
+public data without requiring code edits. Mac and Windows save the choice only
+on that computer. The web version also places the public Sheet ID in its URL so
+the configured launcher can be shared as a normal link.
 
 Each computer has its own setting. A Mac can therefore use a personal Sheet
 while a Windows work computer uses a different Sheet. Script updates do not

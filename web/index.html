@@ -72,13 +72,16 @@
         <h2>Google Sheet</h2>
         <button class="close-button" data-close="settings-dialog" type="button" aria-label="Close">×</button>
       </div>
-      <p>Paste a public Google Sheets link. Trigger Search stores it only in this browser.</p>
+      <p>Paste a public Google Sheets link. Its Sheet ID is added to this page's URL so you can share the same Trigger Search.</p>
       <label for="sheet-url">Google Sheet link</label>
       <textarea id="sheet-url" rows="4" placeholder="https://docs.google.com/spreadsheets/d/…"></textarea>
       <p class="form-note">In Google Sheets, use File → Share → Publish to web first.</p>
       <div class="form-actions">
         <button class="secondary-button" id="disconnect-button" type="button">Disconnect</button>
-        <button class="primary-button" type="submit">Connect</button>
+        <div class="form-actions-right">
+          <button class="secondary-button" id="share-button" type="button">Share link</button>
+          <button class="primary-button" type="submit">Connect</button>
+        </div>
       </div>
     </form>
   </dialog>

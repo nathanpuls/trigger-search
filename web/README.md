@@ -32,7 +32,11 @@ workers and clipboard access require localhost or HTTPS; opening `index.html`
 directly is not sufficient.
 
 The first visit asks for a complete public Google Sheets link. Publish the
-workbook using **File → Share → Publish to web** before connecting it.
+workbook using **File → Share → Publish to web** before connecting it. Once
+connected, the address contains `?sheet=YOUR_SHEET_ID`; copying that address or
+using **Settings → Share link** gives someone else the same Sheet-backed web
+launcher. Opening a shared address also remembers that Sheet in the recipient's
+browser for later visits.
 
 ## Search launchers
 

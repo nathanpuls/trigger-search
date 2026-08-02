@@ -32,6 +32,24 @@ function parseSheetId(value) {
   return /^[A-Za-z0-9_-]{20,}$/.test(trim(value)) ? trim(value) : "";
 }
 
+function sheetShareUrl(sheetId = state.sheetId) {
+  const url = new URL(window.location.href);
+  url.search = ""; url.hash = "";
+  if (sheetId) url.searchParams.set("sheet", sheetId);
+  return url.toString();
+}
+
+function syncSheetUrl(sheetId = state.sheetId) {
+  history.replaceState({}, "", sheetShareUrl(sheetId));
+}
+
+const sharedSheetId = parseSheetId(new URLSearchParams(window.location.search).get("sheet") || "");
+if (sharedSheetId) {
+  state.sheetId = sharedSheetId;
+  localStorage.setItem("triggerSearch.sheetId", sharedSheetId);
+  syncSheetUrl(sharedSheetId);
+} else if (state.sheetId) syncSheetUrl(state.sheetId);
+
 function decodeJsString(value) {
   try { return JSON.parse(`"${value.replace(/\"/g, '\\"')}"`); }
   catch { return value.replace(/\\x([0-9a-f]{2})/gi, (_, hex) => String.fromCharCode(parseInt(hex, 16))).replace(/\\"/g, '"').replace(/\\\\/g, "\\"); }
@@ -354,20 +372,33 @@ function openDetails(item) {
 function openSettings(firstRun) {
   ui.sheetUrl.value = state.sheetId ? `https://docs.google.com/spreadsheets/d/${state.sheetId}/edit` : "";
   document.querySelector("#disconnect-button").hidden = firstRun || !state.sheetId;
+  document.querySelector("#share-button").hidden = !state.sheetId;
   if (!ui.settings.open) ui.settings.showModal();
 }
 
+async function shareCurrentSheet() {
+  if (!state.sheetId) return;
+  const url = sheetShareUrl();
+  if (navigator.share) {
+    try { await navigator.share({ title: "Trigger Search", url }); return; }
+    catch (error) { if (error?.name === "AbortError") return; }
+  }
+  await copyText(url);
+  showToast("Share link copied");
+}
+
 document.querySelector("#settings-button").addEventListener("click", () => openSettings(false));
+document.querySelector("#share-button").addEventListener("click", shareCurrentSheet);
 document.querySelector("#details-back").addEventListener("click", () => ui.details.close());
 document.querySelector("#preview-back").addEventListener("click", () => ui.preview.close());
 document.querySelector("#search-service-back").addEventListener("click", () => { ui.searchService.close(); ui.search.focus(); });
 document.querySelector("#search-service-form").addEventListener("submit", event => { event.preventDefault(); launchSearchService(); });
 document.querySelectorAll("[data-close]").forEach(button => button.addEventListener("click", () => document.querySelector(`#${button.dataset.close}`).close()));
-document.querySelector("#disconnect-button").addEventListener("click", () => { localStorage.removeItem("triggerSearch.sheetId"); state.sheetId = ""; state.items = []; state.categories = []; ui.settings.close(); renderResults(); openSettings(true); });
+document.querySelector("#disconnect-button").addEventListener("click", () => { localStorage.removeItem("triggerSearch.sheetId"); state.sheetId = ""; syncSheetUrl(""); state.items = []; state.categories = []; ui.status.textContent = ""; ui.settings.close(); renderResults(); openSettings(true); });
 document.querySelector("#settings-form").addEventListener("submit", event => {
   event.preventDefault(); const id = parseSheetId(ui.sheetUrl.value);
   if (!id) { showToast("That does not look like a Google Sheets link"); return; }
-  state.sheetId = id; localStorage.setItem("triggerSearch.sheetId", id); ui.settings.close(); loadWorkbook();
+  state.sheetId = id; localStorage.setItem("triggerSearch.sheetId", id); syncSheetUrl(id); ui.settings.close(); loadWorkbook();
 });
 
 ui.search.addEventListener("input", () => { state.query = ui.search.value; state.selectedIndex = 0; renderResults(); });
