@@ -264,8 +264,7 @@ function makeIconButton(icon, title, handler) {
 }
 
 function openExternal(url) {
-  const opened = window.open(url, "_blank", "noopener,noreferrer");
-  if (!opened) location.href = url;
+  window.open(url, "_blank", "noopener,noreferrer");
 }
 
 function performPrimaryAction(item) {
