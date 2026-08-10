@@ -40,14 +40,15 @@ function anyDialogOpen() {
     || ui.actions.open || ui.preview.open;
 }
 
+function focusSearchNow() {
+  if (anyDialogOpen()) return;
+  try { ui.search.focus({ preventScroll: true }); }
+  catch { ui.search.focus(); }
+}
+
 function focusSearchSoon() {
-  const focus = () => {
-    if (anyDialogOpen()) return;
-    try { ui.search.focus({ preventScroll: true }); }
-    catch { ui.search.focus(); }
-  };
-  requestAnimationFrame(focus);
-  setTimeout(focus, 120);
+  requestAnimationFrame(focusSearchNow);
+  setTimeout(focusSearchNow, 120);
 }
 
 function syncClearSearch() {
@@ -267,14 +268,22 @@ function categorySheetUrl(category, row = "") {
 }
 
 function categoryChoices(query) {
-  const needle = normalize(query.replace(/^\//, ""));
-  return state.categories.filter(category => !needle || normalize(category).includes(needle)).flatMap(category => {
-    const common = { label: category, aliases: [], category: "Google Sheet", gid: state.categoryGids[category], row: 0, details: [], aiPrompt: "", tabName: category };
-    return [
-      { ...common, key: `tab:browse:${category}`, type: "category-browser", content: "Browse entries" },
-      { ...common, key: `tab:open:${category}`, type: "category-sheet", content: "Open in Google Sheets" },
-    ];
-  });
+  const needle = normalize(query);
+  if (!needle) return [];
+  return state.categories.map(category => {
+    const name = normalize(category);
+    const initials = name.split(/[^a-z0-9]+/).filter(Boolean).map(word => word[0]).join("");
+    let searchRank = 99;
+    if (name === needle) searchRank = 0;
+    else if (initials === needle) searchRank = 1;
+    else if (name.startsWith(needle)) searchRank = 2;
+    else if (name.includes(needle)) searchRank = 4;
+    return {
+      key: `tab:browse:${category}`, type: "category-browser", label: category,
+      aliases: [], category: "Google Sheet", content: "", gid: state.categoryGids[category],
+      row: 0, details: [], aiPrompt: "", tabName: category, searchRank,
+    };
+  }).filter(item => item.searchRank < 99);
 }
 
 function enterCategory(category) {
@@ -295,13 +304,12 @@ function leaveCategory() {
 
 function rankedItems() {
   const query = normalize(state.query);
-  if (!state.activeCategory && query.startsWith("/")) return categoryChoices(state.query);
   if (!query && !state.activeCategory) return isMobileView() ? [] : recentItems();
   const source = state.activeCategory
     ? state.items.filter(item => item.category === state.activeCategory)
     : state.items;
   if (!query) return [...source].sort((a, b) => a.label.localeCompare(b.label));
-  return source.map(item => {
+  const matches = source.map(item => {
     const label = normalize(item.label), aliases = item.aliases.map(normalize), content = normalize(item.content);
     let rank = 99;
     if (aliases.includes(query)) rank = 0;
@@ -313,7 +321,11 @@ function rankedItems() {
     else if (content.includes(query)) rank = 6;
     else if (item.details.some(detail => normalize(`${detail.label} ${detail.content}`).includes(query))) rank = 7;
     return { item, rank };
-  }).filter(match => match.rank < 99).sort((a, b) => a.rank - b.rank || a.item.label.localeCompare(b.item.label)).map(match => match.item);
+  }).filter(match => match.rank < 99);
+  if (!state.activeCategory) {
+    categoryChoices(state.query).forEach(item => matches.push({ item, rank: item.searchRank }));
+  }
+  return matches.sort((a, b) => a.rank - b.rank || a.item.label.localeCompare(b.item.label)).map(match => match.item);
 }
 
 function extractSingleUrl(value) {
@@ -355,7 +367,6 @@ function openExternal(url) {
 
 function performPrimaryAction(item) {
   if (item.type === "category-browser") { enterCategory(item.tabName); return; }
-  if (item.type === "category-sheet") { const url = categorySheetUrl(item.tabName); if (url) openExternal(url); return; }
   if (item.type === "search-service") { openSearchService(item); return; }
   if (item.details.length) { openDetails(item); return; }
   const url = standaloneUrl(item.content);
@@ -380,14 +391,12 @@ function renderResults() {
     node.dataset.key = item.key; node.dataset.selected = String(index === state.selectedIndex);
     const title = node.querySelector(".result-title"); title.textContent = item.label;
     if (item.type === "search-service" || item.type === "category-browser" || item.details.length) { const arrow = document.createElement("span"); arrow.className = "arrow"; arrow.textContent = "→"; title.append(arrow); }
-    node.querySelector(".result-meta").textContent = `${item.category}${trim(item.content) !== item.label ? ` · ${item.content.replace(/\s+/g, " ")}` : ""}`;
+    const summary = trim(item.content);
+    node.querySelector(".result-meta").textContent = `${item.category}${summary && summary !== item.label ? ` · ${summary.replace(/\s+/g, " ")}` : ""}`;
     const actions = node.querySelector(".result-actions");
     if (item.type === "category-browser") {
       const browseButton = makeButton("Browse", "Browse tab", () => enterCategory(item.tabName));
       browseButton.classList.add("search-action"); actions.append(browseButton);
-    }
-    else if (item.type === "category-sheet") {
-      actions.append(makeIconButton("arrow-square-out", "Open in Google Sheets", () => { const url = categorySheetUrl(item.tabName); if (url) openExternal(url); }));
     }
     else if (item.type === "search-service") {
       const searchButton = makeButton("Search", "Enter a query", () => openSearchService(item));
@@ -499,8 +508,11 @@ function openActions(item) {
     button.addEventListener("click", () => { ui.actions.close(); handler(); });
     ui.actionsList.append(button);
   };
-  if (item.type === "category-browser") add("Browse entries", "↵", () => enterCategory(item.tabName));
-  else if (item.type === "category-sheet") add("Open in Google Sheets", "↵", () => performPrimaryAction(item));
+  if (item.type === "category-browser") {
+    add("Browse entries", "↵", () => enterCategory(item.tabName));
+    const url = categorySheetUrl(item.tabName);
+    if (url) add("Open in Google Sheets", "E", () => openExternal(url));
+  }
   else if (item.type === "search-service") add("Search", "↵", () => openSearchService(item));
   else if (item.details.length) add("View details", "→", () => openDetails(item));
   if (trim(item.content)) {
@@ -568,10 +580,12 @@ ui.search.addEventListener("input", () => { state.query = ui.search.value; state
 ui.clearSearch?.addEventListener("click", clearMainSearch);
 document.addEventListener("pointerdown", event => {
   if (!isMobileView() || anyDialogOpen() || document.activeElement === ui.search) return;
-  if (event.clientY <= ui.search.getBoundingClientRect().bottom) return;
+  const target = event.target instanceof Element ? event.target : null;
+  if (target?.closest("#search, #clear-search, #settings-button, .brand")) return;
   suppressMobileRefocusClick = true;
   event.preventDefault(); event.stopPropagation();
-  focusSearchSoon();
+  // iOS only opens the keyboard when focus happens inside the tap gesture.
+  focusSearchNow();
 }, true);
 document.addEventListener("click", event => {
   if (!suppressMobileRefocusClick) return;
@@ -620,7 +634,6 @@ document.addEventListener("keydown", event => {
     if (item) { event.preventDefault(); openActions(item); }
     return;
   }
-  if (event.key === "/" && document.activeElement !== ui.search) { event.preventDefault(); ui.search.focus(); return; }
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "g" && trim(ui.search.value)) { event.preventDefault(); openExternal(`https://www.google.com/search?q=${encodeURIComponent(trim(ui.search.value))}`); return; }
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "e") {
     const item = items[state.selectedIndex];

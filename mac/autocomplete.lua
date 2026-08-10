@@ -14,6 +14,7 @@ local openLinkHotkey
 local googleSearchHotkey
 local backHotkey
 local escapeHotkey
+local returnHotkey
 local launcherHotkey
 local launcherTapKeyCode
 local launcherTapPressed = false
@@ -36,6 +37,7 @@ local previewCursorLeft = 0
 local rowChoiceImage
 local bulletChoiceImage
 local hollowChoiceImage
+local folderChoiceImage
 local settingsMenu
 local mouseWatcher
 local appWatcher
@@ -1036,33 +1038,6 @@ end
 rankedSnippets = function(query)
   local needle = trim(query):lower()
 
-  if not detailParent and not searchServiceParent and not categoryParent
-      and needle:sub(1, 1) == "/" then
-    local filter = trim(needle:sub(2))
-    local choices = {}
-    for _, category in ipairs(configuredSheetNames()) do
-      if filter == "" or category:lower():find(filter, 1, true) then
-        local gid = type(config.sheetGids) == "table" and config.sheetGids[category] or nil
-        local url = gid ~= nil and ("https://docs.google.com/spreadsheets/d/"
-          .. config.sheetId .. "/edit#gid=" .. tostring(gid)) or nil
-        local common = { label = category, groupLabel = category,
-          category = category, content = "", hasSavedContent = false,
-          aliases = {}, detailCount = 0, editUrl = url, image = rowChoiceImage }
-        local browse = {}
-        for key, value in pairs(common) do browse[key] = value end
-        browse.text = category; browse.subText = "Browse entries"
-        browse.isCategoryChoice = true
-        choices[#choices + 1] = browse
-        local open = {}
-        for key, value in pairs(common) do open[key] = value end
-        open.text = category; open.subText = "Open in Google Sheets"
-        open.isCategoryOpenChoice = true
-        choices[#choices + 1] = open
-      end
-    end
-    return choices
-  end
-
   if searchServiceParent then
     if trim(query) == "" then return {} end
     return {{
@@ -1082,7 +1057,9 @@ rankedSnippets = function(query)
 
   -- The root chooser opens with locally remembered Sheet items. Typing still
   -- searches the complete workbook; nested views reveal their saved details.
-  if not detailParent and needle == "" then return recentChoices() end
+  if not detailParent and not categoryParent and needle == "" then
+    return recentChoices()
+  end
 
   local matches = {}
   for _, snippet in ipairs(snippets) do
@@ -1139,6 +1116,46 @@ rankedSnippets = function(query)
 
     if rank ~= nil then
       matches[#matches + 1] = { choice = snippet, rank = rank }
+    end
+  end
+
+  -- Sheet tabs are searchable folder-like parents in the normal result list.
+  -- Their names and initials act as natural aliases (for example, "i" finds
+  -- Inbox and "pm" finds Psych Meds) without adding another settings schema.
+  if not detailParent and not categoryParent and needle ~= "" then
+    for _, categoryName in ipairs(configuredSheetNames()) do
+      local normalized = categoryName:lower()
+      local initials = normalized:gsub("[^%w]+", " ")
+        :gsub("(%w)%w*%s*", "%1")
+      local rank
+      if normalized == needle then rank = 0
+      elseif initials == needle then rank = 1
+      elseif normalized:sub(1, #needle) == needle then rank = 2
+      elseif normalized:find(needle, 1, true) then rank = 4 end
+      if rank then
+        local gid = type(config.sheetGids) == "table"
+          and config.sheetGids[categoryName] or nil
+        local url = gid ~= nil and ("https://docs.google.com/spreadsheets/d/"
+          .. config.sheetId .. "/edit#gid=" .. tostring(gid)) or nil
+        matches[#matches + 1] = {
+          rank = rank,
+          choice = {
+            text = categoryName,
+            subText = "Google Sheet  ·  Return or → to browse",
+            label = categoryName,
+            groupLabel = categoryName,
+            category = categoryName,
+            content = "",
+            hasSavedContent = false,
+            aliases = {},
+            detailCount = 0,
+            detailOrder = 0,
+            editUrl = url,
+            image = folderChoiceImage or rowChoiceImage,
+            isCategoryChoice = true,
+          },
+        }
+      end
     end
   end
 
@@ -1283,6 +1300,9 @@ local function updateChooserHotkeys()
   if escapeHotkey then
     if visible or actionVisible then escapeHotkey:enable() else escapeHotkey:disable() end
   end
+  if returnHotkey then
+    if visible then returnHotkey:enable() else returnHotkey:disable() end
+  end
 end
 
 local function rootPlaceholder()
@@ -1345,11 +1365,6 @@ end
 local function openSelectedAction(choice)
   if not choice then return end
   if choice.isCategoryChoice then openCategory(choice); return end
-  if choice.isCategoryOpenChoice then
-    chooser:hide()
-    if choice.editUrl then hs.urlevent.openURL(choice.editUrl) end
-    return
-  end
   if not detailParent and not searchServiceParent and choice.isSearchService then
     openSearchService(choice)
     return
@@ -2226,16 +2241,14 @@ function M.start(userConfig)
     "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNiAxNiI+PGNpcmNsZSBjeD0iOCIgY3k9IjgiIHI9IjIuNiIgZmlsbD0iIzY2NiIvPjwvc3ZnPg==")
   hollowChoiceImage = hs.image.imageFromURL(
     "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNiAxNiI+PGNpcmNsZSBjeD0iOCIgY3k9IjgiIHI9IjIuOCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjODg4IiBzdHJva2Utd2lkdGg9IjEuMiIvPjwvc3ZnPg==")
+  folderChoiceImage = hs.image.imageFromURL(
+    "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZmlsbD0iIzc3NyIgZD0iTTMgNS41aDdsMiAyaDl2MTFIM3oiLz48cGF0aCBmaWxsPSIjOTk5IiBkPSJNMyA3LjVoMTh2MkgzeiIvPjwvc3ZnPg==")
 
   chooser = hs.chooser.new(function(choice)
     if not choice then return end
     if choice.isCategoryChoice then
       openCategory(choice)
       chooser:show()
-      return
-    end
-    if choice.isCategoryOpenChoice then
-      editSnippet(choice)
       return
     end
     if choice.isSearchQuery then
@@ -2265,13 +2278,7 @@ function M.start(userConfig)
     :searchSubText(true)
     :rows(config.rows)
     :width(config.width)
-    :invalidCallback(function()
-      if not detailParent and not searchServiceParent
-          and not categoryParent and trim(chooser:query()) ~= ""
-          and trim(chooser:query()):sub(1, 1) ~= "/" then
-        searchGoogleQuery()
-      end
-    end)
+    :invalidCallback(function() end)
     :queryChangedCallback(function(query)
       if not detailParent and not searchServiceParent and not categoryParent then
         rootQuery = query
@@ -2345,6 +2352,31 @@ function M.start(userConfig)
   end)
 
   googleSearchHotkey = hs.hotkey.new({ "cmd" }, "g", searchGoogleQuery)
+
+  -- hs.chooser's invalid callback is inconsistent when a filtered list is
+  -- empty. Own Return explicitly so unmatched text always reaches Google.
+  returnHotkey = hs.hotkey.new({}, "return", function()
+    if not chooser or not chooser:isVisible() then return end
+    local choice = chooser:selectedRowContents()
+    if not choice then
+      if not detailParent and not searchServiceParent and not categoryParent
+          and trim(chooser:query()) ~= "" then
+        searchGoogleQuery()
+      end
+      return
+    end
+    if choice.isCategoryChoice then
+      openCategory(choice)
+      chooser:show()
+    elseif choice.isSearchQuery then
+      launchSearchQuery(choice)
+    elseif choice.isSearchService then
+      openSearchService(choice)
+      chooser:show()
+    else
+      pasteSnippet(choice)
+    end
+  end)
 
   backHotkey = hs.hotkey.new({}, "left", function()
     if actionChooser and actionChooser:isVisible() then
@@ -2507,6 +2539,9 @@ function M.stop()
   if backHotkey then backHotkey:disable(); backHotkey:delete(); backHotkey = nil end
   if escapeHotkey then
     escapeHotkey:disable(); escapeHotkey:delete(); escapeHotkey = nil
+  end
+  if returnHotkey then
+    returnHotkey:disable(); returnHotkey:delete(); returnHotkey = nil
   end
   if launcherHotkey then
     launcherHotkey:disable(); launcherHotkey:delete(); launcherHotkey = nil

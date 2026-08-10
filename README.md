@@ -22,11 +22,12 @@ organization and result context without creating separate search modes.
 When the search is empty, both versions show up to nine recently used Sheet
 items, with direct Command-1–9 or Control-1–9 selection.
 
-Type `/` to browse the workbook by tab. Each tab appears twice with supporting
-text: **Browse entries** enters a vertical list of that tab's items, while
-**Open in Google Sheets** opens the tab itself. Continue typing after `/` to
-filter tab names. Right Arrow opens nested fields vertically, and Left Arrow
-backs out one level to the all-tabs search.
+Sheet tabs also appear as folder-like results in the ordinary search. A short
+prefix finds them quickly (`i` finds `Inbox`), and initials work for multiword
+names (`pm` finds `Psych Meds`). Return or Right Arrow opens the tab's entries;
+Command-E or Control-E opens the tab itself in Google Sheets. From inside a
+tab, the same edit shortcut opens the selected item's exact row. Left Arrow
+backs out one level to the complete search.
 
 ### Search launchers
 
