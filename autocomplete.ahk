@@ -2,8 +2,8 @@
 #SingleInstance Force
 Persistent
 
-; Sheet Autocomplete version 0.13.18
-global AppVersion := "0.13.18"
+; Sheet Autocomplete version 0.13.19
+global AppVersion := "0.13.19"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -63,11 +63,14 @@ if A_Args.Length > 0 && A_Args[1] = "--self-test"
 OnError HandleUnexpectedError
 Initialize()
 
+#HotIf IsTriggerSearchOpen()
+$*Escape::HandleEscape()
+#HotIf
+
 #HotIf IsChooserOpen()
 Up::MoveSelection(-1)
 Down::MoveSelection(1)
 Enter::ChooseSelected()
-*Esc::CancelChooser()
 Right::OpenSelectedAction()
 Left::CloseDetails()
 ^e::EditSelected()
@@ -91,7 +94,6 @@ Left::CloseDetails()
 #HotIf
 
 #HotIf IsPreviewOpen()
-*Esc::ClosePreview()
 p::PastePreview()
 c::CopyPreview()
 #HotIf
@@ -105,6 +107,7 @@ Initialize() {
     global LauncherModifier, LauncherKey
     global Snippets, AppVersion
 
+    OnMessage 0x0100, HandleGuiKeyDown
     DirCreate CacheDir
     A_IconTip := "Trigger Search v" AppVersion
     LoadSheetConfiguration()
@@ -421,6 +424,33 @@ CancelChooser(*) {
     SearchServiceParent := 0
     RootQuery := ""
     AtBoundary := true
+}
+
+HandleEscape(*) {
+    global PreviewOpen, ChooserOpen
+
+    HideModifierHud()
+    if PreviewOpen
+        ClosePreview()
+    else if ChooserOpen
+        CancelChooser()
+}
+
+; Some Windows controls consume Escape before AutoHotkey's conditional hotkey
+; runs. WM_KEYDOWN provides a GUI-local fallback for the search box, results,
+; action list, and preview without intercepting Escape in other applications.
+HandleGuiKeyDown(wParam, lParam, msg, hwnd) {
+    global PreviewOpen, ChooserOpen
+
+    if wParam != 0x1B || (!PreviewOpen && !ChooserOpen)
+        return
+    HandleEscape()
+    return 0
+}
+
+IsTriggerSearchOpen(*) {
+    global ChooserOpen, PreviewOpen
+    return ChooserOpen || PreviewOpen
 }
 
 IsChooserOpen(*) {
