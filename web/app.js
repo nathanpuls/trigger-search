@@ -325,7 +325,9 @@ function renderResults() {
   if (!items.length) {
     if (!state.query && isMobileView()) return;
     const empty = document.createElement("div"); empty.className = "empty-state";
-    empty.textContent = state.query ? "No Sheet matches. Press Enter to search Google." : "Your recently used items will appear here.";
+    empty.textContent = state.query
+      ? (isMobileView() ? "No Sheet matches." : "No Sheet matches. Press Enter to search Google.")
+      : "Your recently used items will appear here.";
     ui.results.append(empty); return;
   }
   items.slice(0, 30).forEach((item, index) => {

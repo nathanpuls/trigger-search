@@ -1,4 +1,4 @@
-const CACHE = "trigger-search-web-v7";
+const CACHE = "trigger-search-web-v8";
 const ASSETS = ["./", "./index.html", "./app.css", "./app.js", "./icon.svg", "./menu-icon.svg", "./icon-180.png", "./icons/copy.svg", "./icons/arrow-square-out.svg", "./icons/x.svg", "./manifest.webmanifest"];
 
 self.addEventListener("install", event => {
