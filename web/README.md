@@ -17,6 +17,9 @@ works as an installable Progressive Web App.
   link. A single link inside ordinary text remains available through the open
   icon, while tapping the row previews the text.
 - Shows recent Sheet items when the search is empty.
+- Keeps the empty mobile view minimal: branding and search only. The search
+  field is focused on load, and tapping unused page space focuses it again.
+  Recent Sheet items remain available on desktop but are hidden on mobile.
 - Supports Up/Down to navigate, Right Arrow to open nested details, Left Arrow
   to return, Enter to preview, Command/Control 1–9 to copy, `/` to focus search,
   and Command/Control-G to Google the typed phrase on desktop.

@@ -31,6 +31,7 @@ button:focus, button:focus-visible { outline: 0; box-shadow: none; }
 .status:empty { display: none; }
 
 .results { border-top: 1px solid var(--line); }
+.results:empty { border-top: 0; }
 .result { min-height: 64px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid var(--line); outline: 0; }
 .result:focus, .result[data-selected="true"] { background: var(--soft); box-shadow: none; }
 .result-main { flex: 1; min-width: 0; padding: 10px 0; cursor: pointer; }

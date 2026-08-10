@@ -28,6 +28,24 @@ const trim = value => String(value ?? "").trim();
 const normalize = value => trim(value).toLowerCase();
 const tabKey = value => normalize(value).replace(/[\s_&-]+/g, "");
 const skippedTabs = new Set(["settings", "settingshelp", "readme", "blanktemplate", "autohotkey"]);
+const mobileViewport = window.matchMedia("(max-width: 640px)");
+
+function isMobileView() { return mobileViewport.matches; }
+
+function anyDialogOpen() {
+  return ui.settings.open || ui.details.open || ui.searchService.open
+    || ui.actions.open || ui.preview.open;
+}
+
+function focusSearchSoon() {
+  const focus = () => {
+    if (anyDialogOpen()) return;
+    try { ui.search.focus({ preventScroll: true }); }
+    catch { ui.search.focus(); }
+  };
+  requestAnimationFrame(focus);
+  setTimeout(focus, 120);
+}
 
 function parseSheetId(value) {
   const match = trim(value).match(/\/spreadsheets\/d\/([A-Za-z0-9_-]+)/);
@@ -214,7 +232,7 @@ function recordRecent(item) {
 
 function rankedItems() {
   const query = normalize(state.query);
-  if (!query) return recentItems();
+  if (!query) return isMobileView() ? [] : recentItems();
   return state.items.map(item => {
     const label = normalize(item.label), aliases = item.aliases.map(normalize), content = normalize(item.content);
     let rank = 99;
@@ -280,6 +298,7 @@ function renderResults() {
   state.selectedIndex = Math.min(state.selectedIndex, Math.max(0, items.length - 1));
   ui.results.replaceChildren();
   if (!items.length) {
+    if (!state.query && isMobileView()) return;
     const empty = document.createElement("div"); empty.className = "empty-state";
     empty.textContent = state.query ? "No Sheet matches. Press ⌘G or Ctrl+G to search Google." : "Your recently used items will appear here.";
     ui.results.append(empty); return;
@@ -446,10 +465,24 @@ document.querySelector("#disconnect-button").addEventListener("click", () => { l
 document.querySelector("#settings-form").addEventListener("submit", event => {
   event.preventDefault(); const id = parseSheetId(ui.sheetUrl.value);
   if (!id) { showToast("That does not look like a Google Sheets link"); return; }
-  state.sheetId = id; localStorage.setItem("triggerSearch.sheetId", id); syncSheetUrl(id); ui.settings.close(); loadWorkbook();
+  state.sheetId = id; localStorage.setItem("triggerSearch.sheetId", id); syncSheetUrl(id); ui.settings.close(); focusSearchSoon(); loadWorkbook();
 });
 
 ui.search.addEventListener("input", () => { state.query = ui.search.value; state.selectedIndex = 0; renderResults(); });
+document.addEventListener("click", event => {
+  if (!isMobileView() || anyDialogOpen()) return;
+  const target = event.target instanceof Element ? event.target : null;
+  if (target?.closest("button, input, textarea, a, .result")) return;
+  focusSearchSoon();
+});
+
+const handleViewportChange = () => {
+  renderResults();
+  if (isMobileView()) focusSearchSoon();
+};
+if (mobileViewport.addEventListener) mobileViewport.addEventListener("change", handleViewportChange);
+else mobileViewport.addListener(handleViewportChange);
+
 document.addEventListener("keydown", event => {
   if (ui.actions.open) {
     if (event.key === "Escape" || event.key === "ArrowLeft") {
@@ -488,4 +521,5 @@ document.addEventListener("keydown", event => {
 });
 
 if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js"));
-renderResults(); loadWorkbook();
+window.addEventListener("pageshow", focusSearchSoon);
+renderResults(); focusSearchSoon(); loadWorkbook();
