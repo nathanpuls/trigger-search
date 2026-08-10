@@ -2358,7 +2358,8 @@ function M.start(userConfig)
   returnHotkey = hs.hotkey.new({}, "return", function()
     if not chooser or not chooser:isVisible() then return end
     local choice = chooser:selectedRowContents()
-    if not choice then
+    -- An empty chooser can return an empty table instead of nil.
+    if type(choice) ~= "table" or next(choice) == nil or not choice.text then
       if not detailParent and not searchServiceParent and not categoryParent
           and trim(chooser:query()) ~= "" then
         searchGoogleQuery()
