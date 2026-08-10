@@ -1883,7 +1883,8 @@ local uncertainKeyCodes = {
 
 local function watchKey(event)
   local flags = event:getFlags()
-  if event:getType() == hs.eventtap.event.types.flagsChanged then
+  local eventType = event:getType()
+  if eventType == hs.eventtap.event.types.flagsChanged then
     if launcherTapKeyCode and event:getKeyCode() == launcherTapKeyCode then
       if launcherTapPressed then
         local shouldOpen = launcherTapArmed
@@ -1904,6 +1905,15 @@ local function watchKey(event)
     else
       hideActionHud()
     end
+    return false
+  end
+
+  -- Some applications consume Command-V before a global key-down observer
+  -- sees it, especially when no text control is focused. The matching key-up
+  -- still proves that Right Command was used as a chord rather than tapped by
+  -- itself, so it must disarm the launcher before Command is released.
+  if eventType == hs.eventtap.event.types.keyUp then
+    if launcherTapArmed then launcherTapArmed = false end
     return false
   end
 
@@ -2543,6 +2553,7 @@ function M.start(userConfig)
   end
   keyWatcher = hs.eventtap.new({
     hs.eventtap.event.types.keyDown,
+    hs.eventtap.event.types.keyUp,
     hs.eventtap.event.types.flagsChanged,
   }, watchKey):start()
   mouseWatcher = hs.eventtap.new({
