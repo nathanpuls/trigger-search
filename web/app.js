@@ -31,9 +31,11 @@ const normalize = value => trim(value).toLowerCase();
 const tabKey = value => normalize(value).replace(/[\s_&-]+/g, "");
 const skippedTabs = new Set(["settings", "settingshelp", "readme", "blanktemplate", "autohotkey"]);
 const mobileViewport = window.matchMedia("(max-width: 640px)");
-let suppressMobileRefocusClick = false;
 
 function isMobileView() { return mobileViewport.matches; }
+function isTouchDevice() {
+  return navigator.maxTouchPoints > 0 || window.matchMedia("(pointer: coarse)").matches;
+}
 
 function anyDialogOpen() {
   return ui.settings.open || ui.details.open || ui.searchService.open
@@ -614,26 +616,20 @@ document.querySelector("#settings-form").addEventListener("submit", event => {
 
 ui.search.addEventListener("input", () => { state.query = ui.search.value; state.selectedIndex = 0; syncClearSearch(); renderResults(); });
 ui.clearSearch?.addEventListener("click", clearMainSearch);
-document.addEventListener("pointerdown", event => {
-  if (!isMobileView() || anyDialogOpen() || document.activeElement === ui.search) return;
+function focusSearchFromPageTap(event, immediate = false) {
+  if ((!isMobileView() && !isTouchDevice()) || anyDialogOpen()
+      || document.activeElement === ui.search) return;
   const target = event.target instanceof Element ? event.target : null;
-  if (target?.closest("#search, #clear-search, #settings-button, .brand")) return;
-  suppressMobileRefocusClick = true;
-  event.preventDefault(); event.stopPropagation();
-  // iOS only opens the keyboard when focus happens inside the tap gesture.
-  focusSearchNow();
-}, true);
-document.addEventListener("click", event => {
-  if (!suppressMobileRefocusClick) return;
-  suppressMobileRefocusClick = false;
-  event.preventDefault(); event.stopImmediatePropagation();
-}, true);
-document.addEventListener("click", event => {
-  if (!isMobileView() || anyDialogOpen()) return;
-  const target = event.target instanceof Element ? event.target : null;
-  if (target?.closest("button, input, textarea, a, .result")) return;
-  focusSearchSoon();
-});
+  if (target?.closest("#search, #clear-search, #settings-button, .brand, button, input, textarea, a, .result")) return;
+  if (immediate) focusSearchNow();
+  else focusSearchSoon();
+}
+
+// Match the proven WYR.ES interaction: focus synchronously during the actual
+// touch gesture so iOS opens the keyboard, without cancelling the tap.
+document.addEventListener("touchstart", event => focusSearchFromPageTap(event, true),
+  { passive: true });
+document.addEventListener("click", event => focusSearchFromPageTap(event));
 
 const handleViewportChange = () => {
   renderResults();
