@@ -471,6 +471,11 @@ ui.preview.addEventListener("click", event => {
 document.querySelector("#search-service-back").addEventListener("click", () => { ui.searchService.close(); ui.search.focus(); });
 document.querySelector("#search-service-form").addEventListener("submit", event => { event.preventDefault(); launchSearchService(); });
 ui.searchService.addEventListener("click", event => {
+  if (event.target === ui.searchService) {
+    ui.searchService.close();
+    focusSearchSoon();
+    return;
+  }
   if (!isMobileView()) return;
   const target = event.target instanceof Element ? event.target : null;
   if (target?.closest("button, input, textarea, a")) return;
