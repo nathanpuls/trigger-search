@@ -238,6 +238,16 @@ function parseIncludedSheets(csv, primarySheetId) {
   }).filter(Boolean);
 }
 
+function parseHiddenTabs(csv) {
+  const rows = parseCsv(csv).filter(row => row.some(cell => trim(cell) !== ""));
+  if (!rows.length) return new Set();
+  const headers = rows[0].map(cell => normalize(cell.replace(/^\uFEFF/, "")));
+  const hiddenIndex = ["hidden tab", "excluded tab", "hide tab"]
+    .map(name => headers.indexOf(name)).find(index => index >= 0) ?? -1;
+  if (hiddenIndex < 0) return new Set();
+  return new Set(rows.slice(1).map(row => tabKey(row[hiddenIndex])).filter(Boolean));
+}
+
 function cacheKey() { return `triggerSearch.cache.${state.sheetId}`; }
 function recentKey() { return `triggerSearch.recents.${state.sheetId}`; }
 
@@ -264,11 +274,15 @@ async function loadWorkbook() {
     const primaryData = await fetchWorkbook(state.sheetId);
     const settings = primaryData.find(sheet => tabKey(sheet.name) === "settingshelp" || tabKey(sheet.name) === "settings");
     const included = settings ? parseIncludedSheets(settings.csv, state.sheetId) : [];
+    const hiddenTabs = settings ? parseHiddenTabs(settings.csv) : new Set();
     const includedData = (await Promise.all(included.map(async source => {
       try { return await fetchWorkbook(source.sheetId, source.name); }
       catch (error) { console.warn(`Included Sheet ${source.name} was skipped:`, error); return []; }
     }))).flat();
-    const data = [...primaryData, ...includedData].filter(sheet => !skippedTabs.has(tabKey(sheet.name)));
+    const data = [...primaryData, ...includedData].filter(sheet =>
+      !skippedTabs.has(tabKey(sheet.name))
+      && !hiddenTabs.has(tabKey(sheet.name))
+      && !hiddenTabs.has(tabKey(sheet.category)));
     if (!data.length) throw new Error("No visible autocomplete tabs were found");
     state.items = data.flatMap(sheet => parseTab(sheet.csv, sheet.category, sheet.gid));
     state.categories = data.map(sheet => sheet.category);

@@ -54,6 +54,9 @@ To merge another public collection, add `Included Sheet Name`,
 row names one public Google Sheet. Its results appear with source context such
 as `Shared clinic set · Psych Meds`, and edit links return to that source Sheet.
 Blank Enabled cells count as enabled; FALSE, No, 0, and Off disable a row.
+Add a tab name to the `Hidden Tab` column on the same settings tab to omit it
+without renaming or deleting it. A plain name hides matching tabs everywhere;
+use `Included Sheet Name · Tab Name` to target only one included collection.
 
 ### Search launchers
 

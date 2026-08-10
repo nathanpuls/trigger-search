@@ -2078,19 +2078,57 @@ local function includedSheetDefinitions(sheetCsvs, primarySheetId)
   return definitions
 end
 
+local function hiddenTabDefinitions(sheetCsvs)
+  local hidden = {}
+  for sheetName, csv in pairs(sheetCsvs or {}) do
+    local normalized = trim(sheetName):lower():gsub("[%s_&%-]+", "")
+    if normalized == "settings" or normalized == "settingshelp" then
+      local rows = csvRows(csv)
+      if #rows > 0 then
+        local hiddenColumn
+        for columnIndex, header in ipairs(rows[1]) do
+          local key = trim(header):lower()
+          if key == "hidden tab" or key == "excluded tab" or key == "hide tab" then
+            hiddenColumn = columnIndex
+            break
+          end
+        end
+        if hiddenColumn then
+          for rowIndex = 2, #rows do
+            local name = trim(rows[rowIndex][hiddenColumn]):lower():gsub("[%s_&%-]+", "")
+            if name ~= "" then hidden[name] = true end
+          end
+        end
+      end
+    end
+  end
+  return hidden
+end
+
 local function downloadConfiguredWorkbooks(sheetId, allowFallback, callback)
   downloadWorkbook(sheetId, allowFallback, function(primary, errorMessage)
     if not primary then callback(nil, errorMessage) return end
 
     local definitions = includedSheetDefinitions(primary.sheets, sheetId)
+    local hiddenTabs = hiddenTabDefinitions(primary.sheets)
+    local function isHidden(displayName, tabName)
+      local displayKey = trim(displayName):lower():gsub("[%s_&%-]+", "")
+      local tabKey = trim(tabName):lower():gsub("[%s_&%-]+", "")
+      return hiddenTabs[displayKey] or hiddenTabs[tabKey]
+    end
     local combined = {
-      sheets = primary.sheets,
-      sheetNames = primary.sheetNames,
-      sheetGids = primary.sheetGids or {},
+      sheets = {},
+      sheetNames = {},
+      sheetGids = {},
       sheetSourceIds = {},
     }
     for _, name in ipairs(primary.sheetNames or {}) do
-      combined.sheetSourceIds[name] = sheetId
+      if isAdministrativeSheet(name) or not isHidden(name, name) then
+        combined.sheetNames[#combined.sheetNames + 1] = name
+        combined.sheets[name] = primary.sheets[name]
+        combined.sheetGids[name] = (primary.sheetGids or {})[name]
+        combined.sheetSourceIds[name] = sheetId
+      end
     end
     if #definitions == 0 then callback(combined) return end
 
@@ -2105,10 +2143,12 @@ local function downloadConfiguredWorkbooks(sheetId, allowFallback, callback)
           for _, tabName in ipairs(included.sheetNames or {}) do
             if not isAdministrativeSheet(tabName) then
               local category = definition.name .. " · " .. tabName
-              combined.sheetNames[#combined.sheetNames + 1] = category
-              combined.sheets[category] = included.sheets[tabName]
-              combined.sheetGids[category] = included.sheetGids[tabName]
-              combined.sheetSourceIds[category] = definition.sheetId
+              if not isHidden(category, tabName) then
+                combined.sheetNames[#combined.sheetNames + 1] = category
+                combined.sheets[category] = included.sheets[tabName]
+                combined.sheetGids[category] = included.sheetGids[tabName]
+                combined.sheetSourceIds[category] = definition.sheetId
+              end
             end
           end
         else

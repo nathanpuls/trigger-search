@@ -56,6 +56,11 @@ No, 0, or Off to disable a row. The primary Sheet remains the only link someone
 needs to share because it carries the Included Sheets list with it.
 Windows support can be added in the later Windows synchronization pass.
 
+To keep a tab out of search without deleting or renaming it, add its name to
+the `Hidden Tab` column on the same `Settings & Help` tab. A plain name such as
+`Current` hides every tab with that name. To target one included collection,
+use its displayed name, such as `Shared clinic set · Current`.
+
 Sheet tabs also appear as folder-like results in the ordinary search. A short
 prefix finds them quickly (`i` finds `Inbox`), and initials work for multiword
 names (`pm` finds `Psych Meds`). Return or Right Arrow opens the tab's entries;

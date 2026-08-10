@@ -41,6 +41,9 @@ The primary workbook may also list public shared collections in its
 optional `Enabled` columns. Included results retain source context and their
 edit links point to the correct workbook. Blank Enabled cells count as enabled;
 FALSE, No, 0, and Off disable a row.
+Add a tab name to the `Hidden Tab` column on the same settings tab to omit it
+without renaming or deleting it. A plain name hides matching tabs everywhere;
+use `Included Sheet Name · Tab Name` to target only one included collection.
 
 ## Run locally
 
