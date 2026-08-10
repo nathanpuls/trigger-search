@@ -69,6 +69,7 @@ local config = {
   sheetId = "",
   sheetNames = {},
   sheetGids = {},
+  sheetSourceIds = {},
   trigger = ";",
   launcherModifier = "None",
   launcherKey = "None",
@@ -345,7 +346,8 @@ local function newSnippetTarget(csv)
 
   local entryColumn = 1
   for columnIndex, header in ipairs(rows[1]) do
-    if trim(header):lower():gsub("^\239\187\191", "") == "label" then
+    local normalized = trim(header):lower():gsub("^\239\187\191", "")
+    if normalized == "name" or normalized == "label" then
       entryColumn = columnIndex
       break
     end
@@ -702,14 +704,20 @@ local function parseSheet(csv, category)
   local rows = csvRows(csv)
   if #rows == 0 then return nil, "the CSV is empty" end
 
+  local function contentPreviewName(value)
+    local name = trim(value):gsub("%s+", " ")
+    if #name > 60 then name = name:sub(1, 57) .. "..." end
+    return name
+  end
+
   local function addSnippet(parsed, sheetLabel, sheetContent, rowIndex,
       detailName, detailColumnIndex, baseEditColumnIndex, aiPrompt)
-    local label = sheetLabel ~= "" and sheetLabel or trim(sheetContent)
+    local label = sheetLabel ~= "" and sheetLabel or contentPreviewName(sheetContent)
     if label == "" then return end
 
     local hasContent = trim(sheetContent) ~= ""
     if detailName and not hasContent and trim(aiPrompt) == "" then return end
-    local content = hasContent and sheetContent or (detailName and "" or label)
+    local content = hasContent and sheetContent or ""
     local preview = sheetContent:gsub("%s+", " ")
     if #preview > 90 then preview = preview:sub(1, 87) .. "..." end
     local displayText = detailName or label
@@ -731,8 +739,9 @@ local function parseSheet(csv, category)
       elseif baseEditColumnIndex then
         editRange = columnLetter(baseEditColumnIndex) .. tostring(rowIndex)
       end
+      local sourceSheetId = config.sheetSourceIds[category] or config.sheetId
       editUrl = "https://docs.google.com/spreadsheets/d/"
-        .. config.sheetId .. "/edit#gid=" .. tostring(sheetGid)
+        .. sourceSheetId .. "/edit#gid=" .. tostring(sheetGid)
         .. "&range=" .. editRange
     end
 
@@ -747,7 +756,7 @@ local function parseSheet(csv, category)
       rowIndex = rowIndex,
       category = category,
       content = content,
-      hasSavedContent = hasContent or not detailName,
+      hasSavedContent = hasContent,
       aiPrompt = trim(aiPrompt),
       editUrl = editUrl,
       image = rowChoiceImage,
@@ -755,9 +764,16 @@ local function parseSheet(csv, category)
   end
 
   local columns = {}
+  local hasMachineHeaders = false
   for index, name in ipairs(rows[1]) do
     local normalizedName = trim(name):gsub("^\239\187\191", ""):lower()
     columns[normalizedName] = index
+    local suffix = normalizedName:match("%.([^%.]+)$")
+    if suffix == "name" or suffix == "label" or suffix == "alias"
+        or suffix == "content" then
+      columns[suffix] = columns[suffix] or index
+      hasMachineHeaders = true
+    end
   end
 
   local function firstNamedColumn(names)
@@ -767,9 +783,14 @@ local function parseSheet(csv, category)
     return nil
   end
 
-  local isSearchTab = trim(category):lower() == "search"
-  local serviceColumn = firstNamedColumn({ "service", "label", "name" })
-  local templateColumn = firstNamedColumn({ "url template", "url", "link" })
+  local normalizedCategory = trim(category):lower()
+  local includedSearchSuffix = " · search"
+  local isSearchTab = normalizedCategory == "search"
+    or normalizedCategory:sub(-#includedSearchSuffix) == includedSearchSuffix
+  local serviceColumn = firstNamedColumn({ "name", "service", "label" })
+  local templateColumn = firstNamedColumn(isSearchTab
+    and { "content", "url template", "url", "link" }
+    or { "url template", "url", "link" })
   local aliasColumn = firstNamedColumn({ "alias", "nickname" })
   local hasLauncherHeaders = serviceColumn or templateColumn or aliasColumn
   local firstLauncherRow = 2
@@ -812,8 +833,9 @@ local function parseSheet(csv, category)
           and config.sheetGids[category] or nil
         local editUrl
         if sheetGid ~= nil then
+          local sourceSheetId = config.sheetSourceIds[category] or config.sheetId
           editUrl = "https://docs.google.com/spreadsheets/d/"
-            .. config.sheetId .. "/edit#gid=" .. tostring(sheetGid)
+            .. sourceSheetId .. "/edit#gid=" .. tostring(sheetGid)
             .. "&range=" .. columnLetter(templateColumn) .. tostring(rowIndex)
         end
         local aliases = {}
@@ -847,7 +869,8 @@ local function parseSheet(csv, category)
     return parsed
   end
 
-  local hasHeaders = columns.label ~= nil or columns.content ~= nil
+  columns.name = columns.name or columns.label
+  local hasHeaders = columns.name ~= nil or columns.content ~= nil
   if not hasHeaders then
     local rightmostContentColumn = 0
     for _, row in ipairs(rows) do
@@ -860,20 +883,29 @@ local function parseSheet(csv, category)
     if rightmostContentColumn > 2 then
       return nil, "headerless tabs may use only one or two columns"
     end
-    columns.label = 1
+    columns.name = 1
     if rightmostContentColumn >= 2 then columns.content = 2 end
-  elseif not columns.label or not columns.content then
+  elseif not columns.name or not columns.content then
     print('Mac autocomplete: "' .. category
-      .. '" is missing Label or Content; using the column that remains')
+      .. '" is missing Name or Content; using the column that remains')
   end
 
   local parsed = {}
   local firstDataRow = hasHeaders and 2 or 1
+  if hasHeaders and hasMachineHeaders and rows[2] then
+    local visibleName = columns.name and trim(rows[2][columns.name]):lower() or ""
+    local visibleContent = columns.content and trim(rows[2][columns.content]):lower() or ""
+    if (visibleName == "name" or visibleName == "label")
+        and visibleContent == "content" then
+      firstDataRow = 3
+    end
+  end
+  local displayHeaders = firstDataRow == 3 and rows[2] or rows[1]
   local aiPrompts = {}
   if hasHeaders then
     for rowIndex = firstDataRow, #rows do
-      local metadataLabel = columns.label and trim(rows[rowIndex][columns.label] or "") or ""
-      if metadataLabel:lower():gsub("[%s_%-]+", "") == "aiprompt" then
+      local metadataName = columns.name and trim(rows[rowIndex][columns.name] or "") or ""
+      if metadataName:lower():gsub("[%s_%-]+", "") == "aiprompt" then
         for columnIndex, value in ipairs(rows[rowIndex]) do
           if trim(value) ~= "" then aiPrompts[columnIndex] = value end
         end
@@ -882,23 +914,23 @@ local function parseSheet(csv, category)
   end
   for rowIndex = firstDataRow, #rows do
     local row = rows[rowIndex]
-    local sheetLabel = columns.label and trim(row[columns.label] or "") or ""
+    local sheetName = columns.name and trim(row[columns.name] or "") or ""
     local sheetContent = columns.content and (row[columns.content] or "") or ""
     local aliasText = hasHeaders and columns.alias
       and trim(row[columns.alias] or "") or ""
-    local isAiMetadata = sheetLabel:lower():gsub("[%s_%-]+", "") == "aiprompt"
+    local isAiMetadata = sheetName:lower():gsub("[%s_%-]+", "") == "aiprompt"
     if not isAiMetadata then
     local baseEditColumnIndex = trim(sheetContent) ~= ""
-      and columns.content or columns.label
+      and columns.content or columns.name
     local rootIndex = #parsed + 1
-    addSnippet(parsed, sheetLabel, sheetContent, rowIndex, nil, nil,
+    addSnippet(parsed, sheetName, sheetContent, rowIndex, nil, nil,
       baseEditColumnIndex, columns.content and aiPrompts[columns.content])
 
-    local parentLabel = sheetLabel ~= "" and sheetLabel or trim(sheetContent)
+    local parentLabel = sheetName ~= "" and sheetName or contentPreviewName(sheetContent)
     if hasHeaders and parentLabel ~= "" then
-      for columnIndex, header in ipairs(rows[1]) do
+      for columnIndex, header in ipairs(displayHeaders) do
         local detailName = trim(header):gsub("^\239\187\191", "")
-        if columnIndex ~= columns.label and columnIndex ~= columns.content
+        if columnIndex ~= columns.name and columnIndex ~= columns.content
             and columnIndex ~= columns.alias
             and detailName ~= "" then
           addSnippet(parsed, parentLabel, row[columnIndex] or "", rowIndex,
@@ -924,6 +956,8 @@ local function parseSheet(csv, category)
         end
         root.detailSearch = table.concat(detailWords, " ")
         root.text = nestedDisplayText(root.text)
+      elseif not root.hasSavedContent and trim(root.aiPrompt) == "" then
+        table.remove(parsed, rootIndex)
       end
     end
     end
@@ -1135,8 +1169,9 @@ rankedSnippets = function(query)
       if rank then
         local gid = type(config.sheetGids) == "table"
           and config.sheetGids[categoryName] or nil
+        local sourceSheetId = config.sheetSourceIds[categoryName] or config.sheetId
         local url = gid ~= nil and ("https://docs.google.com/spreadsheets/d/"
-          .. config.sheetId .. "/edit#gid=" .. tostring(gid)) or nil
+          .. sourceSheetId .. "/edit#gid=" .. tostring(gid)) or nil
         matches[#matches + 1] = {
           rank = rank,
           choice = {
@@ -2053,19 +2088,101 @@ local function downloadWorkbook(sheetId, allowFallback, callback)
   end)
 end
 
+local function includedSheetDefinitions(sheetCsvs, primarySheetId)
+  local definitions, seen = {}, { [primarySheetId] = true }
+  for sheetName, csv in pairs(sheetCsvs or {}) do
+    local normalized = trim(sheetName):lower():gsub("[%s_&%-]+", "")
+    if normalized == "settings" or normalized == "settingshelp" then
+      local rows = csvRows(csv)
+      if #rows > 0 then
+        local nameColumn, urlColumn, enabledColumn
+        for columnIndex, header in ipairs(rows[1]) do
+          local key = trim(header):lower()
+          if key == "included sheet name" or key == "source name" then
+            nameColumn = columnIndex
+          elseif key == "google sheet url" or key == "sheet url" then
+            urlColumn = columnIndex
+          elseif key == "enabled" or key == "include" then
+            enabledColumn = columnIndex
+          end
+        end
+        if nameColumn and urlColumn then
+          for rowIndex = 2, #rows do
+            local name = trim(rows[rowIndex][nameColumn])
+            local sheetId = extractSheetId(rows[rowIndex][urlColumn])
+            local enabled = enabledColumn and trim(rows[rowIndex][enabledColumn]):lower() or ""
+            local isDisabled = enabled == "false" or enabled == "no"
+              or enabled == "0" or enabled == "off"
+            if name ~= "" and sheetId and not isDisabled and not seen[sheetId] then
+              seen[sheetId] = true
+              definitions[#definitions + 1] = { name = name, sheetId = sheetId }
+            end
+          end
+        end
+      end
+    end
+  end
+  return definitions
+end
+
+local function downloadConfiguredWorkbooks(sheetId, allowFallback, callback)
+  downloadWorkbook(sheetId, allowFallback, function(primary, errorMessage)
+    if not primary then callback(nil, errorMessage) return end
+
+    local definitions = includedSheetDefinitions(primary.sheets, sheetId)
+    local combined = {
+      sheets = primary.sheets,
+      sheetNames = primary.sheetNames,
+      sheetGids = primary.sheetGids or {},
+      sheetSourceIds = {},
+    }
+    for _, name in ipairs(primary.sheetNames or {}) do
+      combined.sheetSourceIds[name] = sheetId
+    end
+    if #definitions == 0 then callback(combined) return end
+
+    local remaining = #definitions
+    local function finished()
+      remaining = remaining - 1
+      if remaining == 0 then callback(combined) end
+    end
+    for _, definition in ipairs(definitions) do
+      downloadWorkbook(definition.sheetId, false, function(included, includedError)
+        if included then
+          for _, tabName in ipairs(included.sheetNames or {}) do
+            if not isAdministrativeSheet(tabName) then
+              local category = definition.name .. " · " .. tabName
+              combined.sheetNames[#combined.sheetNames + 1] = category
+              combined.sheets[category] = included.sheets[tabName]
+              combined.sheetGids[category] = included.sheetGids[tabName]
+              combined.sheetSourceIds[category] = definition.sheetId
+            end
+          end
+        else
+          print('Mac autocomplete: skipped Included Sheet "'
+            .. definition.name .. '": ' .. tostring(includedError))
+        end
+        finished()
+      end)
+    end
+  end)
+end
+
 local function installWorkbook(data, source, sheetId)
-  local oldNames, oldGids, oldTrigger, oldLauncherModifier, oldLauncherKey =
-    discoveredSheetNames, config.sheetGids, config.trigger,
+  local oldNames, oldGids, oldSourceIds, oldTrigger, oldLauncherModifier, oldLauncherKey =
+    discoveredSheetNames, config.sheetGids, config.sheetSourceIds, config.trigger,
     config.launcherModifier, config.launcherKey
   discoveredSheetNames = data.sheetNames
   config.sheetGids = data.sheetGids or {}
+  config.sheetSourceIds = data.sheetSourceIds or {}
   if not installSheets(data.sheets, source) or #snippets == 0 then
-    discoveredSheetNames, config.sheetGids = oldNames, oldGids
+    discoveredSheetNames, config.sheetGids, config.sheetSourceIds =
+      oldNames, oldGids, oldSourceIds
     config.trigger = oldTrigger
     config.launcherModifier, config.launcherKey = oldLauncherModifier, oldLauncherKey
     if updateLauncherHotkey then updateLauncherHotkey() end
     return false, "No usable autocomplete rows were found. "
-      .. "Use Label/Content headers, or one or two headerless columns."
+      .. "Use Name/Alias/Content headers, or one or two headerless columns."
   end
 
   local cacheJson = hs.json.encode({
@@ -2073,6 +2190,7 @@ local function installWorkbook(data, source, sheetId)
     sheets = data.sheets,
     sheetNames = data.sheetNames,
     sheetGids = data.sheetGids,
+    sheetSourceIds = data.sheetSourceIds,
   })
   local ok, cacheError = writeFile(config.cachePath, cacheJson)
   if not ok then
@@ -2088,7 +2206,7 @@ refresh = function()
   if refreshInProgress then return end
   refreshInProgress = true
 
-  downloadWorkbook(config.sheetId, true, function(data, errorMessage)
+  downloadConfiguredWorkbooks(config.sheetId, true, function(data, errorMessage)
     refreshInProgress = false
     if not data then
       print("Mac autocomplete: refresh failed: " .. tostring(errorMessage))
@@ -2111,8 +2229,9 @@ local function openNewSnippet(category)
   if config.sheetId == "" then return end
   local target = newSnippetTargets[category] or "A2"
   local gid = type(config.sheetGids) == "table" and config.sheetGids[category] or nil
+  local sourceSheetId = config.sheetSourceIds[category] or config.sheetId
   local url = "https://docs.google.com/spreadsheets/d/"
-    .. config.sheetId .. "/edit"
+    .. sourceSheetId .. "/edit"
   if gid ~= nil then url = url .. "#gid=" .. tostring(gid) end
   url = url .. (gid ~= nil and "&range=" or "#range=") .. target
   hs.urlevent.openURL(url)
@@ -2162,7 +2281,7 @@ promptForGoogleSheet = function(firstRun)
   end
 
   refreshInProgress = true
-  downloadWorkbook(newSheetId, false, function(data, errorMessage)
+  downloadConfiguredWorkbooks(newSheetId, false, function(data, errorMessage)
     refreshInProgress = false
     if not data then
       print("Mac autocomplete: Sheet connection failed: " .. tostring(errorMessage))
@@ -2421,6 +2540,9 @@ function M.start(userConfig)
           for name, gid in pairs(cachedData.sheetGids) do
             config.sheetGids[name] = gid
           end
+        end
+        if type(cachedData.sheetSourceIds) == "table" then
+          config.sheetSourceIds = cachedData.sheetSourceIds
         end
       end
       if cacheMatchesSheet then installSheets(cachedSheets, "local cache") end

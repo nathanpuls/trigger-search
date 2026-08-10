@@ -11,16 +11,18 @@ Use one tab per category. There are two supported layouts.
 
 For the full layout, use headers:
 
-| Label | Content |
-|---|---|
-| Email address | me@example.com |
-| Short signature | Thanks, Nathan |
+| Name | Alias | Content |
+|---|---|---|
+| Email address | email | me@example.com |
+| Short signature | sig | Thanks, Nathan |
 
-If either cell is blank,
-the other value is used for both display and pasting. When both are filled,
-Label is displayed and Content is pasted.
+`Content` is the only required value. `Name` gives the result a short display
+name, and `Alias` provides optional fast search terms. If Name is blank,
+Trigger Search displays a short preview derived from Content. A row with blank
+primary Content is still valid when it contains a nested value or AI prompt.
+The older `Label` header remains accepted for existing Sheets.
 
-An optional `Alias` column provides short search terms without creating a
+The optional `Alias` column provides short search terms without creating a
 nested paste choice. Exact alias matches rank first; multiple aliases can be
 separated with commas, semicolons, vertical bars, or line breaks.
 
@@ -35,26 +37,35 @@ starts a clean search. Blank details stay hidden.
 
 For a quick headerless tab, start entering data on the first row:
 
-- One column: each cell is both the displayed label and the pasted value.
-- Two columns: the left cell is the label and the right cell is the content.
+- One column: each cell is Content and also supplies its display preview.
+- Two columns: the left cell is Name and the right cell is Content.
 
 Headerless tabs intentionally do not support aliases or nested detail columns.
 A headerless tab with more than two populated columns is ignored so an
 unrelated Sheet is not mistaken for snippet data.
 
+### Included Sheets
+
+To merge another public collection, add `Included Sheet Name`,
+`Google Sheet URL`, and optional `Enabled` columns to `Settings & Help`. Each
+row names one public Google Sheet. Its results appear with source context such
+as `Shared clinic set · Psych Meds`, and edit links return to that source Sheet.
+Blank Enabled cells count as enabled; FALSE, No, 0, and Off disable a row.
+
 ### Search launchers
 
 Create a tab named `Search`. Headers are optional: without them, column A is the
 service name, column B is the URL template, and column C is an optional alias.
-With headers, columns may be rearranged and use `Service`, `Label`, or `Name`;
-`URL Template`, `URL`, or `Link`; and `Alias` or `Nickname`. Put `{query}` where
+With headers, use the same canonical `Name`, `Alias`, and `Content` columns;
+Content holds the URL template. The legacy names `Service`, `Label`,
+`URL Template`, `URL`, `Link`, and `Nickname` remain accepted. Put `{query}` where
 the typed query belongs:
 
-| Service | URL Template | Alias |
+| Name | Alias | Content |
 |---|---|---|
-| Google AI | `https://www.google.com/search?q={query}&udm=50` | gai |
-| PubMed | `https://pubmed.ncbi.nlm.nih.gov/?term={query}` | pm |
-| Wikipedia | `https://en.wikipedia.org/w/index.php?search={query}` | wiki |
+| Google AI | gai | `https://www.google.com/search?q={query}&udm=50` |
+| PubMed | pm | `https://pubmed.ncbi.nlm.nih.gov/?term={query}` |
+| Wikipedia | wiki | `https://en.wikipedia.org/w/index.php?search={query}` |
 
 Each complete row appears as a searchable parent item. Select it and press
 Right Arrow to enter query mode. Type a query and press Return to URL-encode it
@@ -100,7 +111,7 @@ keep their current Sheet.
 A lightning-bolt icon in the Mac menu bar provides **Open Trigger Search**,
 **New Snippet**, **Refresh Now**, **Open Google Sheet**, and **Change Google
 Sheet…**. **New Snippet** opens a submenu containing every live autocomplete
-tab. Choosing one opens its Label cell on the first empty row after the tab's
+tab. Choosing one opens its Name cell on the first empty row after the tab's
 existing information, ready for a new entry. Rearranged columns are respected.
 If the icon file is missing, Trigger Search falls back to a small **TS** item.
 A new Sheet is saved only after it passes validation; otherwise the previous
@@ -147,7 +158,7 @@ prefix (`i` for `Inbox`) or the initials of a multiword tab (`pm` for
 the tab itself. Inside the tab, Command-E opens the selected item's exact row.
 Left Arrow returns to the complete search. Nested item fields remain vertical.
 Rows use a small, pale version of the Trigger Search lightning logo. Nested
-items additionally show a larger `→` beside their labels.
+items additionally show a larger `→` beside their names.
 Clicking a nested parent opens its details. Clicking a pasteable result opens
 its contextual Actions menu, so mouse use never pastes without an explicit
 choice. Return and Command-number remain the fast keyboard paths for pasting.
@@ -173,7 +184,7 @@ cache.
 
 ### AI prompts
 
-In a headered tab, place `AI Prompt` in the Label cell of a metadata row
+In a headered tab, place `AI Prompt` in the Name cell of a metadata row
 (normally row 2). Put prompt templates beneath the detail headers they belong
 to. That row is hidden from search. An AI-enabled detail remains visible even
 when its saved-value cell is blank. Templates may contain `{medication}`,
@@ -190,7 +201,7 @@ Return runs its AI prompt automatically instead of showing an empty-value error.
 If saved text exists, Return continues to paste it normally.
 
 Every search includes every visible tab. Tabs organize the Google Sheet and
-appear beneath results as source labels, but they are not separate searchable
+appear beneath results as source context, but they are not separate searchable
 containers. The empty search field simply says **Search**. Individual results
 do not repeat shortcut instructions. When viewing
 nested details, their choices appear immediately; press Left Arrow to return

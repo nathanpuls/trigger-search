@@ -2,7 +2,7 @@
 
 const state = {
   sheetId: localStorage.getItem("triggerSearch.sheetId") || "",
-  items: [], categories: [], categoryGids: {}, activeCategory: "",
+  items: [], categories: [], categoryGids: {}, categorySheetIds: {}, activeCategory: "",
   query: "", selectedIndex: 0,
 };
 
@@ -142,11 +142,23 @@ function normalizeSearchTemplate(value) {
 function parseTab(csv, category, gid) {
   const rows = parseCsv(csv).filter(row => row.some(cell => trim(cell) !== ""));
   if (!rows.length) return [];
-  const headers = rows[0].map(cell => normalize(cell.replace(/^\uFEFF/, "")));
+  let hasMachineHeaders = false;
+  const headers = rows[0].map(cell => {
+    const header = normalize(cell.replace(/^\uFEFF/, ""));
+    const suffix = header.match(/\.([^.]+)$/)?.[1] || "";
+    if (["name", "label", "alias", "content"].includes(suffix)) {
+      hasMachineHeaders = true;
+      return suffix;
+    }
+    return header;
+  });
   const firstHeaderIndex = names => names.map(name => headers.indexOf(name)).find(index => index >= 0) ?? -1;
-  const isSearchTab = normalize(category) === "search";
-  let serviceIndex = firstHeaderIndex(["service", "label", "name"]);
-  let templateIndex = firstHeaderIndex(["url template", "url", "link"]);
+  const normalizedCategory = normalize(category);
+  const isSearchTab = normalizedCategory === "search" || normalizedCategory.endsWith(" · search");
+  let serviceIndex = firstHeaderIndex(["name", "service", "label"]);
+  let templateIndex = firstHeaderIndex(isSearchTab
+    ? ["content", "url template", "url", "link"]
+    : ["url template", "url", "link"]);
   let serviceAliasIndex = firstHeaderIndex(["alias", "nickname"]);
   const hasLauncherHeaders = serviceIndex >= 0 || templateIndex >= 0 || serviceAliasIndex >= 0;
   let firstLauncherRow = 1;
@@ -181,39 +193,67 @@ function parseTab(csv, category, gid) {
       urlTemplate: normalizeSearchTemplate(row[templateIndex]),
     }));
   }
-  const labelIndex = headers.indexOf("label"), contentIndex = headers.indexOf("content"), aliasIndex = headers.indexOf("alias");
-  const hasHeaders = labelIndex >= 0 || contentIndex >= 0;
-  const firstDataRow = hasHeaders ? 1 : 0;
+  const nameIndex = firstHeaderIndex(["name", "label"]);
+  const contentIndex = headers.indexOf("content"), aliasIndex = firstHeaderIndex(["alias", "nickname"]);
+  const hasHeaders = nameIndex >= 0 || contentIndex >= 0;
+  const hasVisibleHeaderRow = hasHeaders && hasMachineHeaders && rows[1]
+    && ["name", "label"].includes(normalize(rows[1][nameIndex]))
+    && normalize(rows[1][contentIndex]) === "content";
+  const firstDataRow = hasHeaders ? (hasVisibleHeaderRow ? 2 : 1) : 0;
+  const displayHeaders = hasVisibleHeaderRow ? rows[1] : rows[0];
   const aiPrompts = new Map();
 
-  if (hasHeaders) rows.slice(1).forEach(row => {
-    const label = labelIndex >= 0 ? trim(row[labelIndex]) : "";
-    if (tabKey(label) === "aiprompt") row.forEach((value, index) => { if (trim(value)) aiPrompts.set(index, value); });
+  if (hasHeaders) rows.slice(firstDataRow).forEach(row => {
+    const name = nameIndex >= 0 ? trim(row[nameIndex]) : "";
+    if (tabKey(name) === "aiprompt") row.forEach((value, index) => { if (trim(value)) aiPrompts.set(index, value); });
   });
 
   const items = [];
   rows.slice(firstDataRow).forEach((row, offset) => {
     const sheetRow = offset + firstDataRow + 1;
-    const rawLabel = hasHeaders ? (labelIndex >= 0 ? trim(row[labelIndex]) : "") : trim(row[0]);
+    const rawName = hasHeaders ? (nameIndex >= 0 ? trim(row[nameIndex]) : "") : trim(row[0]);
     const rawContent = hasHeaders ? (contentIndex >= 0 ? row[contentIndex] || "" : "") : (row.length > 1 ? row[1] || "" : row[0] || "");
-    if (tabKey(rawLabel) === "aiprompt") return;
-    const label = rawLabel || trim(rawContent);
+    if (tabKey(rawName) === "aiprompt") return;
+    const contentName = trim(rawContent).replace(/\s+/g, " ");
+    const label = rawName || (contentName.length > 60 ? `${contentName.slice(0, 57)}...` : contentName);
     if (!label) return;
     const aliases = hasHeaders && aliasIndex >= 0 ? trim(row[aliasIndex]).split(/[,;|\n]/).map(trim).filter(Boolean) : [];
     const details = [];
     if (hasHeaders) headers.forEach((header, index) => {
-      if (!header || index === labelIndex || index === contentIndex || index === aliasIndex) return;
+      if (!header || index === nameIndex || index === contentIndex || index === aliasIndex) return;
       const content = row[index] || "", aiPrompt = aiPrompts.get(index) || "";
       if (!trim(content) && !trim(aiPrompt)) return;
-      details.push({ label: trim(rows[0][index]), content, aiPrompt });
+      details.push({ label: trim(displayHeaders[index]), content, aiPrompt });
     });
+    const aiPrompt = contentIndex >= 0 ? aiPrompts.get(contentIndex) || "" : "";
+    if (!trim(rawContent) && !details.length && !trim(aiPrompt)) return;
     items.push({
-      key: `${category}:${sheetRow}`, label, content: trim(rawContent) ? rawContent : label,
+      key: `${category}:${sheetRow}`, label, content: rawContent,
       aliases, category, gid, row: sheetRow, details,
-      aiPrompt: contentIndex >= 0 ? aiPrompts.get(contentIndex) || "" : "",
+      aiPrompt,
     });
   });
   return items;
+}
+
+function parseIncludedSheets(csv, primarySheetId) {
+  const rows = parseCsv(csv).filter(row => row.some(cell => trim(cell) !== ""));
+  if (!rows.length) return [];
+  const headers = rows[0].map(cell => normalize(cell.replace(/^\uFEFF/, "")));
+  const first = names => names.map(name => headers.indexOf(name)).find(index => index >= 0) ?? -1;
+  const nameIndex = first(["included sheet name", "source name"]);
+  const urlIndex = first(["google sheet url", "sheet url"]);
+  const enabledIndex = first(["enabled", "include"]);
+  if (nameIndex < 0 || urlIndex < 0) return [];
+  const seen = new Set([primarySheetId]);
+  return rows.slice(1).map(row => {
+    const name = trim(row[nameIndex]);
+    const sheetId = parseSheetId(row[urlIndex]);
+    const enabled = enabledIndex < 0 || !/^(?:false|no|0|off)$/i.test(trim(row[enabledIndex]));
+    if (!name || !sheetId || !enabled || seen.has(sheetId)) return null;
+    seen.add(sheetId);
+    return { name, sheetId };
+  }).filter(Boolean);
 }
 
 function cacheKey() { return `triggerSearch.cache.${state.sheetId}`; }
@@ -223,28 +263,43 @@ async function loadWorkbook() {
   if (!state.sheetId) { openSettings(true); return; }
   ui.status.textContent = "Refreshing…";
   try {
-    const base = `https://docs.google.com/spreadsheets/d/${encodeURIComponent(state.sheetId)}`;
-    const html = await fetch(`${base}/htmlview?cacheBust=${Date.now()}`).then(response => {
-      if (!response.ok) throw new Error(`Google returned ${response.status}`);
-      return response.text();
-    });
-    const sheets = discoverSheets(html).filter(sheet => !skippedTabs.has(tabKey(sheet.name)));
-    if (!sheets.length) throw new Error("No visible autocomplete tabs were found");
-    const data = await Promise.all(sheets.map(async sheet => {
-      const url = `${base}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheet.name)}&cacheBust=${Date.now()}`;
-      const csv = await fetch(url).then(response => { if (!response.ok) throw new Error(`${sheet.name}: ${response.status}`); return response.text(); });
-      return { ...sheet, csv };
-    }));
-    state.items = data.flatMap(sheet => parseTab(sheet.csv, sheet.name, sheet.gid));
-    state.categories = data.map(sheet => sheet.name);
-    state.categoryGids = Object.fromEntries(data.map(sheet => [sheet.name, sheet.gid]));
-    localStorage.setItem(cacheKey(), JSON.stringify({ items: state.items, categories: state.categories, categoryGids: state.categoryGids, savedAt: Date.now() }));
+    const fetchWorkbook = async (sheetId, sourceName = "") => {
+      const base = `https://docs.google.com/spreadsheets/d/${encodeURIComponent(sheetId)}`;
+      const html = await fetch(`${base}/htmlview?cacheBust=${Date.now()}`).then(response => {
+        if (!response.ok) throw new Error(`Google returned ${response.status}`);
+        return response.text();
+      });
+      const sheets = discoverSheets(html);
+      const data = await Promise.all(sheets.map(async sheet => {
+        const url = `${base}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(sheet.name)}&cacheBust=${Date.now()}`;
+        const csv = await fetch(url).then(response => { if (!response.ok) throw new Error(`${sheet.name}: ${response.status}`); return response.text(); });
+        const category = sourceName ? `${sourceName} · ${sheet.name}` : sheet.name;
+        return { ...sheet, category, sheetId, csv };
+      }));
+      return data;
+    };
+
+    const primaryData = await fetchWorkbook(state.sheetId);
+    const settings = primaryData.find(sheet => tabKey(sheet.name) === "settingshelp" || tabKey(sheet.name) === "settings");
+    const included = settings ? parseIncludedSheets(settings.csv, state.sheetId) : [];
+    const includedData = (await Promise.all(included.map(async source => {
+      try { return await fetchWorkbook(source.sheetId, source.name); }
+      catch (error) { console.warn(`Included Sheet ${source.name} was skipped:`, error); return []; }
+    }))).flat();
+    const data = [...primaryData, ...includedData].filter(sheet => !skippedTabs.has(tabKey(sheet.name)));
+    if (!data.length) throw new Error("No visible autocomplete tabs were found");
+    state.items = data.flatMap(sheet => parseTab(sheet.csv, sheet.category, sheet.gid));
+    state.categories = data.map(sheet => sheet.category);
+    state.categoryGids = Object.fromEntries(data.map(sheet => [sheet.category, sheet.gid]));
+    state.categorySheetIds = Object.fromEntries(data.map(sheet => [sheet.category, sheet.sheetId]));
+    localStorage.setItem(cacheKey(), JSON.stringify({ items: state.items, categories: state.categories, categoryGids: state.categoryGids, categorySheetIds: state.categorySheetIds, savedAt: Date.now() }));
     ui.status.textContent = "";
   } catch (error) {
     const cached = JSON.parse(localStorage.getItem(cacheKey()) || "null");
     if (!cached) { ui.status.textContent = error.message; openSettings(false); return; }
     state.items = cached.items || []; state.categories = cached.categories || [];
     state.categoryGids = cached.categoryGids || {};
+    state.categorySheetIds = cached.categorySheetIds || {};
     ui.status.textContent = `Offline copy · ${state.items.length} items`;
   }
   renderResults();
@@ -262,9 +317,10 @@ function recordRecent(item) {
 
 function categorySheetUrl(category, row = "") {
   const gid = state.categoryGids[category] ?? state.items.find(item => item.category === category)?.gid;
-  if (!state.sheetId || gid == null) return "";
+  const sheetId = state.categorySheetIds[category] || state.sheetId;
+  if (!sheetId || gid == null) return "";
   const range = row ? `&range=A${row}:ZZ${row}` : "";
-  return `https://docs.google.com/spreadsheets/d/${encodeURIComponent(state.sheetId)}/edit#gid=${encodeURIComponent(gid)}${range}`;
+  return `https://docs.google.com/spreadsheets/d/${encodeURIComponent(sheetId)}/edit#gid=${encodeURIComponent(gid)}${range}`;
 }
 
 function categoryChoices(query) {

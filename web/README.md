@@ -36,6 +36,12 @@ works as an installable Progressive Web App.
 The browser cannot paste into another application. The web workflow is copy,
 switch applications, and paste.
 
+The primary workbook may also list public shared collections in its
+`Settings & Help` tab using `Included Sheet Name`, `Google Sheet URL`, and
+optional `Enabled` columns. Included results retain source context and their
+edit links point to the correct workbook. Blank Enabled cells count as enabled;
+FALSE, No, 0, and Off disable a row.
+
 ## Run locally
 
 Serve the repository root with any static web server and open `/web/`. Service
@@ -52,9 +58,9 @@ browser for later visits.
 ## Search launchers
 
 Add a `Search` Sheet tab. Headers are optional: columns A, B, and C mean service,
-URL template, and optional alias. Recognized headers can be rearranged and are
-`Service`/`Label`/`Name`, `URL Template`/`URL`/`Link`, and
-`Alias`/`Nickname`. Every valid row containing `{query}` becomes a searchable
+URL template, and optional alias. With headers, use `Name`, `Alias`, and
+`Content`; Content holds the URL template. The legacy headers `Service`/`Label`,
+`URL Template`/`URL`/`Link`, and `Nickname` remain accepted. Every valid row containing `{query}` becomes a searchable
 service. HTTP(S) protocols are accepted but optional; recognizable bare domains
 automatically use HTTPS. Open one by clicking or tapping it, or select it and
 press Right Arrow.

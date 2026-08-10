@@ -2,8 +2,8 @@
 #SingleInstance Force
 Persistent
 
-; Sheet Autocomplete version 0.13.21
-global AppVersion := "0.13.21"
+; Sheet Autocomplete version 0.13.22
+global AppVersion := "0.13.22"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -1976,7 +1976,7 @@ ConnectGoogleSheet(newSheetId, title := "Change Google Sheet") {
         LoadRecentItems()
         ApplySheets infos, csvByName
         if Snippets.Length = 0
-            throw Error("No usable autocomplete rows were found. Use Label/Content headers, or one or two headerless columns.")
+            throw Error("No usable autocomplete rows were found. Use Name/Alias/Content headers, or one or two headerless columns.")
 
         SaveCache infos, csvByName
         SaveSheetConfiguration()
@@ -2300,23 +2300,23 @@ RunSelfTests() {
         "Exact alias match should rank first."
 
     parsed := []
-    ParseSheet '"Label","Alias","Content"`n"apple","","red apple"',
+    ParseSheet '"Name","Alias","Content"`n"apple","","red apple"',
         {Name: "Test", Gid: "123"}, parsed
-    Assert parsed.Length = 1, "A standard Label and Content row should parse."
-    Assert parsed[1].Label = "apple", "The parsed Label should remain apple."
+    Assert parsed.Length = 1, "A standard Name and Content row should parse."
+    Assert parsed[1].Label = "apple", "The parsed Name should remain apple."
     Assert parsed[1].Content = "red apple",
         "The parsed Content should remain red apple."
     Assert InStr(parsed[1].EditUrl, "&range=C2"),
         "Editing a standard snippet should target its pasted Content cell."
 
-    labelOnly := []
-    ParseSheet '"Label","Alias","Content"`n"apple","",""',
-        {Name: "Test", Gid: "123"}, labelOnly
-    Assert InStr(labelOnly[1].EditUrl, "&range=A2"),
-        "Editing a Label-only snippet should target its pasted Label cell."
+    contentOnly := []
+    ParseSheet '"Name","Alias","Content"`n"","","red apple"',
+        {Name: "Test", Gid: "123"}, contentOnly
+    Assert contentOnly.Length = 1 && contentOnly[1].Content = "red apple",
+        "Content-only rows should remain usable without a Name."
 
     aiParsed := []
-    ParseSheet '"Label","Alias","Content","Sig"`n'
+    ParseSheet '"Name","Alias","Content","Sig"`n'
         . '"AI Prompt","","","Write a sig for {medication}."`n'
         . '"Atomoxetine","ato","",""',
         {Name: "Psych Meds", Gid: "123"}, aiParsed
@@ -2421,7 +2421,7 @@ RunSelfTests() {
         {Name: "Quick", Gid: "123"}, headerlessTwo
     Assert headerlessTwo.Length = 2 && headerlessTwo[1].Label = "apple"
         && headerlessTwo[1].Content = "red apple",
-        "A two-column headerless tab should use left as Label and right as Content."
+        "A two-column headerless tab should use left as Name and right as Content."
 
     Assert ExtractLaunchUrl("Open https://example.com/help when needed")
         = "https://example.com/help",
@@ -2501,7 +2501,7 @@ RunSelfTests() {
     Assert contentMatch[1].Label = "doctor note",
         "Direct Content should rank ahead of nested detail text."
 
-    Assert LooksLikeCsv("Label,Content`napple,red apple"),
+    Assert LooksLikeCsv("Name,Content`napple,red apple"),
         "Unquoted public export CSV should be accepted."
     Assert LooksLikeCsv("apple`nbanana"),
         "A one-column public export should be accepted for headerless tabs."
@@ -2640,10 +2640,20 @@ ParseSheet(csv, info, output) {
     if rows.Length = 0
         return
     columns := HeaderMap(rows[1])
-    serviceColumn := FirstHeaderColumn(columns, ["service", "label", "name"])
-    templateColumn := FirstHeaderColumn(columns, ["url template", "url", "link"])
+    hasMachineHeaders := false
+    for header in rows[1] {
+        normalizedHeader := StrLower(Trim(StrReplace(header, Chr(0xFEFF))))
+        if RegExMatch(normalizedHeader, "\.(?:name|label|alias|content)$") {
+            hasMachineHeaders := true
+            break
+        }
+    }
+    serviceColumn := FirstHeaderColumn(columns, ["name", "service", "label"])
     aliasColumn := FirstHeaderColumn(columns, ["alias", "nickname"])
     isSearchTab := StrLower(Trim(info.Name)) = "search"
+    templateColumn := FirstHeaderColumn(columns, isSearchTab
+        ? ["content", "url template", "url", "link"]
+        : ["url template", "url", "link"])
     hasLauncherHeaders := serviceColumn || templateColumn || aliasColumn
     firstLauncherRow := 2
     if isSearchTab {
@@ -2702,7 +2712,9 @@ ParseSheet(csv, info, output) {
         }
         return
     }
-    hasHeaders := columns.Has("label") || columns.Has("content")
+    if !columns.Has("name") && columns.Has("label")
+        columns["name"] := columns["label"]
+    hasHeaders := columns.Has("name") || columns.Has("content")
     if !hasHeaders {
         rightmostContentColumn := 0
         for row in rows {
@@ -2716,22 +2728,29 @@ ParseSheet(csv, info, output) {
                 . " because it uses more than two columns.`n"
             return
         }
-        columns["label"] := 1
+        columns["name"] := 1
         if rightmostContentColumn >= 2
             columns["content"] := 2
     }
 
-    labelColumn := columns.Has("label") ? columns["label"] : 0
+    nameColumn := columns.Has("name") ? columns["name"] : 0
     contentColumn := columns.Has("content") ? columns["content"] : 0
     aliasColumn := hasHeaders && columns.Has("alias") ? columns["alias"] : 0
 
     firstDataRow := hasHeaders ? 2 : 1
+    hasVisibleHeaderRow := hasHeaders && hasMachineHeaders && rows.Length >= 2
+        && (StrLower(Trim(Cell(rows[2], nameColumn))) = "name"
+            || StrLower(Trim(Cell(rows[2], nameColumn))) = "label")
+        && StrLower(Trim(Cell(rows[2], contentColumn))) = "content"
+    if hasVisibleHeaderRow
+        firstDataRow := 3
+    displayHeaders := hasVisibleHeaderRow ? rows[2] : rows[1]
     aiPrompts := Map()
     if hasHeaders {
         Loop rows.Length - firstDataRow + 1 {
             metadataRow := rows[firstDataRow + A_Index - 1]
-            metadataLabel := labelColumn ? Trim(Cell(metadataRow, labelColumn)) : ""
-            if RegExReplace(StrLower(metadataLabel), "[\s_-]+") = "aiprompt" {
+            metadataName := nameColumn ? Trim(Cell(metadataRow, nameColumn)) : ""
+            if RegExReplace(StrLower(metadataName), "[\s_-]+") = "aiprompt" {
                 for columnIndex, value in metadataRow {
                     if Trim(value) != ""
                         aiPrompts[columnIndex] := value
@@ -2742,15 +2761,17 @@ ParseSheet(csv, info, output) {
     Loop rows.Length - firstDataRow + 1 {
         rowNumber := firstDataRow + A_Index - 1
         row := rows[rowNumber]
-        sheetLabel := labelColumn ? Trim(Cell(row, labelColumn)) : ""
+        sheetName := nameColumn ? Trim(Cell(row, nameColumn)) : ""
         sheetContent := contentColumn ? Cell(row, contentColumn) : ""
-        if RegExReplace(StrLower(sheetLabel), "[\s_-]+") = "aiprompt"
+        if RegExReplace(StrLower(sheetName), "[\s_-]+") = "aiprompt"
             continue
-        label := sheetLabel != "" ? sheetLabel : Trim(sheetContent)
+        contentPreviewName := PreviewText(sheetContent)
+        label := sheetName != "" ? sheetName : contentPreviewName
         if label = ""
             continue
-        content := Trim(sheetContent) != "" ? sheetContent : label
-        editColumn := Trim(sheetContent) != "" ? contentColumn : labelColumn
+        hasSavedContent := Trim(sheetContent) != ""
+        content := hasSavedContent ? sheetContent : ""
+        editColumn := hasSavedContent ? contentColumn : nameColumn
 
         aliases := []
         aliasText := aliasColumn ? Cell(row, aliasColumn) : ""
@@ -2767,7 +2788,7 @@ ParseSheet(csv, info, output) {
             GroupLabel: label,
             DisplayText: label,
             Content: content,
-            HasSavedContent: true,
+            HasSavedContent: hasSavedContent,
             AiPrompt: contentColumn && aiPrompts.Has(contentColumn)
                 ? aiPrompts[contentColumn] : "",
             Category: info.Name,
@@ -2775,15 +2796,16 @@ ParseSheet(csv, info, output) {
             Details: [],
             DetailSearch: "",
             DetailOrder: 0,
-            Preview: MakePreview(sheetLabel, sheetContent, info.Name),
+            Preview: MakePreview(sheetName, sheetContent, info.Name),
             EditUrl: EditUrl(info.Gid, rowNumber, Max(1, editColumn),
                 Max(1, editColumn))
         }
         if hasHeaders {
-          for columnIndex, header in rows[1] {
+          for columnIndex, header in displayHeaders {
             detailName := Trim(StrReplace(header, Chr(0xFEFF)))
             normalizedDetailName := StrLower(detailName)
-            if detailName = "" || normalizedDetailName = "label"
+            if detailName = "" || normalizedDetailName = "name"
+                || normalizedDetailName = "label"
                 || normalizedDetailName = "content"
                 || normalizedDetailName = "alias"
                 continue
@@ -2818,7 +2840,8 @@ ParseSheet(csv, info, output) {
         if root.Details.Length > 0 {
             root.DisplayText := label "   →"
         }
-        output.Push(root)
+        if root.HasSavedContent || root.Details.Length > 0 || Trim(root.AiPrompt) != ""
+            output.Push(root)
     }
 }
 
@@ -2868,8 +2891,14 @@ HeaderMap(headerRow) {
     columns := Map()
     for index, header in headerRow {
         normalized := StrLower(Trim(StrReplace(header, Chr(0xFEFF))))
-        if normalized != ""
+        if normalized != "" {
             columns[normalized] := index
+            if RegExMatch(normalized, "\.([^.]+)$", &match)
+                && (match[1] = "name" || match[1] = "label"
+                    || match[1] = "alias" || match[1] = "content")
+                && !columns.Has(match[1])
+                columns[match[1]] := index
+        }
     }
     return columns
 }

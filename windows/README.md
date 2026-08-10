@@ -34,11 +34,11 @@ launcher should choose v2 even if another version is also installed.
   searches the complete workbook; clearing the query restores the recent items.
   Nested views still display their choices immediately.
 - Every search includes every visible Sheet tab. Tabs remain visible as source
-  labels but are not separate searchable containers.
+  context but are not separate searchable containers.
 - The search field uses the uncluttered placeholder **Search**. Shortcut hints
   are not repeated on individual results.
 - Press `Ctrl+1` through `Ctrl+9` to choose one of the first nine visible items.
-- Aliases rank above ordinary label matches.
+- Aliases rank above ordinary name matches.
 - A `→` means an item has nested details. No detail count is shown. Press Right
   to open them and Left to return to the same result.
 - Clicking a nested parent opens its details. Clicking a pasteable result opens
@@ -75,12 +75,15 @@ launcher should choose v2 even if another version is also installed.
 
 ## Sheet layouts
 
-A headered tab supports `Label`, `Content`, optional `Alias`, and any additional
-nested-detail columns. If Label or Content is blank, the other value is used
-for both display and pasting.
+A headered tab uses `Name`, `Alias`, and `Content`, plus any additional
+nested-detail columns. `Content` is the only required value. `Name` supplies a
+short display name and Alias supplies optional fast search terms. If Name is
+blank, Trigger Search derives a short display preview from Content. A row with
+blank primary Content remains valid when it contains a nested value or AI
+prompt. The older `Label` header remains accepted for existing Sheets.
 
-For a quick headerless tab, begin on row 1. With one column, each value is both
-the label and content. With two columns, the left value is the label and the
+For a quick headerless tab, begin on row 1. With one column, each value is
+Content and supplies its own display preview. With two columns, the left value is Name and the
 right value is the content. Headerless tabs do not provide aliases or nesting;
 a headerless tab with more than two populated columns is ignored.
 
@@ -88,15 +91,16 @@ a headerless tab with more than two populated columns is ignored.
 
 Create a tab named `Search`. Headers are optional: without them, column A is the
 service name, column B is the URL template, and column C is an optional alias.
-With headers, columns may be rearranged and use `Service`, `Label`, or `Name`;
-`URL Template`, `URL`, or `Link`; and `Alias` or `Nickname`. Use `{query}` where
+With headers, use `Name`, `Alias`, and `Content`; Content holds the URL
+template. The legacy names `Service`, `Label`, `URL Template`, `URL`, `Link`,
+and `Nickname` remain accepted. Use `{query}` where
 Trigger Search should place the typed query:
 
-| Service | URL Template | Alias |
+| Name | Alias | Content |
 |---|---|---|
-| Google | `https://www.google.com/search?q={query}` | g |
-| ChatGPT | `https://chatgpt.com/?q={query}` | ai |
-| PubMed | `https://pubmed.ncbi.nlm.nih.gov/?term={query}` | pm |
+| Google | g | `https://www.google.com/search?q={query}` |
+| ChatGPT | ai | `https://chatgpt.com/?q={query}` |
+| PubMed | pm | `https://pubmed.ncbi.nlm.nih.gov/?term={query}` |
 
 Each valid row is a searchable parent item. Select one and press Right Arrow,
 type the query, and press Enter to open it in the default browser. Left Arrow
@@ -113,7 +117,7 @@ exact alias matches rank first.
 
 ### AI prompts
 
-In a headered tab, place `AI Prompt` in the Label cell of a metadata row
+In a headered tab, place `AI Prompt` in the Name cell of a metadata row
 (normally row 2). Put prompt templates beneath the detail headers they belong
 to. The metadata row is hidden from search. An AI-enabled detail remains
 available even if its saved-value cell is blank. Templates may use

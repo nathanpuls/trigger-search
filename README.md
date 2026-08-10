@@ -22,6 +22,32 @@ organization and result context without creating separate search modes.
 When the search is empty, both versions show up to nine recently used Sheet
 items, with direct Command-1–9 or Control-1–9 selection.
 
+### Sheet layout
+
+The canonical headers are `Name`, `Alias`, and `Content`. `Content` is the only
+required value: it is the text, link, template, or other value an action uses.
+Name is an optional short display name, and Alias is an optional faster way to
+find it. When Name is blank, Trigger Search derives a short display preview
+from Content. A row with blank primary Content is still valid when it contains
+a nested value or an AI prompt. The older `Label` header remains accepted for
+backward compatibility.
+
+### Included Sheets
+
+On Mac and web, the primary workbook can include public Trigger Search
+collections maintained in other Google Sheets. In `Settings & Help`, use these columns:
+
+| Included Sheet Name | Google Sheet URL | Enabled |
+|---|---|---|
+| Shared clinic set | `https://docs.google.com/spreadsheets/d/.../edit` | TRUE |
+
+Each enabled public workbook is merged into search. Its tab names are shown as
+`Included Sheet Name · Tab Name` so sources remain clear, and edit actions link
+back to the correct workbook. Blank Enabled cells count as enabled; use FALSE,
+No, 0, or Off to disable a row. The primary Sheet remains the only link someone
+needs to share because it carries the Included Sheets list with it.
+Windows support can be added in the later Windows synchronization pass.
+
 Sheet tabs also appear as folder-like results in the ordinary search. A short
 prefix finds them quickly (`i` finds `Inbox`), and initials work for multiword
 names (`pm` finds `Psych Meds`). Return or Right Arrow opens the tab's entries;
@@ -33,15 +59,15 @@ backs out one level to the complete search.
 
 The simplest setup is a tab named `Search`. Headers are optional: without them,
 column A is the service name, column B is the URL template, and column C is an
-optional alias. With headers, columns may be rearranged and use these names:
-`Service`, `Label`, or `Name`; `URL Template`, `URL`, or `Link`; and `Alias` or
-`Nickname`.
+optional alias. With headers, use `Name`, `Alias`, and `Content`; Content holds
+the URL template. The legacy names `Service`, `Label`, `URL Template`, `URL`,
+`Link`, and `Nickname` remain accepted.
 
-| Service | URL Template | Alias (optional) |
+| Name | Alias (optional) | Content |
 |---|---|---|
-| Google | `https://www.google.com/search?q={query}` | g |
-| PubMed | `https://pubmed.ncbi.nlm.nih.gov/?term={query}` | pm |
-| ChatGPT | `https://chatgpt.com/?q={query}` | ai |
+| Google | g | `https://www.google.com/search?q={query}` |
+| PubMed | pm | `https://pubmed.ncbi.nlm.nih.gov/?term={query}` |
+| ChatGPT | ai | `https://chatgpt.com/?q={query}` |
 
 Each valid row becomes a normal searchable parent item. Select a service and
 press Right Arrow (or click/tap it on the web) to enter a query, then press
@@ -97,7 +123,7 @@ Mouse use is deliberately exploratory: clicking a nested parent opens its
 details, while clicking a pasteable result opens that result's Actions menu.
 Keyboard Return/Enter and the numbered shortcuts still paste immediately.
 
-A headered tab can reserve a row whose Label is `AI Prompt`. Text in that row's
+A headered tab can reserve a row whose Name is `AI Prompt`. Text in that row's
 detail columns becomes the prompt template for the same column. Command-Return
 on Mac or Control-Enter on Windows sends the selected item to the AI engine
 chosen in `Settings & Help`. ChatGPT is the default; Google AI Mode and
