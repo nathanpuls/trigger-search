@@ -57,17 +57,19 @@ browser for later visits.
 
 ## Search launchers
 
-Add a `Search` Sheet tab. Headers are optional: columns A, B, and C mean service,
-URL template, and optional alias. With headers, use `Name`, `Alias`, and
-`Content`; Content holds the URL template. The legacy headers `Service`/`Label`,
-`URL Template`/`URL`/`Link`, and `Nickname` remain accepted. Every valid row containing `{query}` becomes a searchable
-service. HTTP(S) protocols are accepted but optional; recognizable bare domains
+Add a tab named exactly `Search` with `Name`, `Alias`, and `Content` headers.
+Content holds the URL template; keep all three headers even when Alias is blank.
+Every valid row containing `$` becomes a searchable service. Trigger Search
+replaces `$` with the URL-encoded query. HTTP(S) protocols are accepted but optional; recognizable bare domains
 automatically use HTTPS. Open one by clicking or tapping it, or select it and
 press Right Arrow.
 Enter a query and submit to open the encoded URL; Left Arrow returns to the
-results. On other tabs, recognized header pairs continue to identify this
-layout for backward compatibility. Separate multiple
+results. Other tabs use the ordinary snippet rules. Separate multiple
 aliases with commas, semicolons, vertical bars, or line breaks.
+
+Ordinary headerless tabs support one column as Content, two as Name/Content,
+or three as Name/Alias/Content. Four or more columns and all nested fields
+require a header row.
 
 ## Hosting
 

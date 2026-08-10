@@ -207,7 +207,7 @@ end
 
 local function normalizeSearchTemplate(value)
   local template = trim(value)
-  if not template:find("{query}", 1, true) then return nil end
+  if not template:find("$", 1, true) then return nil end
   if template:lower():match("^https?://[^%s]+$") then return template end
   if template:match("^[%w%-]+%.[%a][%a]+[^%s]*$") then
     return "https://" .. template
@@ -347,7 +347,7 @@ local function newSnippetTarget(csv)
   local entryColumn = 1
   for columnIndex, header in ipairs(rows[1]) do
     local normalized = trim(header):lower():gsub("^\239\187\191", "")
-    if normalized == "name" or normalized == "label" then
+    if normalized == "name" then
       entryColumn = columnIndex
       break
     end
@@ -764,67 +764,21 @@ local function parseSheet(csv, category)
   end
 
   local columns = {}
-  local hasMachineHeaders = false
   for index, name in ipairs(rows[1]) do
     local normalizedName = trim(name):gsub("^\239\187\191", ""):lower()
     columns[normalizedName] = index
-    local suffix = normalizedName:match("%.([^%.]+)$")
-    if suffix == "name" or suffix == "label" or suffix == "alias"
-        or suffix == "content" then
-      columns[suffix] = columns[suffix] or index
-      hasMachineHeaders = true
-    end
-  end
-
-  local function firstNamedColumn(names)
-    for _, name in ipairs(names) do
-      if columns[name] then return columns[name] end
-    end
-    return nil
   end
 
   local normalizedCategory = trim(category):lower()
   local includedSearchSuffix = " · search"
   local isSearchTab = normalizedCategory == "search"
     or normalizedCategory:sub(-#includedSearchSuffix) == includedSearchSuffix
-  local serviceColumn = firstNamedColumn({ "name", "service", "label" })
-  local templateColumn = firstNamedColumn(isSearchTab
-    and { "content", "url template", "url", "link" }
-    or { "url template", "url", "link" })
-  local aliasColumn = firstNamedColumn({ "alias", "nickname" })
-  local hasLauncherHeaders = serviceColumn or templateColumn or aliasColumn
-  local firstLauncherRow = 2
-  if isSearchTab then
-    if hasLauncherHeaders then
-      local usedColumns = {}
-      if serviceColumn then usedColumns[serviceColumn] = true end
-      if templateColumn then usedColumns[templateColumn] = true end
-      if aliasColumn then usedColumns[aliasColumn] = true end
-      local function fallbackColumn(current, preferred)
-        if current then return current end
-        if not usedColumns[preferred] then
-          usedColumns[preferred] = true
-          return preferred
-        end
-        for columnIndex = 1, 3 do
-          if not usedColumns[columnIndex] then
-            usedColumns[columnIndex] = true
-            return columnIndex
-          end
-        end
-        return preferred
-      end
-      serviceColumn = fallbackColumn(serviceColumn, 1)
-      templateColumn = fallbackColumn(templateColumn, 2)
-      aliasColumn = fallbackColumn(aliasColumn, 3)
-    else
-      serviceColumn, templateColumn, aliasColumn = 1, 2, 3
-      firstLauncherRow = 1
-    end
-  end
-  if serviceColumn and templateColumn and (isSearchTab or hasLauncherHeaders) then
+  local serviceColumn = columns.name
+  local templateColumn = columns.content
+  local aliasColumn = columns.alias
+  if isSearchTab and serviceColumn and aliasColumn and templateColumn then
     local parsed = {}
-    for rowIndex = firstLauncherRow, #rows do
+    for rowIndex = 2, #rows do
       local service = trim(rows[rowIndex][serviceColumn] or "")
       local template = normalizeSearchTemplate(
         rows[rowIndex][templateColumn] or "")
@@ -868,9 +822,12 @@ local function parseSheet(csv, category)
     end
     return parsed
   end
+  if isSearchTab then
+    return nil, 'the Search tab requires Name, Alias, and Content headers'
+  end
 
-  columns.name = columns.name or columns.label
-  local hasHeaders = columns.name ~= nil or columns.content ~= nil
+  local hasHeaders = columns.name ~= nil or columns.alias ~= nil
+    or columns.content ~= nil
   if not hasHeaders then
     local rightmostContentColumn = 0
     for _, row in ipairs(rows) do
@@ -880,27 +837,23 @@ local function parseSheet(csv, category)
         end
       end
     end
-    if rightmostContentColumn > 2 then
-      return nil, "headerless tabs may use only one or two columns"
+    if rightmostContentColumn > 3 then
+      return nil, "headerless tabs may use only one, two, or three columns"
     end
-    columns.name = 1
-    if rightmostContentColumn >= 2 then columns.content = 2 end
-  elseif not columns.name or not columns.content then
-    print('Mac autocomplete: "' .. category
-      .. '" is missing Name or Content; using the column that remains')
+    if rightmostContentColumn == 1 then
+      columns.content = 1
+    elseif rightmostContentColumn == 2 then
+      columns.name, columns.content = 1, 2
+    elseif rightmostContentColumn == 3 then
+      columns.name, columns.alias, columns.content = 1, 2, 3
+    end
+  elseif not columns.content then
+    return nil, "headered tabs require a Content column"
   end
 
   local parsed = {}
   local firstDataRow = hasHeaders and 2 or 1
-  if hasHeaders and hasMachineHeaders and rows[2] then
-    local visibleName = columns.name and trim(rows[2][columns.name]):lower() or ""
-    local visibleContent = columns.content and trim(rows[2][columns.content]):lower() or ""
-    if (visibleName == "name" or visibleName == "label")
-        and visibleContent == "content" then
-      firstDataRow = 3
-    end
-  end
-  local displayHeaders = firstDataRow == 3 and rows[2] or rows[1]
+  local displayHeaders = rows[1]
   local aiPrompts = {}
   if hasHeaders then
     for rowIndex = firstDataRow, #rows do
@@ -1519,9 +1472,9 @@ launchSearchQuery = function(choice)
   if not choice or not choice.isSearchQuery or not choice.searchService then return end
   local template = trim(choice.searchService.searchTemplate)
   local query = trim(choice.searchQuery)
-  if query == "" or not template:find("{query}", 1, true) then return end
+  if query == "" or not template:find("$", 1, true) then return end
   local encoded = urlEncode(query)
-  local url = template:gsub("{query}", function() return encoded end)
+  local url = template:gsub("%$", function() return encoded end)
   if not url:lower():match("^https?://") then return end
   recordRecent(choice.searchService)
   chooser:hide()
@@ -2182,7 +2135,7 @@ local function installWorkbook(data, source, sheetId)
     config.launcherModifier, config.launcherKey = oldLauncherModifier, oldLauncherKey
     if updateLauncherHotkey then updateLauncherHotkey() end
     return false, "No usable autocomplete rows were found. "
-      .. "Use Name/Alias/Content headers, or one or two headerless columns."
+      .. "Use Name/Alias/Content headers, or one to three headerless columns."
   end
 
   local cacheJson = hs.json.encode({

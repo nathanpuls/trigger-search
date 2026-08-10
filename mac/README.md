@@ -16,11 +16,12 @@ For the full layout, use headers:
 | Email address | email | me@example.com |
 | Short signature | sig | Thanks, Nathan |
 
-`Content` is the only required value. `Name` gives the result a short display
-name, and `Alias` provides optional fast search terms. If Name is blank,
+The `Content` header is required. Keep the `Name` and `Alias` headers too,
+although cells in any of them may be blank. Name gives the result a short display name,
+and Alias provides optional fast search terms. If Name is blank,
 Trigger Search displays a short preview derived from Content. A row with blank
 primary Content is still valid when it contains a nested value or AI prompt.
-The older `Label` header remains accepted for existing Sheets.
+Every other named column is treated as a nested field.
 
 The optional `Alias` column provides short search terms without creating a
 nested paste choice. Exact alias matches rank first; multiple aliases can be
@@ -39,10 +40,12 @@ For a quick headerless tab, start entering data on the first row:
 
 - One column: each cell is Content and also supplies its display preview.
 - Two columns: the left cell is Name and the right cell is Content.
+- Three columns: the cells are Name, Alias, and Content.
 
-Headerless tabs intentionally do not support aliases or nested detail columns.
-A headerless tab with more than two populated columns is ignored so an
-unrelated Sheet is not mistaken for snippet data.
+Headerless tabs do not support nested detail columns. Four or more populated
+columns require a header row. On a headered tab, keep the exact reserved headers
+`Name`, `Alias`, and `Content`; Content is required, while Name and Alias may be
+blank. Other named columns become nested fields.
 
 ### Included Sheets
 
@@ -54,30 +57,26 @@ Blank Enabled cells count as enabled; FALSE, No, 0, and Off disable a row.
 
 ### Search launchers
 
-Create a tab named `Search`. Headers are optional: without them, column A is the
-service name, column B is the URL template, and column C is an optional alias.
-With headers, use the same canonical `Name`, `Alias`, and `Content` columns;
-Content holds the URL template. The legacy names `Service`, `Label`,
-`URL Template`, `URL`, `Link`, and `Nickname` remain accepted. Put `{query}` where
-the typed query belongs:
+Create a tab named exactly `Search` with `Name`, `Alias`, and `Content` headers.
+Content holds the URL template. Keep all three headers even when Alias cells are
+blank. Put `$` where the typed query belongs:
 
 | Name | Alias | Content |
 |---|---|---|
-| Google AI | gai | `https://www.google.com/search?q={query}&udm=50` |
-| PubMed | pm | `https://pubmed.ncbi.nlm.nih.gov/?term={query}` |
-| Wikipedia | wiki | `https://en.wikipedia.org/w/index.php?search={query}` |
+| Google AI | gai | `https://www.google.com/search?q=$&udm=50` |
+| PubMed | pm | `https://pubmed.ncbi.nlm.nih.gov/?term=$` |
+| Wikipedia | wiki | `https://en.wikipedia.org/w/index.php?search=$` |
 
 Each complete row appears as a searchable parent item. Select it and press
 Right Arrow to enter query mode. Type a query and press Return to URL-encode it
 and open the service in the default browser. Left Arrow returns to the same
 service in the main results.
 
-Rows missing either value and templates without the exact `{query}` placeholder
+Rows missing Name or Content and templates without the `$` placeholder
 are skipped quietly. `https://` and `http://` are accepted, and a recognizable
 domain without a protocol automatically uses HTTPS. Add or remove compatible
-services in the Sheet without changing the Lua code. On tabs with other names,
-the same recognized header pairs still identify the layout for backward
-compatibility. Multiple aliases may be
+services in the Sheet without changing the Lua code. Other tab names always use
+the ordinary snippet rules. Multiple aliases may be
 separated by commas, semicolons, vertical bars, or line breaks; exact matches
 rank first.
 
@@ -88,10 +87,9 @@ only as an optional manual fallback if tab discovery is temporarily
 unavailable. The reserved `Settings & Help` tab contains both
 configuration and usage guidance while staying hidden from autocomplete. The
 reserved `Blank Template` tab is also hidden. Duplicate it, rename the copy,
-and add your items whenever you want a new autocomplete category. The reserved
-`AutoHotkey` tab is a legacy transfer area and is hidden as well. The current
-Windows implementation is distributed through this GitHub repository instead
-of a multiline Sheet cell.
+and add your items whenever you want a new autocomplete category. The Windows
+implementation is distributed through this GitHub repository under
+`windows/autocomplete.ahk` instead of a multiline Sheet cell.
 
 Use **File → Share → Publish to web** in Google Sheets. Publish the workbook.
 No OAuth or Google sign-in is used by this prototype.

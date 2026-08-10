@@ -14,7 +14,7 @@ AutoHotkey v2—without OAuth, sign-in, a browser extension, or a dedicated app.
   [trigger-search.pages.dev](https://trigger-search.pages.dev/).
 
 Both versions read visible category tabs through Google Sheets' public CSV
-endpoints, support full headered tabs or simple one/two-column headerless tabs,
+endpoints, support full headered tabs or simple one-to-three-column headerless tabs,
 cache successful responses for offline use, and link results back to their
 exact Sheet cells. Headered tabs additionally support aliases and nested choices.
 Every search covers every visible data tab; tab names remain useful for Sheet
@@ -24,13 +24,21 @@ items, with direct Command-1–9 or Control-1–9 selection.
 
 ### Sheet layout
 
-The canonical headers are `Name`, `Alias`, and `Content`. `Content` is the only
-required value: it is the text, link, template, or other value an action uses.
-Name is an optional short display name, and Alias is an optional faster way to
-find it. When Name is blank, Trigger Search derives a short display preview
-from Content. A row with blank primary Content is still valid when it contains
-a nested value or an AI prompt. The older `Label` header remains accepted for
-backward compatibility.
+The reserved headers are `Name`, `Alias`, and `Content`. On a headered tab,
+`Content` is required; `Name` and `Alias` may be blank. Content is the text,
+link, template, or other value an action uses. Name is a short display name,
+and Alias is a faster way to find it. When Name is blank, Trigger Search derives
+a short display preview from Content. Every other named column is a nested
+field, so names such as `Label`, `SIG`, `Notes`, and `URL` remain available for
+your own data. Headers can be rearranged, but their names should not be changed.
+
+For a headerless tab, the number of populated columns defines the layout:
+
+- One column: `Content`
+- Two columns: `Name`, `Content`
+- Three columns: `Name`, `Alias`, `Content`
+
+Four or more columns require a header row. Nested fields always require headers.
 
 ### Included Sheets
 
@@ -57,31 +65,30 @@ backs out one level to the complete search.
 
 ### Search launchers
 
-The simplest setup is a tab named `Search`. Headers are optional: without them,
-column A is the service name, column B is the URL template, and column C is an
-optional alias. With headers, use `Name`, `Alias`, and `Content`; Content holds
-the URL template. The legacy names `Service`, `Label`, `URL Template`, `URL`,
-`Link`, and `Nickname` remain accepted.
+Create a tab named exactly `Search` with the headers `Name`, `Alias`, and
+`Content`. Content holds the URL template. The three columns may be rearranged,
+but all three headers should remain present even when an Alias cell is blank.
 
 | Name | Alias (optional) | Content |
 |---|---|---|
-| Google | g | `https://www.google.com/search?q={query}` |
-| PubMed | pm | `https://pubmed.ncbi.nlm.nih.gov/?term={query}` |
-| ChatGPT | ai | `https://chatgpt.com/?q={query}` |
+| Google | g | `https://www.google.com/search?q=$` |
+| PubMed | pm | `https://pubmed.ncbi.nlm.nih.gov/?term=$` |
+| ChatGPT | ai | `https://chatgpt.com/?q=$` |
 
 Each valid row becomes a normal searchable parent item. Select a service and
 press Right Arrow (or click/tap it on the web) to enter a query, then press
 Return/Enter to open the encoded query in the default browser. Left Arrow
 returns to the same service in the main results.
 
-Templates must contain the exact placeholder `{query}`. `https://` and
+Templates must contain `$`, which Trigger Search replaces with the URL-encoded
+query. `https://` and
 `http://` are accepted, but the protocol is optional for recognizable domains:
-`wikipedia.org/w/index.php?search={query}` automatically uses HTTPS. Incomplete
+`wikipedia.org/w/index.php?search=$` automatically uses HTTPS. Incomplete
 or invalid rows are ignored. This keeps the
 feature generic: add search engines, AI services, documentation sites, or an
-internal HTTP search tool without changing Trigger Search's code. On tabs with
-other names, the same recognized header pairs still identify the launcher
-layout for backward compatibility.
+internal HTTP search tool without changing Trigger Search's code. Only the
+`Search` tab uses this launcher behavior; the same headers on other tabs create
+ordinary Trigger Search items.
 Aliases use the same comma, semicolon, vertical-bar, or line-break separators
 as ordinary snippets, and exact alias matches rank first.
 

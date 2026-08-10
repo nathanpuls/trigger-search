@@ -133,7 +133,7 @@ function parseCsv(text) {
 
 function normalizeSearchTemplate(value) {
   const template = trim(value);
-  if (!template.includes("{query}")) return "";
+  if (!template.includes("$")) return "";
   if (/^https?:\/\/\S+$/i.test(template)) return template;
   if (/^(?:[a-z0-9-]+\.)+[a-z]{2,}\S*$/i.test(template)) return `https://${template}`;
   return "";
@@ -142,65 +142,45 @@ function normalizeSearchTemplate(value) {
 function parseTab(csv, category, gid) {
   const rows = parseCsv(csv).filter(row => row.some(cell => trim(cell) !== ""));
   if (!rows.length) return [];
-  let hasMachineHeaders = false;
   const headers = rows[0].map(cell => {
     const header = normalize(cell.replace(/^\uFEFF/, ""));
-    const suffix = header.match(/\.([^.]+)$/)?.[1] || "";
-    if (["name", "label", "alias", "content"].includes(suffix)) {
-      hasMachineHeaders = true;
-      return suffix;
-    }
     return header;
   });
-  const firstHeaderIndex = names => names.map(name => headers.indexOf(name)).find(index => index >= 0) ?? -1;
   const normalizedCategory = normalize(category);
   const isSearchTab = normalizedCategory === "search" || normalizedCategory.endsWith(" · search");
-  let serviceIndex = firstHeaderIndex(["name", "service", "label"]);
-  let templateIndex = firstHeaderIndex(isSearchTab
-    ? ["content", "url template", "url", "link"]
-    : ["url template", "url", "link"]);
-  let serviceAliasIndex = firstHeaderIndex(["alias", "nickname"]);
-  const hasLauncherHeaders = serviceIndex >= 0 || templateIndex >= 0 || serviceAliasIndex >= 0;
-  let firstLauncherRow = 1;
-  if (isSearchTab) {
-    if (hasLauncherHeaders) {
-      const used = new Set([serviceIndex, templateIndex, serviceAliasIndex].filter(index => index >= 0));
-      const fallbackIndex = (current, preferred) => {
-        if (current >= 0) return current;
-        if (!used.has(preferred)) { used.add(preferred); return preferred; }
-        for (let index = 0; index < 3; index += 1) {
-          if (!used.has(index)) { used.add(index); return index; }
-        }
-        return preferred;
-      };
-      serviceIndex = fallbackIndex(serviceIndex, 0);
-      templateIndex = fallbackIndex(templateIndex, 1);
-      serviceAliasIndex = fallbackIndex(serviceAliasIndex, 2);
-    } else {
-      serviceIndex = 0; templateIndex = 1; serviceAliasIndex = 2; firstLauncherRow = 0;
-    }
-  }
-  if (serviceIndex >= 0 && templateIndex >= 0 && (isSearchTab || hasLauncherHeaders)) {
-    return rows.slice(firstLauncherRow).map((row, offset) => ({ row, offset })).filter(({ row }) => {
+  const serviceIndex = headers.indexOf("name");
+  const templateIndex = headers.indexOf("content");
+  const serviceAliasIndex = headers.indexOf("alias");
+  if (isSearchTab && serviceIndex >= 0 && serviceAliasIndex >= 0 && templateIndex >= 0) {
+    return rows.slice(1).map((row, offset) => ({ row, offset })).filter(({ row }) => {
       const service = trim(row[serviceIndex]), template = normalizeSearchTemplate(row[templateIndex]);
       return service && template;
     }).map(({ row, offset }) => ({
-      key: `${category}:${offset + firstLauncherRow + 1}`, type: "search-service",
+      key: `${category}:${offset + 2}`, type: "search-service",
       label: trim(row[serviceIndex]), content: "",
       aliases: serviceAliasIndex >= 0 ? trim(row[serviceAliasIndex]).split(/[,;|\n]/).map(trim).filter(Boolean) : [],
       category, gid,
-      row: offset + firstLauncherRow + 1, details: [], aiPrompt: "",
+      row: offset + 2, details: [], aiPrompt: "",
       urlTemplate: normalizeSearchTemplate(row[templateIndex]),
     }));
   }
-  const nameIndex = firstHeaderIndex(["name", "label"]);
-  const contentIndex = headers.indexOf("content"), aliasIndex = firstHeaderIndex(["alias", "nickname"]);
-  const hasHeaders = nameIndex >= 0 || contentIndex >= 0;
-  const hasVisibleHeaderRow = hasHeaders && hasMachineHeaders && rows[1]
-    && ["name", "label"].includes(normalize(rows[1][nameIndex]))
-    && normalize(rows[1][contentIndex]) === "content";
-  const firstDataRow = hasHeaders ? (hasVisibleHeaderRow ? 2 : 1) : 0;
-  const displayHeaders = hasVisibleHeaderRow ? rows[1] : rows[0];
+  if (isSearchTab) return [];
+
+  let nameIndex = headers.indexOf("name");
+  let contentIndex = headers.indexOf("content");
+  let aliasIndex = headers.indexOf("alias");
+  const hasHeaders = nameIndex >= 0 || contentIndex >= 0 || aliasIndex >= 0;
+  if (hasHeaders && contentIndex < 0) return [];
+  if (!hasHeaders) {
+    const rightmost = rows.reduce((maximum, row) => Math.max(maximum,
+      row.reduce((last, value, index) => trim(value) ? index + 1 : last, 0)), 0);
+    if (rightmost > 3) return [];
+    if (rightmost === 1) { nameIndex = -1; aliasIndex = -1; contentIndex = 0; }
+    if (rightmost === 2) { nameIndex = 0; aliasIndex = -1; contentIndex = 1; }
+    if (rightmost === 3) { nameIndex = 0; aliasIndex = 1; contentIndex = 2; }
+  }
+  const firstDataRow = hasHeaders ? 1 : 0;
+  const displayHeaders = rows[0];
   const aiPrompts = new Map();
 
   if (hasHeaders) rows.slice(firstDataRow).forEach(row => {
@@ -211,13 +191,13 @@ function parseTab(csv, category, gid) {
   const items = [];
   rows.slice(firstDataRow).forEach((row, offset) => {
     const sheetRow = offset + firstDataRow + 1;
-    const rawName = hasHeaders ? (nameIndex >= 0 ? trim(row[nameIndex]) : "") : trim(row[0]);
-    const rawContent = hasHeaders ? (contentIndex >= 0 ? row[contentIndex] || "" : "") : (row.length > 1 ? row[1] || "" : row[0] || "");
+    const rawName = nameIndex >= 0 ? trim(row[nameIndex]) : "";
+    const rawContent = contentIndex >= 0 ? row[contentIndex] || "" : "";
     if (tabKey(rawName) === "aiprompt") return;
     const contentName = trim(rawContent).replace(/\s+/g, " ");
     const label = rawName || (contentName.length > 60 ? `${contentName.slice(0, 57)}...` : contentName);
     if (!label) return;
-    const aliases = hasHeaders && aliasIndex >= 0 ? trim(row[aliasIndex]).split(/[,;|\n]/).map(trim).filter(Boolean) : [];
+    const aliases = aliasIndex >= 0 ? trim(row[aliasIndex]).split(/[,;|\n]/).map(trim).filter(Boolean) : [];
     const details = [];
     if (hasHeaders) headers.forEach((header, index) => {
       if (!header || index === nameIndex || index === contentIndex || index === aliasIndex) return;
@@ -522,8 +502,8 @@ function openSearchService(item) {
 
 function launchSearchService() {
   const item = state.searchServiceItem, query = trim(ui.serviceQuery.value);
-  if (!item || !query || !item.urlTemplate?.includes("{query}")) return;
-  const url = item.urlTemplate.split("{query}").join(encodeURIComponent(query));
+  if (!item || !query || !item.urlTemplate?.includes("$")) return;
+  const url = item.urlTemplate.split("$").join(encodeURIComponent(query));
   if (!/^https?:\/\//i.test(url)) return;
   recordRecent(item); ui.searchService.close(); openExternal(url);
 }

@@ -75,43 +75,40 @@ launcher should choose v2 even if another version is also installed.
 
 ## Sheet layouts
 
-A headered tab uses `Name`, `Alias`, and `Content`, plus any additional
-nested-detail columns. `Content` is the only required value. `Name` supplies a
+A headered tab uses the exact reserved headers `Name`, `Alias`, and `Content`,
+plus any additional nested-detail columns. `Content` is required. `Name` supplies a
 short display name and Alias supplies optional fast search terms. If Name is
 blank, Trigger Search derives a short display preview from Content. A row with
 blank primary Content remains valid when it contains a nested value or AI
-prompt. The older `Label` header remains accepted for existing Sheets.
+prompt. Headers may be rearranged but should not be renamed; all other named
+columns become nested fields.
 
 For a quick headerless tab, begin on row 1. With one column, each value is
-Content and supplies its own display preview. With two columns, the left value is Name and the
-right value is the content. Headerless tabs do not provide aliases or nesting;
-a headerless tab with more than two populated columns is ignored.
+Content and supplies its own display preview. With two columns, the values are
+Name and Content. With three, they are Name, Alias, and Content. Headerless tabs
+do not provide nesting; four or more populated columns require headers.
 
 ### Search launchers
 
-Create a tab named `Search`. Headers are optional: without them, column A is the
-service name, column B is the URL template, and column C is an optional alias.
-With headers, use `Name`, `Alias`, and `Content`; Content holds the URL
-template. The legacy names `Service`, `Label`, `URL Template`, `URL`, `Link`,
-and `Nickname` remain accepted. Use `{query}` where
-Trigger Search should place the typed query:
+Create a tab named exactly `Search` with `Name`, `Alias`, and `Content` headers.
+Content holds the URL template. Keep all three headers even when Alias is blank.
+Use `$` where Trigger Search should place the typed query:
 
 | Name | Alias | Content |
 |---|---|---|
-| Google | g | `https://www.google.com/search?q={query}` |
-| ChatGPT | ai | `https://chatgpt.com/?q={query}` |
-| PubMed | pm | `https://pubmed.ncbi.nlm.nih.gov/?term={query}` |
+| Google | g | `https://www.google.com/search?q=$` |
+| ChatGPT | ai | `https://chatgpt.com/?q=$` |
+| PubMed | pm | `https://pubmed.ncbi.nlm.nih.gov/?term=$` |
 
 Each valid row is a searchable parent item. Select one and press Right Arrow,
 type the query, and press Enter to open it in the default browser. Left Arrow
 returns to the same service in the main results.
 
-Rows missing either value and templates without the exact `{query}` placeholder
+Rows missing Name or Content and templates without `$`
 are skipped quietly. `https://` and `http://` are accepted, and a recognizable
 domain without a protocol automatically uses HTTPS. Services can therefore be added,
 removed, or rearranged entirely in Google Sheets without editing AutoHotkey.
-On tabs with other names, the same recognized header pairs still identify the
-launcher layout for backward compatibility. Multiple
+Other tab names use the ordinary snippet rules. Multiple
 aliases may be separated by commas, semicolons, vertical bars, or line breaks;
 exact alias matches rank first.
 

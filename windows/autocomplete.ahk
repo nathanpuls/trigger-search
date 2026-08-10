@@ -2,8 +2,8 @@
 #SingleInstance Force
 Persistent
 
-; Sheet Autocomplete version 0.13.22
-global AppVersion := "0.13.22"
+; Sheet Autocomplete version 0.13.23
+global AppVersion := "0.13.23"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -1558,9 +1558,9 @@ LaunchSearchQuery(choice) {
     template := service.HasOwnProp("SearchTemplate")
         ? Trim(service.SearchTemplate) : ""
     query := choice.HasOwnProp("SearchQuery") ? Trim(choice.SearchQuery) : ""
-    if query = "" || !InStr(template, "{query}")
+    if query = "" || !InStr(template, "$")
         return false
-    url := StrReplace(template, "{query}", UrlEncode(query))
+    url := StrReplace(template, "$", UrlEncode(query))
     if !RegExMatch(url, "i)^https?://")
         return false
     RecordRecent service
@@ -1976,7 +1976,7 @@ ConnectGoogleSheet(newSheetId, title := "Change Google Sheet") {
         LoadRecentItems()
         ApplySheets infos, csvByName
         if Snippets.Length = 0
-            throw Error("No usable autocomplete rows were found. Use Name/Alias/Content headers, or one or two headerless columns.")
+            throw Error("No usable autocomplete rows were found. Use Name/Alias/Content headers, or one to three headerless columns.")
 
         SaveCache infos, csvByName
         SaveSheetConfiguration()
@@ -2349,13 +2349,13 @@ RunSelfTests() {
         "AI launch URLs should safely encode spaces."
 
     searchServices := []
-    ParseSheet '"Service","URL Template","Alias"`n'
-        . '"PubMed","https://pubmed.ncbi.nlm.nih.gov/?term={query}","pm; literature"`n'
+    ParseSheet '"Content","Name","Alias"`n'
+        . '"https://pubmed.ncbi.nlm.nih.gov/?term=$","PubMed","pm; literature"`n'
         . '"Broken","https://example.com/no-placeholder","bad"`n'
-        . '"Unsafe","javascript:alert({query})","unsafe"',
+        . '"javascript:alert($)","Unsafe","unsafe"',
         {Name: "Search", Gid: "456"}, searchServices
     Assert searchServices.Length = 1,
-        "Search services should require a name, web URL, and {query} placeholder."
+        "Search services should require Name/Alias/Content headers and a $ placeholder."
     Assert searchServices[1].IsSearchService
         && searchServices[1].GroupLabel = "PubMed",
         "A valid search-service row should become a searchable parent."
@@ -2364,38 +2364,34 @@ RunSelfTests() {
         "Search services should support optional aliases."
 
     headerlessSearch := []
-    ParseSheet 'Google,"https://www.google.com/search?q={query}",g`n'
+    ParseSheet 'Google,g,"https://www.google.com/search?q=$"`n'
         . 'Broken,"https://example.com/no-placeholder",bad',
         {Name: "Search", Gid: "457"}, headerlessSearch
-    Assert headerlessSearch.Length = 1
-        && headerlessSearch[1].GroupLabel = "Google"
-        && headerlessSearch[1].Aliases[1] = "g",
-        "The Search tab should support headerless Service, URL, and Alias columns."
+    Assert headerlessSearch.Length = 0,
+        "The Search tab should require its visible headers."
 
     flexibleSearchHeaders := []
     ParseSheet '"Nickname","Link","Name"`n'
-        . '"docs","https://example.com/search?q={query}","Docs"',
+        . '"docs","https://example.com/search?q=$","Docs"',
         {Name: "Search", Gid: "458"}, flexibleSearchHeaders
-    Assert flexibleSearchHeaders.Length = 1
-        && flexibleSearchHeaders[1].GroupLabel = "Docs"
-        && flexibleSearchHeaders[1].Aliases[1] = "docs",
-        "Search launcher header synonyms should work in any column order."
+    Assert flexibleSearchHeaders.Length = 0,
+        "Search launcher header synonyms should not create hidden schema rules."
 
     renamedSearchTab := []
-    ParseSheet '"Name","Link"`n'
-        . '"Knowledge Base","https://example.com/find?q={query}"',
+    ParseSheet '"Name","Alias","Content"`n'
+        . '"Knowledge Base","kb","https://example.com/find?q=$"',
         {Name: "Reference Tools", Gid: "459"}, renamedSearchTab
     Assert renamedSearchTab.Length = 1
-        && renamedSearchTab[1].IsSearchService,
-        "Recognized search headers should remain supported on other tab names."
+        && !renamedSearchTab[1].HasOwnProp("IsSearchService"),
+        "Only the Search tab should create search launchers."
 
     protocolFreeSearch := []
-    ParseSheet '"Service","URL Template"`n'
-        . '"Wikipedia","en.wikipedia.org/w/index.php?search={query}"',
+    ParseSheet '"Name","Alias","Content"`n'
+        . '"Wikipedia","wiki","en.wikipedia.org/w/index.php?search=$"',
         {Name: "Search", Gid: "460"}, protocolFreeSearch
     Assert protocolFreeSearch.Length = 1
         && protocolFreeSearch[1].SearchTemplate
-            = "https://en.wikipedia.org/w/index.php?search={query}",
+            = "https://en.wikipedia.org/w/index.php?search=$",
         "A protocol-free search template should default safely to HTTPS."
     Snippets := searchServices
     aliasChoice := FilterChoices("pm")
@@ -2405,7 +2401,7 @@ RunSelfTests() {
     queryChoice := FilterChoices("adult ADHD")
     Assert queryChoice.Length = 1 && queryChoice[1].Type = "search-query",
         "Search-service query mode should expose one launchable query choice."
-    Assert StrReplace(searchServices[1].SearchTemplate, "{query}",
+    Assert StrReplace(searchServices[1].SearchTemplate, "$",
         UrlEncode(queryChoice[1].SearchQuery))
         = "https://pubmed.ncbi.nlm.nih.gov/?term=adult%20ADHD",
         "Search-service queries should be URL encoded before template replacement."
@@ -2422,6 +2418,28 @@ RunSelfTests() {
     Assert headerlessTwo.Length = 2 && headerlessTwo[1].Label = "apple"
         && headerlessTwo[1].Content = "red apple",
         "A two-column headerless tab should use left as Name and right as Content."
+
+    headerlessThree := []
+    ParseSheet "apple,a,red apple`nbanana,b,yellow banana",
+        {Name: "Quick", Gid: "123"}, headerlessThree
+    Assert headerlessThree.Length = 2 && headerlessThree[1].Label = "apple"
+        && headerlessThree[1].Aliases[1] = "a"
+        && headerlessThree[1].Content = "red apple",
+        "A three-column headerless tab should use Name, Alias, and Content."
+
+    headerlessFour := []
+    ParseSheet "apple,a,red apple,extra",
+        {Name: "Quick", Gid: "123"}, headerlessFour
+    Assert headerlessFour.Length = 0,
+        "A headerless tab with four columns should require headers."
+
+    labelDetail := []
+    ParseSheet '"Name","Alias","Content","Label"`n'
+        . '"Example","ex","Main text","Nested label text"',
+        {Name: "Quick", Gid: "123"}, labelDetail
+    Assert labelDetail.Length = 1 && labelDetail[1].Details.Length = 1
+        && labelDetail[1].Details[1].DisplayText = "Label",
+        "Label should be available as an ordinary nested field."
 
     Assert ExtractLaunchUrl("Open https://example.com/help when needed")
         = "https://example.com/help",
@@ -2640,42 +2658,12 @@ ParseSheet(csv, info, output) {
     if rows.Length = 0
         return
     columns := HeaderMap(rows[1])
-    hasMachineHeaders := false
-    for header in rows[1] {
-        normalizedHeader := StrLower(Trim(StrReplace(header, Chr(0xFEFF))))
-        if RegExMatch(normalizedHeader, "\.(?:name|label|alias|content)$") {
-            hasMachineHeaders := true
-            break
-        }
-    }
-    serviceColumn := FirstHeaderColumn(columns, ["name", "service", "label"])
-    aliasColumn := FirstHeaderColumn(columns, ["alias", "nickname"])
+    serviceColumn := columns.Has("name") ? columns["name"] : 0
+    aliasColumn := columns.Has("alias") ? columns["alias"] : 0
     isSearchTab := StrLower(Trim(info.Name)) = "search"
-    templateColumn := FirstHeaderColumn(columns, isSearchTab
-        ? ["content", "url template", "url", "link"]
-        : ["url template", "url", "link"])
-    hasLauncherHeaders := serviceColumn || templateColumn || aliasColumn
-    firstLauncherRow := 2
-    if isSearchTab {
-        if hasLauncherHeaders {
-            usedColumns := Map()
-            if serviceColumn
-                usedColumns[serviceColumn] := true
-            if templateColumn
-                usedColumns[templateColumn] := true
-            if aliasColumn
-                usedColumns[aliasColumn] := true
-            serviceColumn := FallbackHeaderColumn(serviceColumn, 1, usedColumns)
-            templateColumn := FallbackHeaderColumn(templateColumn, 2, usedColumns)
-            aliasColumn := FallbackHeaderColumn(aliasColumn, 3, usedColumns)
-        } else {
-            serviceColumn := 1
-            templateColumn := 2
-            aliasColumn := 3
-            firstLauncherRow := 1
-        }
-    }
-    if serviceColumn && templateColumn && (isSearchTab || hasLauncherHeaders) {
+    templateColumn := columns.Has("content") ? columns["content"] : 0
+    if isSearchTab && serviceColumn && aliasColumn && templateColumn {
+        firstLauncherRow := 2
         Loop rows.Length - firstLauncherRow + 1 {
             rowNumber := firstLauncherRow + A_Index - 1
             row := rows[rowNumber]
@@ -2712,9 +2700,10 @@ ParseSheet(csv, info, output) {
         }
         return
     }
-    if !columns.Has("name") && columns.Has("label")
-        columns["name"] := columns["label"]
-    hasHeaders := columns.Has("name") || columns.Has("content")
+    if isSearchTab
+        return
+    hasHeaders := columns.Has("name") || columns.Has("alias")
+        || columns.Has("content")
     if !hasHeaders {
         rightmostContentColumn := 0
         for row in rows {
@@ -2723,14 +2712,25 @@ ParseSheet(csv, info, output) {
                     rightmostContentColumn := Max(rightmostContentColumn, columnIndex)
             }
         }
-        if rightmostContentColumn > 2 {
+        if rightmostContentColumn > 3 {
             OutputDebug "Trigger Search: skipped headerless tab " info.Name
-                . " because it uses more than two columns.`n"
+                . " because it uses more than three columns.`n"
             return
         }
-        columns["name"] := 1
-        if rightmostContentColumn >= 2
+        if rightmostContentColumn = 1
+            columns["content"] := 1
+        else if rightmostContentColumn = 2 {
+            columns["name"] := 1
             columns["content"] := 2
+        } else if rightmostContentColumn = 3 {
+            columns["name"] := 1
+            columns["alias"] := 2
+            columns["content"] := 3
+        }
+    } else if !columns.Has("content") {
+        OutputDebug "Trigger Search: skipped headered tab " info.Name
+            . " because it has no Content column.`n"
+        return
     }
 
     nameColumn := columns.Has("name") ? columns["name"] : 0
@@ -2738,13 +2738,7 @@ ParseSheet(csv, info, output) {
     aliasColumn := hasHeaders && columns.Has("alias") ? columns["alias"] : 0
 
     firstDataRow := hasHeaders ? 2 : 1
-    hasVisibleHeaderRow := hasHeaders && hasMachineHeaders && rows.Length >= 2
-        && (StrLower(Trim(Cell(rows[2], nameColumn))) = "name"
-            || StrLower(Trim(Cell(rows[2], nameColumn))) = "label")
-        && StrLower(Trim(Cell(rows[2], contentColumn))) = "content"
-    if hasVisibleHeaderRow
-        firstDataRow := 3
-    displayHeaders := hasVisibleHeaderRow ? rows[2] : rows[1]
+    displayHeaders := rows[1]
     aiPrompts := Map()
     if hasHeaders {
         Loop rows.Length - firstDataRow + 1 {
@@ -2805,7 +2799,6 @@ ParseSheet(csv, info, output) {
             detailName := Trim(StrReplace(header, Chr(0xFEFF)))
             normalizedDetailName := StrLower(detailName)
             if detailName = "" || normalizedDetailName = "name"
-                || normalizedDetailName = "label"
                 || normalizedDetailName = "content"
                 || normalizedDetailName = "alias"
                 continue
@@ -2891,51 +2884,21 @@ HeaderMap(headerRow) {
     columns := Map()
     for index, header in headerRow {
         normalized := StrLower(Trim(StrReplace(header, Chr(0xFEFF))))
-        if normalized != "" {
+        if normalized != ""
             columns[normalized] := index
-            if RegExMatch(normalized, "\.([^.]+)$", &match)
-                && (match[1] = "name" || match[1] = "label"
-                    || match[1] = "alias" || match[1] = "content")
-                && !columns.Has(match[1])
-                columns[match[1]] := index
-        }
     }
     return columns
 }
 
-FirstHeaderColumn(columns, names) {
-    for name in names {
-        if columns.Has(name)
-            return columns[name]
-    }
-    return 0
-}
-
 NormalizeSearchTemplate(value) {
     template := Trim(value)
-    if !InStr(template, "{query}")
+    if !InStr(template, "$")
         return ""
     if RegExMatch(template, "i)^https?://\S+$")
         return template
     if RegExMatch(template, "i)^(?:[a-z0-9-]+\.)+[a-z]{2,}\S*$")
         return "https://" template
     return ""
-}
-
-FallbackHeaderColumn(current, preferred, usedColumns) {
-    if current
-        return current
-    if !usedColumns.Has(preferred) {
-        usedColumns[preferred] := true
-        return preferred
-    }
-    Loop 3 {
-        if !usedColumns.Has(A_Index) {
-            usedColumns[A_Index] := true
-            return A_Index
-        }
-    }
-    return preferred
 }
 
 Cell(row, index) {
