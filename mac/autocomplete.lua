@@ -2203,6 +2203,12 @@ function M.start(userConfig)
     :searchSubText(true)
     :rows(config.rows)
     :width(config.width)
+    :invalidCallback(function()
+      if not detailParent and not searchServiceParent
+          and trim(chooser:query()) ~= "" then
+        searchGoogleQuery()
+      end
+    end)
     :queryChangedCallback(function(query)
       if not detailParent and not searchServiceParent then rootQuery = query end
       chooser:choices(rankedSnippets(query))

@@ -20,6 +20,8 @@ works as an installable Progressive Web App.
 - Keeps the empty mobile view minimal: branding and search only. The search
   field is focused on load, and tapping unused page space focuses it again.
   Recent Sheet items remain available on desktop but are hidden on mobile.
+- Shows a clear button while Search contains text. When a phrase has no Sheet
+  result, submitting Search opens that phrase in Google.
 - Supports Up/Down to navigate, Right Arrow to open nested details, Left Arrow
   to return, Enter to preview, Command/Control 1–9 to copy, `/` to focus search,
   and Command/Control-G to Google the typed phrase on desktop.

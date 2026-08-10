@@ -139,6 +139,8 @@ space, tab, or newline. The trigger is swallowed and the chooser opens with up
 to nine recently used Sheet items. Typing searches the complete workbook;
 clearing the query restores the recent items. Continue typing to filter,
 use the arrow keys to navigate, press Return to paste, or Escape to cancel.
+If the typed text has no matching result, Return searches Google for it in the
+default browser.
 Rows use a small, pale version of the Trigger Search lightning logo. Nested
 items additionally show a larger `→` beside their labels.
 Clicking a nested parent opens its details. Clicking a pasteable result opens

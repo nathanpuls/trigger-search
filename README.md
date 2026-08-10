@@ -73,9 +73,9 @@ Control-P on Windows opens the full expanded text in a readable, selectable
 preview; Escape returns to the same result. Command-K or Control-K opens a
 contextual action menu for the selected result.
 
-Command-G on Mac or Control-G on Windows searches Google for the literal text
-currently typed into Trigger Search, even when it does not match a Sheet item.
-The search opens in the system's default browser.
+When typed text has no matching result, Return/Enter searches Google for that
+text in the system's default browser. Command-G on Mac or Control-G on Windows
+does the same thing at any time, even while matching Sheet items are visible.
 
 Holding Command on Mac or Control on Windows for about 300 ms reveals a compact
 contextual shortcut HUD. Continue holding the modifier and press Return/Enter

@@ -2,8 +2,8 @@
 #SingleInstance Force
 Persistent
 
-; Sheet Autocomplete version 0.13.19
-global AppVersion := "0.13.19"
+; Sheet Autocomplete version 0.13.20
+global AppVersion := "0.13.20"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -956,9 +956,14 @@ SelectedChoice() {
 }
 
 ChooseSelected(*) {
+    global SearchBox, DetailParent, SearchServiceParent
+
     choice := SelectedChoice()
-    if !choice
+    if !choice {
+        if !DetailParent && !SearchServiceParent && Trim(SearchBox.Value) != ""
+            SearchGoogleQuery()
         return
+    }
     ChooseChoice choice
 }
 

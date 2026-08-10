@@ -17,6 +17,8 @@ same public Google Sheet and does not use OAuth or a Google sign-in.
    spreadsheet ID and verifies the workbook; no script editing is required.
 5. Type `;` at the start of a text run or immediately after whitespace. Type to
    filter, use Up/Down, and press Enter to paste. Escape cancels.
+   If the typed text has no matching result, Enter searches Google for it in
+   the default browser.
 
 The script is explicitly marked `#Requires AutoHotkey v2.0`, so the AutoHotkey
 launcher should choose v2 even if another version is also installed.

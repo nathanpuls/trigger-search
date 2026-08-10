@@ -7,6 +7,7 @@ const state = {
 
 const ui = {
   search: document.querySelector("#search"),
+  clearSearch: document.querySelector("#clear-search"),
   status: document.querySelector("#status"), results: document.querySelector("#results"),
   template: document.querySelector("#result-template"), toast: document.querySelector("#toast"),
   settings: document.querySelector("#settings-dialog"), sheetUrl: document.querySelector("#sheet-url"),
@@ -45,6 +46,20 @@ function focusSearchSoon() {
   };
   requestAnimationFrame(focus);
   setTimeout(focus, 120);
+}
+
+function syncClearSearch() {
+  if (!ui.clearSearch) return;
+  ui.clearSearch.hidden = ui.search.value.length === 0;
+}
+
+function clearMainSearch() {
+  ui.search.value = "";
+  state.query = "";
+  state.selectedIndex = 0;
+  syncClearSearch();
+  renderResults();
+  focusSearchSoon();
 }
 
 function focusServiceQuerySoon() {
@@ -310,7 +325,7 @@ function renderResults() {
   if (!items.length) {
     if (!state.query && isMobileView()) return;
     const empty = document.createElement("div"); empty.className = "empty-state";
-    empty.textContent = state.query ? "No Sheet matches. Press ⌘G or Ctrl+G to search Google." : "Your recently used items will appear here.";
+    empty.textContent = state.query ? "No Sheet matches. Press Enter to search Google." : "Your recently used items will appear here.";
     ui.results.append(empty); return;
   }
   items.slice(0, 30).forEach((item, index) => {
@@ -489,7 +504,8 @@ document.querySelector("#settings-form").addEventListener("submit", event => {
   state.sheetId = id; localStorage.setItem("triggerSearch.sheetId", id); syncSheetUrl(id); ui.settings.close(); focusSearchSoon(); loadWorkbook();
 });
 
-ui.search.addEventListener("input", () => { state.query = ui.search.value; state.selectedIndex = 0; renderResults(); });
+ui.search.addEventListener("input", () => { state.query = ui.search.value; state.selectedIndex = 0; syncClearSearch(); renderResults(); });
+ui.clearSearch?.addEventListener("click", clearMainSearch);
 document.addEventListener("click", event => {
   if (!isMobileView() || anyDialogOpen()) return;
   const target = event.target instanceof Element ? event.target : null;
@@ -537,10 +553,17 @@ document.addEventListener("keydown", event => {
   if ((event.metaKey || event.ctrlKey) && /^[1-9]$/.test(event.key)) { const item = items[Number(event.key) - 1]; if (item) { event.preventDefault(); copyItem(item); } return; }
   if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); const delta = event.key === "ArrowDown" ? 1 : -1; state.selectedIndex = Math.max(0, Math.min(items.length - 1, state.selectedIndex + delta)); renderResults(); document.querySelectorAll(".result")[state.selectedIndex]?.focus(); return; }
   if (event.key === "ArrowRight") { const item = items[state.selectedIndex]; if (item?.type === "search-service" || item?.details.length) { event.preventDefault(); item.type === "search-service" ? openSearchService(item) : openDetails(item); } return; }
-  if (event.key === "Enter" && document.activeElement === ui.search) { const item = items[state.selectedIndex]; if (item) { event.preventDefault(); performPrimaryAction(item); } }
-  if (event.key === "Escape") { ui.search.value = ""; state.query = ""; renderResults(); }
+  if (event.key === "Enter" && document.activeElement === ui.search) {
+    const item = items[state.selectedIndex];
+    if (item) { event.preventDefault(); performPrimaryAction(item); }
+    else if (trim(ui.search.value)) {
+      event.preventDefault();
+      openExternal(`https://www.google.com/search?q=${encodeURIComponent(trim(ui.search.value))}`);
+    }
+  }
+  if (event.key === "Escape") clearMainSearch();
 });
 
 if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js"));
 window.addEventListener("pageshow", focusSearchSoon);
-renderResults(); focusSearchSoon(); loadWorkbook();
+syncClearSearch(); renderResults(); focusSearchSoon(); loadWorkbook();

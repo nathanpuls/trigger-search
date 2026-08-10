@@ -24,9 +24,13 @@ button:focus, button:focus-visible { outline: 0; box-shadow: none; }
 .icon-button { font-weight: 700; letter-spacing: 2px; padding: 10px 0 10px 14px; }
 
 .search-wrap { position: relative; }
-#search { width: 100%; height: 58px; padding: 0; border: 0; border-bottom: 1px solid var(--ink); outline: 0; background: transparent; color: var(--ink); font-size: clamp(25px, 5vw, 36px); font-weight: 500; letter-spacing: -.035em; border-radius: 0; }
+#search { width: 100%; height: 58px; padding: 0 42px 0 0; border: 0; border-bottom: 1px solid var(--ink); outline: 0; background: transparent; color: var(--ink); font-size: clamp(25px, 5vw, 36px); font-weight: 500; letter-spacing: -.035em; border-radius: 0; }
 #search::placeholder { color: #a1a1a1; opacity: 1; }
 #search::-webkit-search-cancel-button { display: none; }
+.search-clear { position: absolute; top: 50%; right: 0; width: 38px; height: 38px; padding: 9px; transform: translateY(-50%); border: 0; border-radius: 50%; background: transparent; cursor: pointer; }
+.search-clear[hidden] { display: none; }
+.search-clear img { display: block; width: 20px; height: 20px; opacity: .72; }
+.search-clear:hover { background: var(--soft); }
 .status { padding: 10px 0 4px; color: var(--muted); font-size: 13px; }
 .status:empty { display: none; }
 
@@ -92,6 +96,7 @@ dialog::backdrop { background: rgba(0,0,0,.22); backdrop-filter: blur(2px); }
   .app-shell { padding: 0 16px 68px; }
   .topbar { height: 58px; }
   #search { height: 54px; font-size: 28px; }
+  .search-clear { width: 40px; height: 40px; padding: 10px; }
   .result { min-height: 62px; }
   .action-button { min-width: 44px; }
   .sheet-dialog, .search-service-dialog { width: 100%; max-width: none; max-height: 88dvh; margin: auto 0 0; border-radius: 18px 18px 0 0; border-bottom: 0; }
