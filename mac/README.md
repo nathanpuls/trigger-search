@@ -141,6 +141,9 @@ clearing the query restores the recent items. Continue typing to filter,
 use the arrow keys to navigate, press Return to paste, or Escape to cancel.
 If the typed text has no matching result, Return searches Google for it in the
 default browser.
+Type `/` to list every data tab. Each tab has separate **Browse entries** and
+**Open in Google Sheets** rows. Return or Right Arrow enters the first one;
+Left Arrow returns to the all-tabs search. Nested item fields remain vertical.
 Rows use a small, pale version of the Trigger Search lightning logo. Nested
 items additionally show a larger `→` beside their labels.
 Clicking a nested parent opens its details. Clicking a pasteable result opens

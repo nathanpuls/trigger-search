@@ -2,7 +2,8 @@
 
 const state = {
   sheetId: localStorage.getItem("triggerSearch.sheetId") || "",
-  items: [], categories: [], query: "", selectedIndex: 0,
+  items: [], categories: [], categoryGids: {}, activeCategory: "",
+  query: "", selectedIndex: 0,
 };
 
 const ui = {
@@ -30,6 +31,7 @@ const normalize = value => trim(value).toLowerCase();
 const tabKey = value => normalize(value).replace(/[\s_&-]+/g, "");
 const skippedTabs = new Set(["settings", "settingshelp", "readme", "blanktemplate", "autohotkey"]);
 const mobileViewport = window.matchMedia("(max-width: 640px)");
+let suppressMobileRefocusClick = false;
 
 function isMobileView() { return mobileViewport.matches; }
 
@@ -234,12 +236,14 @@ async function loadWorkbook() {
     }));
     state.items = data.flatMap(sheet => parseTab(sheet.csv, sheet.name, sheet.gid));
     state.categories = data.map(sheet => sheet.name);
-    localStorage.setItem(cacheKey(), JSON.stringify({ items: state.items, categories: state.categories, savedAt: Date.now() }));
+    state.categoryGids = Object.fromEntries(data.map(sheet => [sheet.name, sheet.gid]));
+    localStorage.setItem(cacheKey(), JSON.stringify({ items: state.items, categories: state.categories, categoryGids: state.categoryGids, savedAt: Date.now() }));
     ui.status.textContent = "";
   } catch (error) {
     const cached = JSON.parse(localStorage.getItem(cacheKey()) || "null");
     if (!cached) { ui.status.textContent = error.message; openSettings(false); return; }
     state.items = cached.items || []; state.categories = cached.categories || [];
+    state.categoryGids = cached.categoryGids || {};
     ui.status.textContent = `Offline copy · ${state.items.length} items`;
   }
   renderResults();
@@ -255,10 +259,49 @@ function recordRecent(item) {
   localStorage.setItem(recentKey(), JSON.stringify([item.key, ...keys].slice(0, 9)));
 }
 
+function categorySheetUrl(category, row = "") {
+  const gid = state.categoryGids[category] ?? state.items.find(item => item.category === category)?.gid;
+  if (!state.sheetId || gid == null) return "";
+  const range = row ? `&range=A${row}:ZZ${row}` : "";
+  return `https://docs.google.com/spreadsheets/d/${encodeURIComponent(state.sheetId)}/edit#gid=${encodeURIComponent(gid)}${range}`;
+}
+
+function categoryChoices(query) {
+  const needle = normalize(query.replace(/^\//, ""));
+  return state.categories.filter(category => !needle || normalize(category).includes(needle)).flatMap(category => {
+    const common = { label: category, aliases: [], category: "Google Sheet", gid: state.categoryGids[category], row: 0, details: [], aiPrompt: "", tabName: category };
+    return [
+      { ...common, key: `tab:browse:${category}`, type: "category-browser", content: "Browse entries" },
+      { ...common, key: `tab:open:${category}`, type: "category-sheet", content: "Open in Google Sheets" },
+    ];
+  });
+}
+
+function enterCategory(category) {
+  state.activeCategory = category;
+  state.query = ""; state.selectedIndex = 0; ui.search.value = "";
+  ui.search.placeholder = `Search ${category}`;
+  syncClearSearch(); renderResults(); focusSearchSoon();
+}
+
+function leaveCategory() {
+  if (!state.activeCategory) return false;
+  state.activeCategory = "";
+  state.query = ""; state.selectedIndex = 0; ui.search.value = "";
+  ui.search.placeholder = "Search";
+  syncClearSearch(); renderResults(); focusSearchSoon();
+  return true;
+}
+
 function rankedItems() {
   const query = normalize(state.query);
-  if (!query) return isMobileView() ? [] : recentItems();
-  return state.items.map(item => {
+  if (!state.activeCategory && query.startsWith("/")) return categoryChoices(state.query);
+  if (!query && !state.activeCategory) return isMobileView() ? [] : recentItems();
+  const source = state.activeCategory
+    ? state.items.filter(item => item.category === state.activeCategory)
+    : state.items;
+  if (!query) return [...source].sort((a, b) => a.label.localeCompare(b.label));
+  return source.map(item => {
     const label = normalize(item.label), aliases = item.aliases.map(normalize), content = normalize(item.content);
     let rank = 99;
     if (aliases.includes(query)) rank = 0;
@@ -311,6 +354,8 @@ function openExternal(url) {
 }
 
 function performPrimaryAction(item) {
+  if (item.type === "category-browser") { enterCategory(item.tabName); return; }
+  if (item.type === "category-sheet") { const url = categorySheetUrl(item.tabName); if (url) openExternal(url); return; }
   if (item.type === "search-service") { openSearchService(item); return; }
   if (item.details.length) { openDetails(item); return; }
   const url = standaloneUrl(item.content);
@@ -334,10 +379,17 @@ function renderResults() {
     const node = ui.template.content.firstElementChild.cloneNode(true);
     node.dataset.key = item.key; node.dataset.selected = String(index === state.selectedIndex);
     const title = node.querySelector(".result-title"); title.textContent = item.label;
-    if (item.type === "search-service" || item.details.length) { const arrow = document.createElement("span"); arrow.className = "arrow"; arrow.textContent = "→"; title.append(arrow); }
+    if (item.type === "search-service" || item.type === "category-browser" || item.details.length) { const arrow = document.createElement("span"); arrow.className = "arrow"; arrow.textContent = "→"; title.append(arrow); }
     node.querySelector(".result-meta").textContent = `${item.category}${trim(item.content) !== item.label ? ` · ${item.content.replace(/\s+/g, " ")}` : ""}`;
     const actions = node.querySelector(".result-actions");
-    if (item.type === "search-service") {
+    if (item.type === "category-browser") {
+      const browseButton = makeButton("Browse", "Browse tab", () => enterCategory(item.tabName));
+      browseButton.classList.add("search-action"); actions.append(browseButton);
+    }
+    else if (item.type === "category-sheet") {
+      actions.append(makeIconButton("arrow-square-out", "Open in Google Sheets", () => { const url = categorySheetUrl(item.tabName); if (url) openExternal(url); }));
+    }
+    else if (item.type === "search-service") {
       const searchButton = makeButton("Search", "Enter a query", () => openSearchService(item));
       searchButton.classList.add("search-action"); actions.append(searchButton);
     }
@@ -447,7 +499,9 @@ function openActions(item) {
     button.addEventListener("click", () => { ui.actions.close(); handler(); });
     ui.actionsList.append(button);
   };
-  if (item.type === "search-service") add("Search", "↵", () => openSearchService(item));
+  if (item.type === "category-browser") add("Browse entries", "↵", () => enterCategory(item.tabName));
+  else if (item.type === "category-sheet") add("Open in Google Sheets", "↵", () => performPrimaryAction(item));
+  else if (item.type === "search-service") add("Search", "↵", () => openSearchService(item));
   else if (item.details.length) add("View details", "→", () => openDetails(item));
   if (trim(item.content)) {
     add("Preview", "P", () => openPreview(item));
@@ -456,6 +510,10 @@ function openActions(item) {
   const url = extractSingleUrl(item.content);
   if (url) add("Open link", "O", () => { recordRecent(item); openExternal(url); });
   if (trim(item.aiPrompt)) add("Ask AI", "A", () => askAi(buildAiPrompt(item.aiPrompt, item), item));
+  if (!item.type?.startsWith("category-") && item.row) {
+    const editUrl = categorySheetUrl(item.category, item.row);
+    if (editUrl) add("Edit in Google Sheets", "E", () => openExternal(editUrl));
+  }
   ui.actions.showModal();
 }
 
@@ -499,7 +557,7 @@ ui.searchService.addEventListener("click", event => {
   focusServiceQuerySoon();
 });
 document.querySelectorAll("[data-close]").forEach(button => button.addEventListener("click", () => document.querySelector(`#${button.dataset.close}`).close()));
-document.querySelector("#disconnect-button").addEventListener("click", () => { localStorage.removeItem("triggerSearch.sheetId"); state.sheetId = ""; syncSheetUrl(""); state.items = []; state.categories = []; ui.status.textContent = ""; ui.settings.close(); renderResults(); openSettings(true); });
+document.querySelector("#disconnect-button").addEventListener("click", () => { localStorage.removeItem("triggerSearch.sheetId"); state.sheetId = ""; syncSheetUrl(""); state.items = []; state.categories = []; state.categoryGids = {}; state.activeCategory = ""; ui.status.textContent = ""; ui.settings.close(); renderResults(); openSettings(true); });
 document.querySelector("#settings-form").addEventListener("submit", event => {
   event.preventDefault(); const id = parseSheetId(ui.sheetUrl.value);
   if (!id) { showToast("That does not look like a Google Sheets link"); return; }
@@ -508,6 +566,18 @@ document.querySelector("#settings-form").addEventListener("submit", event => {
 
 ui.search.addEventListener("input", () => { state.query = ui.search.value; state.selectedIndex = 0; syncClearSearch(); renderResults(); });
 ui.clearSearch?.addEventListener("click", clearMainSearch);
+document.addEventListener("pointerdown", event => {
+  if (!isMobileView() || anyDialogOpen() || document.activeElement === ui.search) return;
+  if (event.clientY <= ui.search.getBoundingClientRect().bottom) return;
+  suppressMobileRefocusClick = true;
+  event.preventDefault(); event.stopPropagation();
+  focusSearchSoon();
+}, true);
+document.addEventListener("click", event => {
+  if (!suppressMobileRefocusClick) return;
+  suppressMobileRefocusClick = false;
+  event.preventDefault(); event.stopImmediatePropagation();
+}, true);
 document.addEventListener("click", event => {
   if (!isMobileView() || anyDialogOpen()) return;
   const target = event.target instanceof Element ? event.target : null;
@@ -552,9 +622,16 @@ document.addEventListener("keydown", event => {
   }
   if (event.key === "/" && document.activeElement !== ui.search) { event.preventDefault(); ui.search.focus(); return; }
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "g" && trim(ui.search.value)) { event.preventDefault(); openExternal(`https://www.google.com/search?q=${encodeURIComponent(trim(ui.search.value))}`); return; }
+  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "e") {
+    const item = items[state.selectedIndex];
+    const url = item?.type?.startsWith("category-") ? categorySheetUrl(item.tabName) : item ? categorySheetUrl(item.category, item.row) : "";
+    if (url) { event.preventDefault(); openExternal(url); }
+    return;
+  }
   if ((event.metaKey || event.ctrlKey) && /^[1-9]$/.test(event.key)) { const item = items[Number(event.key) - 1]; if (item) { event.preventDefault(); copyItem(item); } return; }
   if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); const delta = event.key === "ArrowDown" ? 1 : -1; state.selectedIndex = Math.max(0, Math.min(items.length - 1, state.selectedIndex + delta)); renderResults(); document.querySelectorAll(".result")[state.selectedIndex]?.focus(); return; }
-  if (event.key === "ArrowRight") { const item = items[state.selectedIndex]; if (item?.type === "search-service" || item?.details.length) { event.preventDefault(); item.type === "search-service" ? openSearchService(item) : openDetails(item); } return; }
+  if (event.key === "ArrowRight") { const item = items[state.selectedIndex]; if (item?.type === "category-browser" || item?.type === "search-service" || item?.details.length) { event.preventDefault(); item.type === "category-browser" ? enterCategory(item.tabName) : item.type === "search-service" ? openSearchService(item) : openDetails(item); } return; }
+  if (event.key === "ArrowLeft" && leaveCategory()) { event.preventDefault(); return; }
   if (event.key === "Enter" && document.activeElement === ui.search) {
     const item = items[state.selectedIndex];
     if (item) { event.preventDefault(); performPrimaryAction(item); }
@@ -563,7 +640,7 @@ document.addEventListener("keydown", event => {
       openExternal(`https://www.google.com/search?q=${encodeURIComponent(trim(ui.search.value))}`);
     }
   }
-  if (event.key === "Escape") clearMainSearch();
+  if (event.key === "Escape") { if (!leaveCategory()) clearMainSearch(); }
 });
 
 if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js"));

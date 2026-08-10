@@ -2,8 +2,8 @@
 #SingleInstance Force
 Persistent
 
-; Sheet Autocomplete version 0.13.20
-global AppVersion := "0.13.20"
+; Sheet Autocomplete version 0.13.21
+global AppVersion := "0.13.21"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -41,6 +41,7 @@ global RecentLimit := 9
 global VisibleChoices := []
 global DetailParent := 0
 global SearchServiceParent := 0
+global CategoryParent := ""
 global RootQuery := ""
 global ReturnParentKey := ""
 global KeyboardWatcher := 0
@@ -182,15 +183,17 @@ SetSearchPlaceholder(text) {
 }
 
 UpdateChooserContext() {
-    global ChooserGui, DetailParent, SearchServiceParent
+    global ChooserGui, DetailParent, SearchServiceParent, CategoryParent
 
     if DetailParent
         ChooserGui.Title := "Trigger Search — " DetailParent.GroupLabel
     else if SearchServiceParent
         ChooserGui.Title := "Trigger Search — " SearchServiceParent.GroupLabel
+    else if CategoryParent != ""
+        ChooserGui.Title := "Trigger Search — " CategoryParent
     else
         ChooserGui.Title := "Trigger Search"
-    SetSearchPlaceholder("Search")
+    SetSearchPlaceholder(CategoryParent != "" ? "←  " CategoryParent : "Search")
 }
 
 StartKeyboardWatcher() {
@@ -355,7 +358,7 @@ HandleTrigger(*) {
 }
 
 ShowChooser(*) {
-    global Snippets, TargetWindow, ChooserOpen, DetailParent, SearchServiceParent, RootQuery
+    global Snippets, TargetWindow, ChooserOpen, DetailParent, SearchServiceParent, CategoryParent, RootQuery
     global ReturnParentKey, SearchBox, ChooserGui
     global Refreshing, LastRefreshError, SheetId, ActionsForChoice, FooterText
 
@@ -383,6 +386,7 @@ ShowChooser(*) {
     ChooserOpen := true
     DetailParent := 0
     SearchServiceParent := 0
+    CategoryParent := ""
     RootQuery := ""
     ReturnParentKey := ""
     ActionsForChoice := 0
@@ -411,7 +415,7 @@ PositionChooser(targetHwnd) {
 }
 
 CancelChooser(*) {
-    global ChooserOpen, ChooserGui, DetailParent, SearchServiceParent, RootQuery, AtBoundary
+    global ChooserOpen, ChooserGui, DetailParent, SearchServiceParent, CategoryParent, RootQuery, AtBoundary
     global ActionsForChoice
 
     HideModifierHud()
@@ -422,6 +426,7 @@ CancelChooser(*) {
     ChooserOpen := false
     DetailParent := 0
     SearchServiceParent := 0
+    CategoryParent := ""
     RootQuery := ""
     AtBoundary := true
 }
@@ -524,13 +529,13 @@ ShowModifierHud(*) {
 }
 
 SearchChanged(control, info) {
-    global DetailParent, SearchServiceParent, RootQuery, ActionsForChoice
+    global DetailParent, SearchServiceParent, CategoryParent, RootQuery, ActionsForChoice
 
     if ActionsForChoice
         return
 
     query := control.Value
-    if !DetailParent && !SearchServiceParent
+    if !DetailParent && !SearchServiceParent && CategoryParent = ""
         RootQuery := query
     RenderChoices(FilterChoices(query))
 }
@@ -714,9 +719,35 @@ FormatCalculationNumber(value) {
 }
 
 FilterChoices(query) {
-    global Snippets, DetailParent, SearchServiceParent
+    global Snippets, DetailParent, SearchServiceParent, CategoryParent, SheetInfos, SheetId
 
     needle := StrLower(Trim(query))
+    if !DetailParent && !SearchServiceParent && CategoryParent = ""
+        && SubStr(needle, 1, 1) = "/" {
+        filter := Trim(SubStr(needle, 2))
+        choices := []
+        for info in SheetInfos {
+            if filter != "" && !InStr(StrLower(info.Name), filter)
+                continue
+            url := "https://docs.google.com/spreadsheets/d/" SheetId "/edit#gid=" info.Gid
+            common := {Label: info.Name, GroupLabel: info.Name, Category: info.Name,
+                Content: "", HasSavedContent: false, Aliases: [], Details: [],
+                DetailSearch: "", Preview: "", EditUrl: url}
+            browse := common.Clone()
+            browse.Key := "tab:browse:" info.Name
+            browse.DisplayText := info.Name
+            browse.Preview := "Browse entries"
+            browse.IsCategoryChoice := true
+            choices.Push(browse)
+            open := common.Clone()
+            open.Key := "tab:open:" info.Name
+            open.DisplayText := info.Name
+            open.Preview := "Open in Google Sheets"
+            open.IsCategoryOpenChoice := true
+            choices.Push(open)
+        }
+        return choices
+    }
     if SearchServiceParent {
         cleaned := Trim(query)
         if cleaned = ""
@@ -740,12 +771,15 @@ FilterChoices(query) {
     }
     ; The root view opens with locally remembered Sheet items. Typing searches
     ; the complete workbook; nested views reveal their saved details.
-    if !DetailParent && needle = ""
+    if !DetailParent && CategoryParent = "" && needle = ""
         return RecentChoices()
     ranked := []
     source := DetailParent ? DetailParent.Details : Snippets
 
     for item in source {
+        if CategoryParent != "" && (item.Category != CategoryParent
+            || (item.HasOwnProp("DetailName") && item.DetailName != ""))
+            continue
         label := StrLower(DetailParent ? item.DetailName : item.Label)
         category := StrLower(item.Category)
         directContent := StrLower(item.Content)
@@ -795,7 +829,7 @@ FilterChoices(query) {
 
     InsertionSort ranked, CompareRanked
     choices := []
-    utility := !DetailParent ? BuildUtilityChoice(query) : 0
+    utility := !DetailParent && CategoryParent = "" ? BuildUtilityChoice(query) : 0
     if utility
         choices.Push(utility)
     for entry in ranked
@@ -956,11 +990,12 @@ SelectedChoice() {
 }
 
 ChooseSelected(*) {
-    global SearchBox, DetailParent, SearchServiceParent
+    global SearchBox, DetailParent, SearchServiceParent, CategoryParent
 
     choice := SelectedChoice()
     if !choice {
-        if !DetailParent && !SearchServiceParent && Trim(SearchBox.Value) != ""
+        if !DetailParent && !SearchServiceParent && CategoryParent = ""
+            && Trim(SearchBox.Value) != "" && SubStr(Trim(SearchBox.Value), 1, 1) != "/"
             SearchGoogleQuery()
         return
     }
@@ -998,6 +1033,14 @@ ResultClicked(control, row) {
 }
 
 ChooseChoice(choice) {
+    if choice.HasOwnProp("IsCategoryChoice") && choice.IsCategoryChoice {
+        OpenCategory choice
+        return
+    }
+    if choice.HasOwnProp("IsCategoryOpenChoice") && choice.IsCategoryOpenChoice {
+        EditSelectedChoice choice
+        return
+    }
     if choice.HasOwnProp("Type") && choice.Type = "search-query" {
         LaunchSearchQuery choice
         return
@@ -1302,6 +1345,14 @@ OpenSelectedAction(*) {
     choice := SelectedChoice()
     if !choice
         return
+    if choice.HasOwnProp("IsCategoryChoice") && choice.IsCategoryChoice {
+        OpenCategory choice
+        return
+    }
+    if choice.HasOwnProp("IsCategoryOpenChoice") && choice.IsCategoryOpenChoice {
+        EditSelectedChoice choice
+        return
+    }
 
     if !DetailParent && !SearchServiceParent
         && choice.HasOwnProp("IsSearchService") && choice.IsSearchService {
@@ -1321,6 +1372,19 @@ OpenSelectedAction(*) {
     UpdateChooserContext()
     SearchBox.Value := ""
     RenderChoices(FilterChoices(""))
+    SearchBox.Focus()
+}
+
+OpenCategory(choice) {
+    global CategoryParent, RootQuery, SearchBox
+
+    CategoryParent := choice.Category
+    RootQuery := ""
+    SetSearchPlaceholder("←  " choice.Category)
+    SearchBox.Value := ""
+    RenderChoices(FilterChoices(""))
+    UpdateChooserContext()
+    SetSearchPlaceholder("←  " choice.Category)
     SearchBox.Focus()
 }
 
@@ -1368,7 +1432,7 @@ OpenChoiceLink(choice, standaloneOnly := false) {
 }
 
 CloseDetails(*) {
-    global DetailParent, SearchServiceParent, SearchBox, RootQuery, ReturnParentKey
+    global DetailParent, SearchServiceParent, CategoryParent, SearchBox, RootQuery, ReturnParentKey
     global ResultsView, VisibleChoices
 
     global ActionsForChoice
@@ -1380,6 +1444,10 @@ CloseDetails(*) {
         SearchServiceParent := 0
     else if DetailParent
         DetailParent := 0
+    else if CategoryParent != "" {
+        CategoryParent := ""
+        RootQuery := ""
+    }
     else
         return
     UpdateChooserContext()

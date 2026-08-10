@@ -56,6 +56,7 @@ local discoveredSheetNames
 local newSnippetTargets = {}
 local detailParent
 local searchServiceParent
+local categoryParent
 local rootQuery = ""
 local returnParentCategory
 local returnParentRow
@@ -1035,6 +1036,33 @@ end
 rankedSnippets = function(query)
   local needle = trim(query):lower()
 
+  if not detailParent and not searchServiceParent and not categoryParent
+      and needle:sub(1, 1) == "/" then
+    local filter = trim(needle:sub(2))
+    local choices = {}
+    for _, category in ipairs(configuredSheetNames()) do
+      if filter == "" or category:lower():find(filter, 1, true) then
+        local gid = type(config.sheetGids) == "table" and config.sheetGids[category] or nil
+        local url = gid ~= nil and ("https://docs.google.com/spreadsheets/d/"
+          .. config.sheetId .. "/edit#gid=" .. tostring(gid)) or nil
+        local common = { label = category, groupLabel = category,
+          category = category, content = "", hasSavedContent = false,
+          aliases = {}, detailCount = 0, editUrl = url, image = rowChoiceImage }
+        local browse = {}
+        for key, value in pairs(common) do browse[key] = value end
+        browse.text = category; browse.subText = "Browse entries"
+        browse.isCategoryChoice = true
+        choices[#choices + 1] = browse
+        local open = {}
+        for key, value in pairs(common) do open[key] = value end
+        open.text = category; open.subText = "Open in Google Sheets"
+        open.isCategoryOpenChoice = true
+        choices[#choices + 1] = open
+      end
+    end
+    return choices
+  end
+
   if searchServiceParent then
     if trim(query) == "" then return {} end
     return {{
@@ -1063,6 +1091,8 @@ rankedSnippets = function(query)
       inCurrentView = snippet.isDetail
         and snippet.category == detailParent.category
         and snippet.rowIndex == detailParent.rowIndex
+    elseif categoryParent then
+      inCurrentView = not snippet.isDetail and snippet.category == categoryParent
     else
       inCurrentView = not snippet.isDetail
     end
@@ -1127,7 +1157,7 @@ rankedSnippets = function(query)
   end)
 
   local choices = {}
-  local utility = not detailParent and utilityChoice(query)
+  local utility = not detailParent and not categoryParent and utilityChoice(query)
   if utility then
     utility.image = rowChoiceImage
     choices[#choices + 1] = utility
@@ -1238,7 +1268,7 @@ local function updateChooserHotkeys()
     if visible then openDetailsHotkey:enable() else openDetailsHotkey:disable() end
   end
   if backHotkey then
-    if actionVisible or (visible and (detailParent or searchServiceParent)) then
+    if actionVisible or (visible and (detailParent or searchServiceParent or categoryParent)) then
       backHotkey:enable()
     else
       backHotkey:disable()
@@ -1284,6 +1314,16 @@ local function openSearchService(choice)
   updateChooserHotkeys()
 end
 
+local function openCategory(choice)
+  if not choice or not choice.isCategoryChoice then return end
+  rootQuery = chooser:query() or rootQuery
+  categoryParent = choice.category
+  chooser:placeholderText("←  " .. choice.category)
+  chooser:query("")
+  chooser:choices(rankedSnippets(""))
+  updateChooserHotkeys()
+end
+
 local function openChoiceLink(choice, standaloneOnly)
   if not choice or choice.isUtilityError then return false end
   local expandedContent = expandDynamicContent(
@@ -1304,6 +1344,12 @@ end
 
 local function openSelectedAction(choice)
   if not choice then return end
+  if choice.isCategoryChoice then openCategory(choice); return end
+  if choice.isCategoryOpenChoice then
+    chooser:hide()
+    if choice.editUrl then hs.urlevent.openURL(choice.editUrl) end
+    return
+  end
   if not detailParent and not searchServiceParent and choice.isSearchService then
     openSearchService(choice)
     return
@@ -1321,6 +1367,9 @@ local function closeDetails()
     searchServiceParent = nil
   elseif detailParent then
     detailParent = nil
+  elseif categoryParent then
+    categoryParent = nil
+    rootQuery = ""
   else
     return
   end
@@ -1439,6 +1488,9 @@ local function searchGoogleQuery()
   end
   chooser:hide()
   atBoundary = true
+  hideActionHud()
+  if escapeHotkey then escapeHotkey:disable() end
+  hs.timer.doAfter(0.05, updateChooserHotkeys)
   hs.urlevent.openURL("https://www.google.com/search?q=" .. urlEncode(phrase))
 end
 
@@ -1696,6 +1748,7 @@ showChooser = function()
   previousApp = hs.application.frontmostApplication()
   detailParent = nil
   searchServiceParent = nil
+  categoryParent = nil
   rootQuery = ""
   returnParentCategory = nil
   returnParentRow = nil
@@ -2176,6 +2229,15 @@ function M.start(userConfig)
 
   chooser = hs.chooser.new(function(choice)
     if not choice then return end
+    if choice.isCategoryChoice then
+      openCategory(choice)
+      chooser:show()
+      return
+    end
+    if choice.isCategoryOpenChoice then
+      editSnippet(choice)
+      return
+    end
     if choice.isSearchQuery then
       launchSearchQuery(choice)
       return
@@ -2205,12 +2267,15 @@ function M.start(userConfig)
     :width(config.width)
     :invalidCallback(function()
       if not detailParent and not searchServiceParent
-          and trim(chooser:query()) ~= "" then
+          and not categoryParent and trim(chooser:query()) ~= ""
+          and trim(chooser:query()):sub(1, 1) ~= "/" then
         searchGoogleQuery()
       end
     end)
     :queryChangedCallback(function(query)
-      if not detailParent and not searchServiceParent then rootQuery = query end
+      if not detailParent and not searchServiceParent and not categoryParent then
+        rootQuery = query
+      end
       chooser:choices(rankedSnippets(query))
     end)
     :showCallback(function()
@@ -2297,6 +2362,7 @@ function M.start(userConfig)
     actionChoice = nil
     detailParent = nil
     searchServiceParent = nil
+    categoryParent = nil
     rootQuery = ""
     if actionChooser and actionChooser:isVisible() then actionChooser:hide() end
     if chooser and chooser:isVisible() then chooser:hide() end

@@ -19,6 +19,9 @@ same public Google Sheet and does not use OAuth or a Google sign-in.
    filter, use Up/Down, and press Enter to paste. Escape cancels.
    If the typed text has no matching result, Enter searches Google for it in
    the default browser.
+   Type `/` to list every data tab. Each tab has separate **Browse entries**
+   and **Open in Google Sheets** rows. Enter or Right Arrow browses the first;
+   Left Arrow returns to the all-tabs search.
 
 The script is explicitly marked `#Requires AutoHotkey v2.0`, so the AutoHotkey
 launcher should choose v2 even if another version is also installed.

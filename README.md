@@ -22,6 +22,12 @@ organization and result context without creating separate search modes.
 When the search is empty, both versions show up to nine recently used Sheet
 items, with direct Command-1–9 or Control-1–9 selection.
 
+Type `/` to browse the workbook by tab. Each tab appears twice with supporting
+text: **Browse entries** enters a vertical list of that tab's items, while
+**Open in Google Sheets** opens the tab itself. Continue typing after `/` to
+filter tab names. Right Arrow opens nested fields vertically, and Left Arrow
+backs out one level to the all-tabs search.
+
 ### Search launchers
 
 The simplest setup is a tab named `Search`. Headers are optional: without them,
