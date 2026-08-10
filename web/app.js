@@ -47,6 +47,16 @@ function focusSearchSoon() {
   setTimeout(focus, 120);
 }
 
+function focusServiceQuerySoon() {
+  const focus = () => {
+    if (!ui.searchService.open) return;
+    try { ui.serviceQuery.focus({ preventScroll: true }); }
+    catch { ui.serviceQuery.focus(); }
+  };
+  requestAnimationFrame(focus);
+  setTimeout(focus, 120);
+}
+
 function parseSheetId(value) {
   const match = trim(value).match(/\/spreadsheets\/d\/([A-Za-z0-9_-]+)/);
   if (match) return match[1];
@@ -373,7 +383,7 @@ function openSearchService(item) {
   ui.searchServiceTitle.textContent = item.label;
   ui.serviceQuery.value = "";
   ui.searchService.showModal();
-  requestAnimationFrame(() => ui.serviceQuery.focus());
+  focusServiceQuerySoon();
 }
 
 function launchSearchService() {
@@ -460,6 +470,12 @@ ui.preview.addEventListener("click", event => {
 });
 document.querySelector("#search-service-back").addEventListener("click", () => { ui.searchService.close(); ui.search.focus(); });
 document.querySelector("#search-service-form").addEventListener("submit", event => { event.preventDefault(); launchSearchService(); });
+ui.searchService.addEventListener("click", event => {
+  if (!isMobileView()) return;
+  const target = event.target instanceof Element ? event.target : null;
+  if (target?.closest("button, input, textarea, a")) return;
+  focusServiceQuerySoon();
+});
 document.querySelectorAll("[data-close]").forEach(button => button.addEventListener("click", () => document.querySelector(`#${button.dataset.close}`).close()));
 document.querySelector("#disconnect-button").addEventListener("click", () => { localStorage.removeItem("triggerSearch.sheetId"); state.sheetId = ""; syncSheetUrl(""); state.items = []; state.categories = []; ui.status.textContent = ""; ui.settings.close(); renderResults(); openSettings(true); });
 document.querySelector("#settings-form").addEventListener("submit", event => {
