@@ -1394,10 +1394,20 @@ local function pasteExpandedContent(expandedContent, cursorLeft)
   local oldClipboard = hs.pasteboard.getContents()
   hs.pasteboard.setContents(expandedContent)
 
+  -- Dismiss every Trigger Search surface before returning focus to the app
+  -- that was active when the launcher opened. Otherwise, when that app has
+  -- no editable control focused, Cmd-V can fall back into the chooser query.
+  if chooser and chooser:isVisible() then chooser:hide() end
+  if actionChooser and actionChooser:isVisible() then actionChooser:hide() end
+  hideActionHud()
+
   local targetApp = previousApp
   if targetApp then targetApp:activate() end
 
   hs.timer.doAfter(0.08, function()
+    -- Be defensive about chooser focus during the application handoff.
+    if chooser and chooser:isVisible() then chooser:hide() end
+    if actionChooser and actionChooser:isVisible() then actionChooser:hide() end
     hs.eventtap.keyStroke({ "cmd" }, "v", 0)
     if cursorLeft > 0 then
       hs.timer.doAfter(0.04, function()
