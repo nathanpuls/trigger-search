@@ -3,6 +3,7 @@
 const state = {
   sheetId: localStorage.getItem("triggerSearch.sheetId") || "",
   items: [], categories: [], categoryGids: {}, categorySheetIds: {}, activeCategory: "",
+  inboxSheet: "Inbox",
   query: "", selectedIndex: 0,
 };
 
@@ -31,6 +32,7 @@ const normalize = value => trim(value).toLowerCase();
 const tabKey = value => normalize(value).replace(/[\s_&-]+/g, "");
 const skippedTabs = new Set(["settings", "settingshelp", "readme", "blanktemplate", "autohotkey"]);
 const mobileViewport = window.matchMedia("(max-width: 640px)");
+let lastWorkbookLoadAt = 0;
 
 function isMobileView() { return mobileViewport.matches; }
 function isTouchDevice() {
@@ -218,6 +220,19 @@ function parseTab(csv, category, gid) {
   return items;
 }
 
+function parseSettings(csv) {
+  const rows = parseCsv(csv).filter(row => row.some(cell => trim(cell)));
+  if (!rows.length) return { inboxSheet: "Inbox" };
+  const headers = rows[0].map(cell => normalize(cell.replace(/^\uFEFF/, "")));
+  const settingIndex = headers.indexOf("setting"), valueIndex = headers.indexOf("value");
+  if (settingIndex < 0 || valueIndex < 0) return { inboxSheet: "Inbox" };
+  let inboxSheet = "Inbox";
+  rows.slice(1).forEach(row => {
+    if (tabKey(row[settingIndex]) === "inboxsheet") inboxSheet = trim(row[valueIndex]) || "Inbox";
+  });
+  return { inboxSheet };
+}
+
 function parseIncludedSheets(csv, primarySheetId) {
   const rows = parseCsv(csv).filter(row => row.some(cell => trim(cell) !== ""));
   if (!rows.length) return [];
@@ -253,6 +268,7 @@ function recentKey() { return `triggerSearch.recents.${state.sheetId}`; }
 
 async function loadWorkbook() {
   if (!state.sheetId) { openSettings(true); return; }
+  lastWorkbookLoadAt = Date.now();
   ui.status.textContent = "Refreshing…";
   try {
     const fetchWorkbook = async (sheetId, sourceName = "") => {
@@ -273,6 +289,7 @@ async function loadWorkbook() {
 
     const primaryData = await fetchWorkbook(state.sheetId);
     const settings = primaryData.find(sheet => tabKey(sheet.name) === "settingshelp" || tabKey(sheet.name) === "settings");
+    state.inboxSheet = settings ? parseSettings(settings.csv).inboxSheet : "Inbox";
     const included = settings ? parseIncludedSheets(settings.csv, state.sheetId) : [];
     const hiddenTabs = settings ? parseHiddenTabs(settings.csv) : new Set();
     const includedData = (await Promise.all(included.map(async source => {
@@ -288,7 +305,7 @@ async function loadWorkbook() {
     state.categories = data.map(sheet => sheet.category);
     state.categoryGids = Object.fromEntries(data.map(sheet => [sheet.category, sheet.gid]));
     state.categorySheetIds = Object.fromEntries(data.map(sheet => [sheet.category, sheet.sheetId]));
-    localStorage.setItem(cacheKey(), JSON.stringify({ items: state.items, categories: state.categories, categoryGids: state.categoryGids, categorySheetIds: state.categorySheetIds, savedAt: Date.now() }));
+    localStorage.setItem(cacheKey(), JSON.stringify({ items: state.items, categories: state.categories, categoryGids: state.categoryGids, categorySheetIds: state.categorySheetIds, inboxSheet: state.inboxSheet, savedAt: Date.now() }));
     ui.status.textContent = "";
   } catch (error) {
     const cached = JSON.parse(localStorage.getItem(cacheKey()) || "null");
@@ -296,6 +313,7 @@ async function loadWorkbook() {
     state.items = cached.items || []; state.categories = cached.categories || [];
     state.categoryGids = cached.categoryGids || {};
     state.categorySheetIds = cached.categorySheetIds || {};
+    state.inboxSheet = cached.inboxSheet || "Inbox";
     ui.status.textContent = `Offline copy · ${state.items.length} items`;
   }
   renderResults();
@@ -304,6 +322,24 @@ async function loadWorkbook() {
 function recentItems() {
   const keys = JSON.parse(localStorage.getItem(recentKey()) || "[]");
   return keys.map(key => state.items.find(item => item.key === key)).filter(Boolean).slice(0, 9);
+}
+
+function isInboxCategory(category) {
+  const target = tabKey(state.inboxSheet || "Inbox");
+  const parts = String(category || "").split(" · ");
+  return tabKey(category) === target || (parts.length > 1 && tabKey(parts.at(-1)) === target);
+}
+
+function latestInboxItem() {
+  const item = state.items.find(candidate => isInboxCategory(candidate.category));
+  return item ? { ...item, isPinnedInbox: true } : null;
+}
+
+function homeItems() {
+  const pinned = latestInboxItem();
+  const recents = isMobileView() ? [] : recentItems();
+  return [pinned, ...recents.filter(item => !pinned || item.key !== pinned.key)]
+    .filter(Boolean).slice(0, 9);
 }
 
 function recordRecent(item) {
@@ -356,12 +392,12 @@ function leaveCategory() {
 
 function rankedItems() {
   const query = normalize(state.query);
-  if (!query && !state.activeCategory) return isMobileView() ? [] : recentItems();
+  if (!query && !state.activeCategory) return homeItems();
   const source = state.activeCategory
     ? state.items.filter(item => item.category === state.activeCategory)
     : state.items;
-  if (!query) return [...source].sort((a, b) => a.label.localeCompare(b.label));
-  const matches = source.map(item => {
+  if (!query) return [...source];
+  const matches = source.map((item, sourceOrder) => {
     const label = normalize(item.label), aliases = item.aliases.map(normalize), content = normalize(item.content);
     let rank = 99;
     if (aliases.includes(query)) rank = 0;
@@ -372,12 +408,15 @@ function rankedItems() {
     else if (label.includes(query)) rank = 5;
     else if (content.includes(query)) rank = 6;
     else if (item.details.some(detail => normalize(`${detail.label} ${detail.content}`).includes(query))) rank = 7;
-    return { item, rank };
+    return { item, rank, sourceOrder };
   }).filter(match => match.rank < 99);
   if (!state.activeCategory) {
-    categoryChoices(state.query).forEach(item => matches.push({ item, rank: item.searchRank }));
+    categoryChoices(state.query).forEach((item, categoryOrder) => matches.push({
+      item, rank: item.searchRank, sourceOrder: source.length + categoryOrder,
+    }));
   }
-  return matches.sort((a, b) => a.rank - b.rank || a.item.label.localeCompare(b.item.label)).map(match => match.item);
+  return matches.sort((a, b) => a.rank - b.rank || a.sourceOrder - b.sourceOrder)
+    .map(match => match.item);
 }
 
 function extractSingleUrl(value) {
@@ -444,7 +483,9 @@ function renderResults() {
     const title = node.querySelector(".result-title"); title.textContent = item.label;
     if (item.type === "search-service" || item.type === "category-browser" || item.details.length) { const arrow = document.createElement("span"); arrow.className = "arrow"; arrow.textContent = "→"; title.append(arrow); }
     const summary = trim(item.content);
-    node.querySelector(".result-meta").textContent = `${item.category}${summary && summary !== item.label ? ` · ${summary.replace(/\s+/g, " ")}` : ""}`;
+    const meta = `${item.category}${summary && summary !== item.label ? ` · ${summary.replace(/\s+/g, " ")}` : ""}`;
+    node.querySelector(".result-meta").textContent = item.isPinnedInbox
+      ? `Pinned latest · ${meta}` : meta;
     const actions = node.querySelector(".result-actions");
     if (item.type === "category-browser") {
       const browseButton = makeButton("Browse", "Browse tab", () => enterCategory(item.tabName));
@@ -621,7 +662,7 @@ ui.searchService.addEventListener("click", event => {
   focusServiceQuerySoon();
 });
 document.querySelectorAll("[data-close]").forEach(button => button.addEventListener("click", () => document.querySelector(`#${button.dataset.close}`).close()));
-document.querySelector("#disconnect-button").addEventListener("click", () => { localStorage.removeItem("triggerSearch.sheetId"); state.sheetId = ""; syncSheetUrl(""); state.items = []; state.categories = []; state.categoryGids = {}; state.activeCategory = ""; ui.status.textContent = ""; ui.settings.close(); renderResults(); openSettings(true); });
+document.querySelector("#disconnect-button").addEventListener("click", () => { localStorage.removeItem("triggerSearch.sheetId"); state.sheetId = ""; syncSheetUrl(""); state.items = []; state.categories = []; state.categoryGids = {}; state.activeCategory = ""; state.inboxSheet = "Inbox"; ui.status.textContent = ""; ui.settings.close(); renderResults(); openSettings(true); });
 document.querySelector("#settings-form").addEventListener("submit", event => {
   event.preventDefault(); const id = parseSheetId(ui.sheetUrl.value);
   if (!id) { showToast("That does not look like a Google Sheets link"); return; }
@@ -703,5 +744,17 @@ document.addEventListener("keydown", event => {
 });
 
 if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js"));
-window.addEventListener("pageshow", focusSearchSoon);
+function refreshHomeIfVisible() {
+  if (document.visibilityState !== "visible" || !state.sheetId
+      || state.query || state.activeCategory || anyDialogOpen()
+      || Date.now() - lastWorkbookLoadAt < 2000) return;
+  loadWorkbook();
+}
+
+window.addEventListener("pageshow", event => {
+  focusSearchSoon();
+  if (event.persisted) refreshHomeIfVisible();
+});
+document.addEventListener("visibilitychange", refreshHomeIfVisible);
+setInterval(refreshHomeIfVisible, 60000);
 syncClearSearch(); renderResults(); focusSearchSoon(); loadWorkbook();

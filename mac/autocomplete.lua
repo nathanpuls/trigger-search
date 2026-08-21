@@ -24,7 +24,6 @@ local actionChoice
 local actionReturnQuery = ""
 local actionReturnRow = 1
 local actionReturning = false
-local chooserClickPending = false
 local actionHud
 local actionHudTimer
 local previewWebview
@@ -54,6 +53,7 @@ local refreshInProgress = false
 local snippets = {}
 local atBoundary = true
 local previousApp
+local previousWindow
 local discoveredSheetNames
 local newSnippetTargets = {}
 local detailParent
@@ -74,6 +74,7 @@ local config = {
   launcherModifier = "None",
   launcherKey = "None",
   aiEngine = "ChatGPT",
+  inboxSheet = "Inbox",
   cachePath = hs.configdir .. "/autocomplete-snippets-cache.json",
   refreshInterval = 60,
   rows = 9,
@@ -157,6 +158,45 @@ local function recentChoices()
       end
     end
     if #choices >= recentLimit then break end
+  end
+  return choices
+end
+
+local function normalizedSheetName(value)
+  return trim(value):lower():gsub("[%s_&%-]+", "")
+end
+
+local function isInboxCategory(category)
+  local target = normalizedSheetName(config.inboxSheet)
+  if target == "" then target = "inbox" end
+  if normalizedSheetName(category) == target then return true end
+  local includedName = tostring(category or ""):match("·%s*(.-)%s*$")
+  return includedName ~= nil and normalizedSheetName(includedName) == target
+end
+
+local function latestInboxChoice()
+  for _, snippet in ipairs(snippets) do
+    if isInboxCategory(snippet.category) and not snippet.isDetail then
+      local choice = {}
+      for field, value in pairs(snippet) do choice[field] = value end
+      choice.isPinnedInbox = true
+      local context = trim(choice.subText)
+      choice.subText = "Pinned latest" .. (context ~= "" and ("  •  " .. context) or "")
+      return choice
+    end
+  end
+  return nil
+end
+
+local function homeChoices()
+  local choices = {}
+  local pinned = latestInboxChoice()
+  if pinned then choices[#choices + 1] = pinned end
+  for _, choice in ipairs(recentChoices()) do
+    if (not pinned or not sameRecentItem(choice, pinned))
+        and #choices < recentLimit then
+      choices[#choices + 1] = choice
+    end
   end
   return choices
 end
@@ -933,20 +973,11 @@ local function parseSheets(sheetCsvs)
     end
   end
 
-  table.sort(parsed, function(a, b)
-    if a.groupLabel:lower() ~= b.groupLabel:lower() then
-      return a.groupLabel:lower() < b.groupLabel:lower()
-    end
-    if a.category:lower() ~= b.category:lower() then
-      return a.category:lower() < b.category:lower()
-    end
-    if a.detailOrder ~= b.detailOrder then return a.detailOrder < b.detailOrder end
-    return a.label:lower() < b.label:lower()
-  end)
   return parsed
 end
 
 local function applySheetSettings(sheetCsvs)
+  config.inboxSheet = "Inbox"
   for sheetName, csv in pairs(sheetCsvs or {}) do
     local normalizedSheetName = trim(sheetName):lower():gsub("[%s_&%-]+", "")
     if normalizedSheetName == "settings"
@@ -973,6 +1004,9 @@ local function applySheetSettings(sheetCsvs)
             end
             if key == "aiengine" and value ~= "" then
               config.aiEngine = value
+            end
+            if key == "inboxsheet" then
+              config.inboxSheet = value ~= "" and value or "Inbox"
             end
           end
         else
@@ -1045,11 +1079,11 @@ rankedSnippets = function(query)
   -- The root chooser opens with locally remembered Sheet items. Typing still
   -- searches the complete workbook; nested views reveal their saved details.
   if not detailParent and not categoryParent and needle == "" then
-    return recentChoices()
+    return homeChoices()
   end
 
   local matches = {}
-  for _, snippet in ipairs(snippets) do
+  for sourceOrder, snippet in ipairs(snippets) do
     local inCurrentView
     if detailParent then
       inCurrentView = snippet.isDetail
@@ -1102,7 +1136,11 @@ rankedSnippets = function(query)
     end
 
     if rank ~= nil then
-      matches[#matches + 1] = { choice = snippet, rank = rank }
+      matches[#matches + 1] = {
+        choice = snippet,
+        rank = rank,
+        sourceOrder = sourceOrder,
+      }
     end
   end
 
@@ -1110,7 +1148,7 @@ rankedSnippets = function(query)
   -- Their names and initials act as natural aliases (for example, "i" finds
   -- Inbox and "pm" finds Psych Meds) without adding another settings schema.
   if not detailParent and not categoryParent and needle ~= "" then
-    for _, categoryName in ipairs(configuredSheetNames()) do
+    for categoryOrder, categoryName in ipairs(configuredSheetNames()) do
       local normalized = categoryName:lower()
       local initials = normalized:gsub("[^%w]+", " ")
         :gsub("(%w)%w*%s*", "%1")
@@ -1127,6 +1165,7 @@ rankedSnippets = function(query)
           .. sourceSheetId .. "/edit#gid=" .. tostring(gid)) or nil
         matches[#matches + 1] = {
           rank = rank,
+          sourceOrder = #snippets + categoryOrder,
           choice = {
             text = categoryName,
             subText = "Google Sheet  ·  Return or → to browse",
@@ -1149,6 +1188,9 @@ rankedSnippets = function(query)
 
   table.sort(matches, function(a, b)
     if a.rank ~= b.rank then return a.rank < b.rank end
+    if a.sourceOrder ~= b.sourceOrder then
+      return (a.sourceOrder or math.huge) < (b.sourceOrder or math.huge)
+    end
     if a.choice.groupLabel:lower() ~= b.choice.groupLabel:lower() then
       return a.choice.groupLabel:lower() < b.choice.groupLabel:lower()
     end
@@ -1402,12 +1444,19 @@ local function pasteExpandedContent(expandedContent, cursorLeft)
   hideActionHud()
 
   local targetApp = previousApp
-  if targetApp then targetApp:activate() end
+  local targetWindow = previousWindow
+  local function focusPasteTarget()
+    if targetApp then pcall(function() targetApp:activate(true) end) end
+    if targetWindow then pcall(function() targetWindow:focus() end) end
+  end
+  focusPasteTarget()
 
-  hs.timer.doAfter(0.08, function()
+  hs.timer.doAfter(0.08, focusPasteTarget)
+  hs.timer.doAfter(0.18, function()
     -- Be defensive about chooser focus during the application handoff.
     if chooser and chooser:isVisible() then chooser:hide() end
     if actionChooser and actionChooser:isVisible() then actionChooser:hide() end
+    focusPasteTarget()
     hs.eventtap.keyStroke({ "cmd" }, "v", 0)
     if cursorLeft > 0 then
       hs.timer.doAfter(0.04, function()
@@ -1758,6 +1807,7 @@ showChooser = function()
     return
   end
 
+  previousWindow = hs.window.focusedWindow()
   previousApp = hs.application.frontmostApplication()
   detailParent = nil
   searchServiceParent = nil
@@ -2392,18 +2442,6 @@ function M.start(userConfig)
       chooser:show()
       return
     end
-    if chooserClickPending then
-      chooserClickPending = false
-      if not detailParent and not searchServiceParent
-          and not choice.isDetail and choice.detailCount
-          and choice.detailCount > 0 then
-        openDetails(choice)
-        chooser:show()
-      elseif not choice.isUtilityError then
-        showActions()
-      end
-      return
-    end
     pasteSnippet(choice)
   end)
     :placeholderText(rootPlaceholder())
@@ -2572,11 +2610,6 @@ function M.start(userConfig)
     hs.eventtap.event.types.otherMouseDown,
   }, function(event)
     if launcherTapArmed then launcherTapArmed = false end
-    if event:getType() == hs.eventtap.event.types.leftMouseDown
-        and chooser and chooser:isVisible() then
-      chooserClickPending = true
-      hs.timer.doAfter(0.4, function() chooserClickPending = false end)
-    end
     -- Web editors such as Gmail often update their focused Accessibility
     -- element just after the click. Re-check once focus settles; if the app
     -- exposes no cursor context, treat the click as a new typing run.

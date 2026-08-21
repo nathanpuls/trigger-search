@@ -131,6 +131,7 @@ Google Sheet's `Settings & Help` tab:
 | Launcher Modifier | None |
 | Launcher Key | None |
 | AI Engine | ChatGPT |
+| Inbox Sheet | Inbox |
 
 Replace `;` with another single printable character whenever you prefer. The
 local `trigger` value in `init.lua` remains an offline fallback. The two
@@ -153,16 +154,21 @@ clearing the query restores the recent items. Continue typing to filter,
 use the arrow keys to navigate, press Return to paste, or Escape to cancel.
 If the typed text has no matching result, Return searches Google for it in the
 default browser.
+The first usable row in the tab configured by `Inbox Sheet` is pinned above
+Recents and is not duplicated there. Opening the launcher refreshes the Sheet,
+so a newly captured Inbox item replaces the pin as soon as refresh completes.
 Sheet tabs appear as folder-like results in the ordinary search. Type a short
 prefix (`i` for `Inbox`) or the initials of a multiword tab (`pm` for
 `Psych Meds`). Return or Right Arrow shows that tab's entries; Command-E opens
 the tab itself. Inside the tab, Command-E opens the selected item's exact row.
+Tabs, rows, columns, and equally relevant search matches retain their Google
+Sheets order.
 Left Arrow returns to the complete search. Nested item fields remain vertical.
 Rows use a small, pale version of the Trigger Search lightning logo. Nested
 items additionally show a larger `→` beside their names.
-Clicking a nested parent opens its details. Clicking a pasteable result opens
-its contextual Actions menu, so mouse use never pastes without an explicit
-choice. Return and Command-number remain the fast keyboard paths for pasting.
+Clicking a result performs the same action as Return: content pastes, links
+open, search templates accept a query, and Sheet folders open for browsing.
+Press Command-K when you want the Actions menu.
 Highlight a result and press Command-E to open its exact row or detail cell in
 Google Sheets for editing. Press Command-C to copy the selected text without
 pasting it. Press Command-P to open the fully expanded text in a scrollable,

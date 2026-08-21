@@ -24,11 +24,16 @@ works as an installable Progressive Web App.
   result, submitting Search opens that phrase in Google.
 - Includes Sheet tabs as folder-like ordinary search results. Enter or Right
   Arrow browses a tab as a vertical list; Command/Control-E opens the tab in
-  Google Sheets, and Left Arrow returns one level.
+  Google Sheets, and Left Arrow returns one level. Tabs, rows, columns, and
+  equally relevant search matches retain their Google Sheets order.
 - Supports Up/Down to navigate, Right Arrow to open nested details, Left Arrow
   to return, Enter to preview, Command/Control 1–9 to copy, and
   Command/Control-G to Google the typed phrase on desktop.
 - Falls back to the last successful local cache when the Sheet is unavailable.
+- Pins the first usable row from the tab named by `Inbox Sheet` (default
+  `Inbox`) on the blank home screen. Desktop follows it with Recents; mobile
+  shows the pin without Recents. Returning to the visible web app refreshes the
+  Sheet so an iPhone Shortcut capture is immediately available.
 - Shows contextual actions from each result's `•••` button. On desktop,
   Command-K or Control-K opens the same menu for the selected result; its
   displayed single-key shortcuts work while the menu is open.
