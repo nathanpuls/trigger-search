@@ -65,8 +65,16 @@ Sheet tabs also appear as folder-like results in the ordinary search. A short
 prefix finds them quickly (`i` finds `Inbox`), and initials work for multiword
 names (`pm` finds `Psych Meds`). Return or Right Arrow opens the tab's entries;
 Command-E or Control-E opens the tab itself in Google Sheets. From inside a
-tab, the same edit shortcut opens the selected item's exact row. Left Arrow
-backs out one level to the complete search.
+tab, the same edit shortcut opens the selected item's exact row. Tabs, rows,
+columns, and equally relevant search matches follow their Google Sheets order;
+Trigger Search does not alphabetize them. Left Arrow backs out one level to the
+complete search.
+
+The blank launcher home screen pins the first usable row from the tab named by
+the `Inbox Sheet` setting (default `Inbox`) above recent items, without
+duplicating it. Mac refreshes when the launcher opens, web refreshes when it
+becomes visible, and Windows offers Control-R for an immediate refresh while
+keeping automatic downloads outside the visible launcher.
 
 ### Search launchers
 
@@ -131,9 +139,9 @@ released. Preview uses a soft gray reading surface to stand apart from the
 underlying application. Its title appears only once; inside Preview, P pastes
 the displayed text, C copies all of it, and Escape returns to the chooser.
 
-Mouse use is deliberately exploratory: clicking a nested parent opens its
-details, while clicking a pasteable result opens that result's Actions menu.
-Keyboard Return/Enter and the numbered shortcuts still paste immediately.
+On Mac and Windows, clicking a result performs the same action as Return/Enter:
+ordinary content pastes, standalone URLs open, search templates accept a query,
+and Sheet folders open for browsing. Use Command-K or Control-K for Actions.
 
 A headered tab can reserve a row whose Name is `AI Prompt`. Text in that row's
 detail columns becomes the prompt template for the same column. Command-Return

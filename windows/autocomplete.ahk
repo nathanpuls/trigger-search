@@ -2,8 +2,8 @@
 #SingleInstance Force
 Persistent
 
-; Sheet Autocomplete version 0.13.23
-global AppVersion := "0.13.23"
+; Sheet Autocomplete version 0.14.0
+global AppVersion := "0.14.0"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -25,7 +25,10 @@ global LauncherModifier := "None"
 global LauncherKey := "None"
 global LauncherHotkey := ""
 global AiEngine := "ChatGPT"
+global InboxSheet := "Inbox"
 global Refreshing := false
+global RefreshPending := false
+global LastRefreshTick := 0
 global LastRefreshError := ""
 global LastShownRefreshError := ""
 global RefreshFailureCount := 0
@@ -79,6 +82,7 @@ Left::CloseDetails()
 ^o::OpenSelectedLink()
 ^g::SearchGoogleQuery()
 ^p::PreviewSelected()
+^r::RefreshAndReopen()
 ^Enter::LaunchSelectedAi()
 ^k::ShowActionsMenu()
 ^1::ChooseVisibleByNumber(1)
@@ -109,6 +113,7 @@ Initialize() {
     global Snippets, AppVersion
 
     OnMessage 0x0100, HandleGuiKeyDown
+    OnMessage 0x0104, HandleGuiKeyDown
     DirCreate CacheDir
     A_IconTip := "Trigger Search v" AppVersion
     LoadSheetConfiguration()
@@ -124,7 +129,7 @@ Initialize() {
     A_TrayMenu.Disable("Trigger Search v" AppVersion)
     A_TrayMenu.Add()
     A_TrayMenu.Add("Open autocomplete", (*) => ShowChooser())
-    A_TrayMenu.Add("Refresh snippets", RefreshData)
+    A_TrayMenu.Add("Refresh snippets", ManualRefresh)
     A_TrayMenu.Add("Open Google Sheet", (*) => OpenWorkbook())
     A_TrayMenu.Add("Change Google Sheet...", (*) => PromptForGoogleSheet(false))
     A_TrayMenu.Add()
@@ -136,7 +141,7 @@ Initialize() {
     if SheetId = ""
         SetTimer () => PromptForGoogleSheet(true), -100
     else if Snippets.Length = 0
-        RefreshData()
+        RefreshData(true)
     else
         SetTimer RefreshData, -25
 }
@@ -244,9 +249,12 @@ ResetBoundary(*) {
 }
 
 CheckActiveWindow(*) {
-    global LastActiveWindow, AtBoundary, ChooserOpen
+    global LastActiveWindow, AtBoundary, ChooserOpen, PreviewOpen, RefreshPending
 
     EnsureKeyboardWatcher()
+    if !ChooserOpen && !PreviewOpen && RefreshPending
+        && A_TimeIdlePhysical >= 1200
+        SetTimer RefreshData, -10
     if ChooserOpen
         return
     current := WinExist("A")
@@ -360,7 +368,8 @@ HandleTrigger(*) {
 ShowChooser(*) {
     global Snippets, TargetWindow, ChooserOpen, DetailParent, SearchServiceParent, CategoryParent, RootQuery
     global ReturnParentKey, SearchBox, ChooserGui
-    global Refreshing, LastRefreshError, SheetId, ActionsForChoice, FooterText
+    global Refreshing, RefreshPending, LastRefreshTick
+    global LastRefreshError, SheetId, ActionsForChoice, FooterText
 
     if SheetId = "" {
         PromptForGoogleSheet(true)
@@ -370,7 +379,7 @@ ShowChooser(*) {
 
     if Snippets.Length = 0 {
         if !Refreshing
-            RefreshData()
+            RefreshData(true)
         if Snippets.Length = 0 {
             message := Refreshing
                 ? "Snippets are still loading. Try again in a few seconds."
@@ -391,14 +400,17 @@ ShowChooser(*) {
     ReturnParentKey := ""
     ActionsForChoice := 0
     SearchBox.Enabled := true
-    FooterText.Text := ""
-    FooterText.Visible := false
+    FooterText.Text := "Ctrl+R  Refresh now"
+    FooterText.Visible := true
     UpdateChooserContext()
     SearchBox.Value := ""
     RenderChoices(FilterChoices(""))
     PositionChooser(TargetWindow)
     SearchBox.Focus()
-    SetTimer RefreshData, -10
+    ; Keep synchronous workbook downloads away from the visible launcher so
+    ; typing, Escape, and result actions remain responsive.
+    if LastRefreshTick = 0 || A_TickCount - LastRefreshTick > 15000
+        RefreshPending := true
 }
 
 PositionChooser(targetHwnd) {
@@ -422,8 +434,8 @@ CancelChooser(*) {
     if !ChooserOpen
         return
     ActionsForChoice := 0
-    ChooserGui.Hide()
     ChooserOpen := false
+    try ChooserGui.Hide()
     DetailParent := 0
     SearchServiceParent := 0
     CategoryParent := ""
@@ -449,8 +461,30 @@ HandleGuiKeyDown(wParam, lParam, msg, hwnd) {
 
     if wParam != 0x1B || (!PreviewOpen && !ChooserOpen)
         return
-    HandleEscape()
+    SetTimer HandleEscape, -1
     return 0
+}
+
+RefreshAndReopen(*) {
+    global Refreshing, ChooserOpen
+    if !ChooserOpen
+        return
+    if Refreshing {
+        TrayTip "A Sheet refresh is already running.", "Trigger Search"
+        return
+    }
+    CancelChooser()
+    TrayTip "Refreshing the Sheet…", "Trigger Search"
+    RefreshData(true)
+    ShowChooser()
+}
+
+ManualRefresh(*) {
+    global ChooserOpen
+    if ChooserOpen
+        RefreshAndReopen()
+    else
+        RefreshData(true)
 }
 
 IsTriggerSearchOpen(*) {
@@ -772,7 +806,7 @@ FilterChoices(query) {
     ; The root view opens with locally remembered Sheet items. Typing searches
     ; the complete workbook; nested views reveal their saved details.
     if !DetailParent && CategoryParent = "" && needle = ""
-        return RecentChoices()
+        return HomeChoices()
     ranked := []
     source := DetailParent ? DetailParent.Details : Snippets
 
@@ -827,7 +861,8 @@ FilterChoices(query) {
             ranked.Push({Item: item, Rank: rank})
     }
 
-    InsertionSort ranked, CompareRanked
+    if needle != ""
+        InsertionSort ranked, CompareRanked
     choices := []
     utility := !DetailParent && CategoryParent = "" ? BuildUtilityChoice(query) : 0
     if utility
@@ -903,23 +938,50 @@ RecentChoices() {
     return choices
 }
 
+IsInboxCategory(category) {
+    global InboxSheet
+    target := NormalizeSheetName(InboxSheet != "" ? InboxSheet : "Inbox")
+    if NormalizeSheetName(category) = target
+        return true
+    parts := StrSplit(category, " · ")
+    return parts.Length > 1 && NormalizeSheetName(parts[parts.Length]) = target
+}
+
+LatestInboxChoice() {
+    global Snippets
+    for item in Snippets {
+        isDetail := item.HasOwnProp("DetailName") && Trim(item.DetailName) != ""
+        if IsInboxCategory(item.Category) && !isDetail {
+            pinned := item.Clone()
+            pinned.IsPinnedInbox := true
+            pinned.Preview := "Pinned latest"
+                . (Trim(pinned.Preview) != "" ? "  •  " pinned.Preview : "")
+            return pinned
+        }
+    }
+    return 0
+}
+
+HomeChoices() {
+    global RecentLimit
+    choices := []
+    pinned := LatestInboxChoice()
+    if pinned
+        choices.Push(pinned)
+    for choice in RecentChoices() {
+        if pinned && choice.Key = pinned.Key
+            continue
+        if choices.Length >= RecentLimit
+            break
+        choices.Push(choice)
+    }
+    return choices
+}
+
 CompareRanked(a, b) {
     if a.Rank != b.Rank
         return a.Rank < b.Rank ? -1 : 1
-
-    aGroup := StrLower(a.Item.GroupLabel)
-    bGroup := StrLower(b.Item.GroupLabel)
-    if aGroup != bGroup
-        return StrCompare(aGroup, bGroup)
-
-    aCategory := StrLower(a.Item.Category)
-    bCategory := StrLower(b.Item.Category)
-    if aCategory != bCategory
-        return StrCompare(aCategory, bCategory)
-
-    if a.Item.DetailOrder != b.Item.DetailOrder
-        return a.Item.DetailOrder < b.Item.DetailOrder ? -1 : 1
-    return StrCompare(StrLower(a.Item.Label), StrLower(b.Item.Label))
+    return 0
 }
 
 InsertionSort(items, compare) {
@@ -1003,33 +1065,18 @@ ChooseSelected(*) {
 }
 
 ResultClicked(control, row) {
-    global VisibleChoices, DetailParent, SearchServiceParent
+    global VisibleChoices
 
     if row < 1 || row > VisibleChoices.Length
         return
 
     choice := VisibleChoices[row]
-    if choice.HasOwnProp("Type") && choice.Type = "action" {
-        ChooseChoice choice
-        return
-    }
     if choice.HasOwnProp("IsUtilityError") && choice.IsUtilityError
         return
 
-    if choice.HasOwnProp("IsSearchService") && choice.IsSearchService {
-        control.Modify(0, "-Select -Focus")
-        control.Modify(row, "Select Focus Vis")
-        OpenSelectedAction()
-        return
-    }
-
     control.Modify(0, "-Select -Focus")
     control.Modify(row, "Select Focus Vis")
-    if !DetailParent && choice.HasOwnProp("Details")
-        && choice.Details.Length > 0
-        OpenSelectedAction()
-    else
-        ShowActionsMenu()
+    ChooseChoice choice
 }
 
 ChooseChoice(choice) {
@@ -1079,7 +1126,9 @@ PasteChoice(choice) {
 PasteExpanded(expanded) {
     global TargetWindow, ChooserGui, ChooserOpen, AtBoundary
 
-    savedClipboard := ClipboardAll()
+    try savedClipboard := ClipboardAll()
+    catch
+        savedClipboard := A_Clipboard
     ChooserGui.Hide()
     ChooserOpen := false
     A_Clipboard := expanded.Text
@@ -1088,9 +1137,21 @@ PasteExpanded(expanded) {
         return
     }
 
-    if TargetWindow
-        WinActivate "ahk_id " TargetWindow
-    Sleep 80
+    if !TargetWindow || !WinExist("ahk_id " TargetWindow) {
+        A_Clipboard := savedClipboard
+        TrayTip "The original window is no longer available.", "Trigger Search"
+        return
+    }
+    try WinActivate "ahk_id " TargetWindow
+    try targetActive := WinWaitActive("ahk_id " TargetWindow, , 0.5)
+    catch
+        targetActive := 0
+    if !targetActive {
+        A_Clipboard := savedClipboard
+        TrayTip "Could not return to the original window.", "Trigger Search"
+        return
+    }
+    Sleep 30
     Send "^v"
     if expanded.CursorLeft > 0 {
         Sleep 50
@@ -2050,6 +2111,7 @@ FetchLiveGitHubFile(url) {
 
 GitHubRequest(url, accept) {
     request := ComObject("WinHttp.WinHttpRequest.5.1")
+    request.SetTimeouts(5000, 5000, 10000, 15000)
     request.Open("GET", url, false)
     request.SetRequestHeader("Accept", accept)
     request.SetRequestHeader("User-Agent", "SheetAutocomplete")
@@ -2061,14 +2123,25 @@ GitHubRequest(url, accept) {
     return request.ResponseText
 }
 
-RefreshData(*) {
+RefreshShouldDefer(force := false) {
+    global ChooserOpen, PreviewOpen
+    return !force && (ChooserOpen || PreviewOpen || A_TimeIdlePhysical < 1200)
+}
+
+RefreshData(force := false, *) {
     global Refreshing, SheetId, SheetInfos, LastRefreshError
     global LastShownRefreshError, RefreshFailureCount, Snippets
+    global RefreshPending, LastRefreshTick
 
     if Refreshing
         return
     if SheetId = ""
         return
+    if RefreshShouldDefer(force) {
+        RefreshPending := true
+        return
+    }
+    RefreshPending := false
     Refreshing := true
     stage := "starting refresh"
 
@@ -2082,6 +2155,7 @@ RefreshData(*) {
         LastRefreshError := ""
         LastShownRefreshError := ""
         RefreshFailureCount := 0
+        LastRefreshTick := A_TickCount
         RefreshOpenChooser()
     } catch as problem {
         ; Offline use is expected: keep the last successful in-memory/cache copy.
@@ -2275,10 +2349,18 @@ RunSelfTestsAndExit() {
 }
 
 RunSelfTests() {
-    global Snippets, DetailParent, SearchServiceParent, RecentItems
+    global Snippets, DetailParent, SearchServiceParent, RecentItems, InboxSheet
+    global ChooserOpen, PreviewOpen
 
     DetailParent := 0
     SearchServiceParent := 0
+    ChooserOpen := true
+    PreviewOpen := false
+    Assert RefreshShouldDefer(false),
+        "Automatic refresh should defer while the chooser is open."
+    Assert !RefreshShouldDefer(true),
+        "An explicit refresh should bypass chooser deferral."
+    ChooserOpen := false
     Snippets := [
         TestSnippet("meeting", "meet", ["mtg"]),
         TestSnippet("email address", "email@example.com", ["email"])
@@ -2293,6 +2375,25 @@ RunSelfTests() {
     Assert unfiltered.Length = 1 && unfiltered[1].Label = "email address",
         "The empty main chooser should show recently used Sheet items."
     RecentItems := []
+
+    InboxSheet := "Inbox"
+    newestInbox := TestSnippet("newest inbox", "latest", [])
+    newestInbox.Category := "Inbox"
+    olderInbox := TestSnippet("older inbox", "older", [])
+    olderInbox.Category := "Inbox"
+    otherRecent := TestSnippet("other recent", "elsewhere", [])
+    Snippets := [newestInbox, olderInbox, otherRecent]
+    RecentItems := [{Category: "Personal", GroupLabel: "other recent", DetailName: ""},
+        {Category: "Inbox", GroupLabel: "newest inbox", DetailName: ""}]
+    home := FilterChoices("")
+    Assert home.Length = 2 && home[1].Label = "newest inbox"
+        && home[1].IsPinnedInbox && home[2].Label = "other recent",
+        "The latest Inbox item should be pinned before Recents without duplication."
+    RecentItems := []
+    Snippets := [
+        TestSnippet("meeting", "meet", ["mtg"]),
+        TestSnippet("email address", "email@example.com", ["email"])
+    ]
 
     aliasMatch := FilterChoices("email")
     Assert aliasMatch.Length > 0, "Alias search should return a result."
@@ -2560,14 +2661,15 @@ Assert(condition, message) {
 }
 
 FetchText(url) {
-    temporary := A_Temp "\sheet-autocomplete-" A_TickCount "-" Random(1000, 9999) ".tmp"
-    try {
-        Download url, temporary
-        return FileRead(temporary, "UTF-8")
-    } finally {
-        if FileExist(temporary)
-            FileDelete temporary
-    }
+    request := ComObject("WinHttp.WinHttpRequest.5.1")
+    request.SetTimeouts(5000, 5000, 10000, 15000)
+    request.Open("GET", url, false)
+    request.SetRequestHeader("User-Agent", "SheetAutocomplete")
+    request.SetRequestHeader("Cache-Control", "no-cache")
+    request.Send()
+    if request.Status != 200
+        throw Error("Google Sheets returned HTTP " request.Status ".")
+    return request.ResponseText
 }
 
 DiscoverSheets(html) {
@@ -2615,12 +2717,12 @@ ApplySheets(infos, csvByName) {
         ParseSheet csvByName[info.Name], info, parsed
     }
 
-    InsertionSort parsed, CompareSnippets
     Snippets := parsed
 }
 
 ApplySettings(infos, csvByName) {
-    global LauncherModifier, LauncherKey, AiEngine
+    global LauncherModifier, LauncherKey, AiEngine, InboxSheet
+    InboxSheet := "Inbox"
     for info in infos {
         normalized := NormalizeSheetName(info.Name)
         if normalized != "settings" && normalized != "settingshelp"
@@ -2648,6 +2750,8 @@ ApplySettings(infos, csvByName) {
                 LauncherKey := value != "" ? value : "None"
             else if key = "aiengine" && value != ""
                 AiEngine := value
+            else if key = "inboxsheet"
+                InboxSheet := value != "" ? value : "Inbox"
         }
         InstallLauncherHotkey LauncherModifier, LauncherKey
     }
@@ -2735,7 +2839,7 @@ ParseSheet(csv, info, output) {
 
     nameColumn := columns.Has("name") ? columns["name"] : 0
     contentColumn := columns.Has("content") ? columns["content"] : 0
-    aliasColumn := hasHeaders && columns.Has("alias") ? columns["alias"] : 0
+    aliasColumn := columns.Has("alias") ? columns["alias"] : 0
 
     firstDataRow := hasHeaders ? 2 : 1
     displayHeaders := rows[1]

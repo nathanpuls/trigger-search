@@ -21,7 +21,14 @@ same public Google Sheet and does not use OAuth or a Google sign-in.
    the default browser.
    Type `/` to list every data tab. Each tab has separate **Browse entries**
    and **Open in Google Sheets** rows. Enter or Right Arrow browses the first;
-   Left Arrow returns to the all-tabs search.
+   Left Arrow returns to the all-tabs search. Tabs, rows, columns, and equally
+   relevant search matches retain their Google Sheets order.
+
+The blank launcher home screen pins the first usable row from the tab named by
+the `Inbox Sheet` setting (default `Inbox`) above Recents, without duplication.
+Automatic full-workbook refreshes wait until the launcher is closed and the
+keyboard has been idle briefly, keeping navigation and Escape responsive.
+Press Control-R in the launcher to close it, refresh immediately, and reopen.
 
 The script is explicitly marked `#Requires AutoHotkey v2.0`, so the AutoHotkey
 launcher should choose v2 even if another version is also installed.
@@ -30,6 +37,10 @@ launcher should choose v2 even if another version is also installed.
 
 - `hello;` types a normal semicolon.
 - `;`, `hello ;`, and a semicolon after Enter or Tab open the chooser.
+- Escape closes the launcher from its search box, results, and Actions view;
+  Escape from Preview returns to the launcher, and a second Escape closes it.
+- Clicking a result performs the same action as Enter: content pastes, links
+  open, search templates accept a query, and folders open for browsing.
 - The main chooser opens with up to nine recently used Sheet items. Typing
   searches the complete workbook; clearing the query restores the recent items.
   Nested views still display their choices immediately.
@@ -41,9 +52,6 @@ launcher should choose v2 even if another version is also installed.
 - Aliases rank above ordinary name matches.
 - A `→` means an item has nested details. No detail count is shown. Press Right
   to open them and Left to return to the same result.
-- Clicking a nested parent opens its details. Clicking a pasteable result opens
-  its contextual Actions menu, so mouse use never pastes without an explicit
-  choice. Enter and Ctrl+number remain the fast keyboard paths for pasting.
 - Press Ctrl+E to open the selected item’s exact Google Sheets cell.
 - Press Ctrl+C to copy the selected text without pasting it.
 - Press Ctrl+P to open the fully expanded text in a scrollable, selectable
@@ -67,9 +75,10 @@ launcher should choose v2 even if another version is also installed.
   links are never opened automatically because Trigger Search will not guess.
 - Dates, times, clipboard text, and cursor position can be calculated with the
   same dynamic placeholders as the Mac version.
-- The Sheet is refreshed at startup, whenever the chooser opens, and every 60
-  seconds. The last successful data is cached under `%APPDATA%\SheetAutocomplete`
-  for offline use.
+- The Sheet refreshes at startup and every 60 seconds. Automatic refresh waits
+  until the chooser is closed and the keyboard has been idle briefly. Control-R
+  refreshes immediately and reopens the launcher. The last successful data is
+  cached under `%APPDATA%\SheetAutocomplete` for offline use.
 - The trigger and optional launcher shortcut come from `Settings & Help`, just
   like the Mac version.
 
