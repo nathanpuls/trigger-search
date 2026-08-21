@@ -7,7 +7,7 @@
   "scripts": {
     "start": "electron .",
     "test": "node --test lib.test.mjs",
-    "build:mac": "electron-builder --mac dir"
+    "build:mac": "electron-builder --mac dir zip"
   },
   "devDependencies": {
     "electron": "43.4.1",
@@ -37,7 +37,7 @@
     ],
     "mac": {
       "category": "public.app-category.productivity",
-      "target": ["dir"]
+      "target": ["dir", "zip"]
     }
   }
 }

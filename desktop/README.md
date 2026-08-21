@@ -21,13 +21,13 @@ The first automatic paste prompts for macOS Accessibility permission. If it is
 not yet allowed, Trigger Search leaves the selected value on the clipboard so
 it is not lost.
 
-Build an unpacked `.app` for local testing with:
+Build an unpacked `.app` and a downloadable `.zip` with:
 
 ```sh
 npm run build:mac
 ```
 
-The build appears under `desktop/dist/mac*/Trigger Search Experimental.app`.
+The builds appear under `desktop/dist/`.
 
 This experiment intentionally omits AI actions and the full actions/preview
 menus. It already covers the product loop that matters for deciding whether a

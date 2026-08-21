@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Download the experimental Trigger Search app for Mac.">
+  <title>Trigger Search for Mac</title>
+  <style>
+    :root {
+      color-scheme: light;
+      font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: #151515;
+      background: #f7f7f5;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      min-height: 100vh;
+      margin: 0;
+      display: grid;
+      place-items: center;
+      padding: 32px 20px;
+    }
+
+    main {
+      width: min(100%, 620px);
+      text-align: center;
+    }
+
+    .mark {
+      width: 62px;
+      height: 62px;
+      display: grid;
+      place-items: center;
+      margin: 0 auto 24px;
+      border-radius: 16px;
+      background: #151515;
+      color: #fff;
+      font-size: 31px;
+      line-height: 1;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(38px, 8vw, 64px);
+      line-height: 1;
+      letter-spacing: -.055em;
+    }
+
+    .tagline {
+      max-width: 500px;
+      margin: 22px auto 30px;
+      color: #666;
+      font-size: clamp(18px, 3vw, 22px);
+      line-height: 1.45;
+    }
+
+    .download {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 54px;
+      padding: 0 26px;
+      border-radius: 13px;
+      background: #151515;
+      color: #fff;
+      font-size: 17px;
+      font-weight: 650;
+      text-decoration: none;
+      box-shadow: 0 8px 24px rgb(0 0 0 / 12%);
+    }
+
+    .download:hover { background: #333; }
+    .download:focus-visible { outline: 3px solid #777; outline-offset: 4px; }
+
+    .note {
+      max-width: 470px;
+      margin: 24px auto 0;
+      color: #777;
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    .note a { color: inherit; }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="mark" aria-hidden="true">⚡</div>
+    <h1>Trigger Search</h1>
+    <p class="tagline">Your Google Sheet, one shortcut away.</p>
+    <a class="download" href="https://github.com/nathanpuls/trigger-search/releases/download/v0.1.0-desktop-experiment/Trigger-Search-Experimental-macOS-arm64.zip">
+      Download for Mac
+    </a>
+    <p class="note">
+      Experimental Apple-silicon build. After unzipping, right-click the app and choose
+      <strong>Open</strong> the first time. Use <strong>Command-Shift-Space</strong> to launch it.
+      <br><a href="https://github.com/nathanpuls/trigger-search">View source on GitHub</a>
+    </p>
+  </main>
+</body>
+</html>
