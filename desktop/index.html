@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Trigger Search Experimental</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="launcher">
+    <header class="search-row">
+      <button id="back" class="bare back" aria-label="Back" hidden>←</button>
+      <input id="search" type="search" placeholder="Search" autocomplete="off" autofocus>
+      <button id="refresh" class="bare" aria-label="Refresh" title="Refresh (⌘R)">↻</button>
+      <button id="settings" class="bare" aria-label="Settings">•••</button>
+    </header>
+    <div id="status" class="status"></div>
+    <section id="results" class="results" aria-label="Results"></section>
+    <footer><span id="shortcut">⌘⇧Space</span><span>Return or click to act · Esc to close</span></footer>
+  </main>
+
+  <dialog id="settings-dialog">
+    <form id="settings-form">
+      <h2>Connect Trigger Search</h2>
+      <p>Paste the link to your published Google Sheet.</p>
+      <label for="sheet-url">Google Sheet link</label>
+      <textarea id="sheet-url" rows="4" placeholder="https://docs.google.com/spreadsheets/d/…"></textarea>
+      <div class="dialog-actions">
+        <button id="cancel-settings" type="button" class="secondary">Cancel</button>
+        <button type="submit" class="primary">Connect</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="permission-dialog">
+    <div class="permission-copy">
+      <h2>Allow automatic paste</h2>
+      <p>The value was copied. In System Settings → Privacy & Security → Accessibility, allow Trigger Search Experimental so it can press Command-V for you.</p>
+      <button id="permission-close" class="primary">Got it</button>
+    </div>
+  </dialog>
+
+  <script type="module" src="renderer.mjs"></script>
+</body>
+</html>

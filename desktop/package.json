@@ -1,0 +1,43 @@
+{
+  "name": "trigger-search-desktop-experiment",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A minimal native-style Trigger Search launcher experiment.",
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "test": "node --test lib.test.mjs",
+    "build:mac": "electron-builder --mac dir"
+  },
+  "devDependencies": {
+    "electron": "43.4.1",
+    "electron-builder": "26.15.3"
+  },
+  "build": {
+    "appId": "com.nathanpuls.triggersearch.experiment",
+    "productName": "Trigger Search Experimental",
+    "asar": true,
+    "files": [
+      "main.cjs",
+      "preload.cjs",
+      "index.html",
+      "renderer.mjs",
+      "lib.mjs",
+      "styles.css",
+      "package.json"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "extraResources": [
+      {
+        "from": "../mac/trigger-search-menuTemplate.png",
+        "to": "trigger-search-menuTemplate.png"
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": ["dir"]
+    }
+  }
+}
