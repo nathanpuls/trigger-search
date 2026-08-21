@@ -40,6 +40,40 @@ For a headerless tab, the number of populated columns defines the layout:
 
 Four or more columns require a header row. Nested fields always require headers.
 
+### SuperSheet mode
+
+Use the same installation and workbook, and add this row to the existing
+`Setting` / `Value` table on `Settings & Help`:
+
+| Setting | Value |
+|---|---|
+| Mode | SuperSheet |
+
+Change the value back to `Trigger Search` (or leave it blank) to restore the
+original schema. This one Sheet setting switches Mac, Windows, and web clients
+on their next refresh while retaining each client's existing download, cache,
+tab, launcher-shortcut, and action infrastructure.
+
+In SuperSheet mode, row 1 supplies optional column labels. Leave the whole first
+row blank for an unlabeled sheet; data begins on row 2 either way. Every
+nonblank data cell is searchable. Results show the matched value followed by
+non-repeated context in this order: the row's Column A value (or first useful
+cell), the row-1 column label, and the tab name. Browsing a tab shows one entry
+per row, using Column A when present and otherwise the first useful cell.
+
+Return/Enter acts on the selected cell. Tab acts on the nearest populated cell
+to the right, and Shift-Tab uses the nearest populated cell to the left, so
+blank cells do not interrupt row exploration. Right Arrow opens a row for
+cell-by-cell exploration; Left Arrow returns. Standalone URLs still
+open, ordinary values still paste (or copy/preview on web), and any valid HTTP
+URL template containing `$` opens the existing query flow.
+
+For a fast per-device switch while the launcher is open, press Command-M on
+Mac/web or Control-M on Windows. The override is saved for that Sheet on that
+device and does not rewrite the public workbook. Press Shift-Command-M or
+Shift-Control-M to clear the override and return control to the shared `Mode`
+row. The web Settings dialog and Mac/Windows menus expose the same actions.
+
 ### Included Sheets
 
 On Mac and web, the primary workbook can include public Trigger Search
@@ -65,8 +99,18 @@ Sheet tabs also appear as folder-like results in the ordinary search. A short
 prefix finds them quickly (`i` finds `Inbox`), and initials work for multiword
 names (`pm` finds `Psych Meds`). Return or Right Arrow opens the tab's entries;
 Command-E or Control-E opens the tab itself in Google Sheets. From inside a
-tab, the same edit shortcut opens the selected item's exact row. Left Arrow
-backs out one level to the complete search.
+tab, the same edit shortcut opens the selected item's exact row. Tabs, rows,
+columns, and equally relevant search matches follow their Google Sheets order;
+Trigger Search does not alphabetize them. This keeps a newest-first Inbox
+newest-first. Left Arrow backs out one level to the complete search.
+
+The blank launcher home screen pins the first usable data row from the tab
+named by `Inbox Sheet` above its recent items. It defaults to `Inbox`, never
+duplicates the pinned item in Recents, and refreshes from the Sheet when the
+launcher opens on Mac. Windows defers automatic full-workbook refreshes until
+the launcher closes to keep the UI responsive; Control-R refreshes immediately
+and reopens it. The web app refreshes when it becomes visible again, so an item
+captured by an iPhone Shortcut is ready when you return to it.
 
 ### Search launchers
 
@@ -131,8 +175,9 @@ released. Preview uses a soft gray reading surface to stand apart from the
 underlying application. Its title appears only once; inside Preview, P pastes
 the displayed text, C copies all of it, and Escape returns to the chooser.
 
-Mouse use is deliberately exploratory: clicking a nested parent opens its
-details, while clicking a pasteable result opens that result's Actions menu.
+On Mac, clicking a result performs the same action as Return: ordinary content
+pastes, standalone URLs open, `$` templates enter their query flow, and folder
+results open for browsing. Use Command-K when you want the Actions menu.
 Keyboard Return/Enter and the numbered shortcuts still paste immediately.
 
 A headered tab can reserve a row whose Name is `AI Prompt`. Text in that row's

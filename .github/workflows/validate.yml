@@ -1,4 +1,4 @@
-name: Validate AutoHotkey
+name: Validate clients
 
 on:
   push:
@@ -9,6 +9,12 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Validate web client
+        shell: pwsh
+        run: |
+          node --check web/app.js
+          node web/supersheet.test.mjs
 
       - name: Download current AutoHotkey v2
         shell: pwsh

@@ -21,7 +21,15 @@ same public Google Sheet and does not use OAuth or a Google sign-in.
    the default browser.
    Type `/` to list every data tab. Each tab has separate **Browse entries**
    and **Open in Google Sheets** rows. Enter or Right Arrow browses the first;
-   Left Arrow returns to the all-tabs search.
+   Left Arrow returns to the all-tabs search. Tabs, rows, columns, and equally
+   relevant search matches retain their Google Sheets order.
+
+The blank launcher home screen pins the first usable row from the tab named by
+the `Inbox Sheet` setting (default `Inbox`) above Recents, without duplicating
+it. Automatic full-workbook refreshes wait until the launcher is closed and
+the keyboard has been idle briefly, keeping navigation and Escape responsive.
+Press Control-R in the launcher to close it, refresh immediately, and reopen
+with the latest Sheet data.
 
 The script is explicitly marked `#Requires AutoHotkey v2.0`, so the AutoHotkey
 launcher should choose v2 even if another version is also installed.
@@ -30,6 +38,10 @@ launcher should choose v2 even if another version is also installed.
 
 - `hello;` types a normal semicolon.
 - `;`, `hello ;`, and a semicolon after Enter or Tab open the chooser.
+- Escape closes the launcher from its search box, results, and Actions view;
+  Escape from Preview returns to the launcher, and a second Escape closes it.
+- Clicking a result performs the same action as Enter: content pastes, links
+  open, `$` templates accept a query, and folders open for browsing.
 - The main chooser opens with up to nine recently used Sheet items. Typing
   searches the complete workbook; clearing the query restores the recent items.
   Nested views still display their choices immediately.
@@ -72,6 +84,17 @@ launcher should choose v2 even if another version is also installed.
   for offline use.
 - The trigger and optional launcher shortcut come from `Settings & Help`, just
   like the Mac version.
+
+Set `Mode` to `SuperSheet` in the `Setting` / `Value` table on `Settings & Help`
+to switch the same launcher to cell-level search. Row 1 provides optional
+labels; leave that entire row blank for no labels, and begin data on row 2.
+Results show non-repeated Column A row identity, column label, and tab context.
+Enter acts on the selected cell, Tab/Shift-Tab acts on the immediate right/left
+cell, Right opens the row for exploration, and Left returns. Set `Mode` back to
+`Trigger Search` to restore Name/Alias/Content parsing.
+While the chooser is open, Ctrl+M switches immediately and remembers the
+override for this Sheet on this computer. Ctrl+Shift+M clears the override and
+uses the Sheet's `Mode` row again. The tray menu exposes both actions too.
 
 ## Sheet layouts
 

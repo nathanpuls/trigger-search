@@ -3,10 +3,14 @@
 const state = {
   sheetId: localStorage.getItem("triggerSearch.sheetId") || "",
   items: [], categories: [], categoryGids: {}, categorySheetIds: {}, activeCategory: "",
+  mode: "triggersearch", sheetMode: "triggersearch", activeRow: null,
+  inboxSheet: "Inbox",
+  workbookData: [],
   query: "", selectedIndex: 0,
 };
 
 const ui = {
+  brand: document.querySelector(".brand span"),
   search: document.querySelector("#search"),
   clearSearch: document.querySelector("#clear-search"),
   status: document.querySelector("#status"), results: document.querySelector("#results"),
@@ -31,6 +35,7 @@ const normalize = value => trim(value).toLowerCase();
 const tabKey = value => normalize(value).replace(/[\s_&-]+/g, "");
 const skippedTabs = new Set(["settings", "settingshelp", "readme", "blanktemplate", "autohotkey"]);
 const mobileViewport = window.matchMedia("(max-width: 640px)");
+let lastWorkbookLoadAt = 0;
 
 function isMobileView() { return mobileViewport.matches; }
 function isTouchDevice() {
@@ -65,6 +70,65 @@ function clearMainSearch() {
   syncClearSearch();
   renderResults();
   focusSearchSoon();
+}
+
+function syncModeUi() {
+  const name = state.mode === "supersheet" ? "SuperSheet" : "Trigger Search";
+  document.title = name;
+  if (ui.brand) ui.brand.textContent = name;
+  if (!state.activeCategory && !state.activeRow) ui.search.placeholder = state.mode === "supersheet" ? "Search SuperSheet" : "Search";
+}
+
+function modeOverrideKey() { return `triggerSearch.modeOverride.${state.sheetId}`; }
+function modeOverride() { return localStorage.getItem(modeOverrideKey()) || ""; }
+function effectiveMode(sheetMode = state.sheetMode) {
+  const override = modeOverride();
+  return override === "supersheet" || override === "triggersearch" ? override : sheetMode;
+}
+
+function installWorkbookData(data) {
+  const nextMode = effectiveMode();
+  const nextItems = data.flatMap(sheet => nextMode === "supersheet"
+    ? parseSuperSheetTab(sheet.csv, sheet.category, sheet.gid)
+    : parseTab(sheet.csv, sheet.category, sheet.gid));
+  if (!nextItems.length) return false;
+  state.workbookData = data;
+  state.mode = nextMode;
+  state.items = nextItems;
+  state.categories = data.map(sheet => sheet.category);
+  state.categoryGids = Object.fromEntries(data.map(sheet => [sheet.category, sheet.gid]));
+  state.categorySheetIds = Object.fromEntries(data.map(sheet => [sheet.category, sheet.sheetId]));
+  state.activeCategory = ""; state.activeRow = null; state.query = ""; state.selectedIndex = 0;
+  ui.search.value = "";
+  syncClearSearch(); syncModeUi();
+  return true;
+}
+
+function toggleMode() {
+  if (!state.workbookData.length) { showToast("Refresh the Sheet before switching modes"); return; }
+  const oldOverride = modeOverride();
+  const next = state.mode === "supersheet" ? "triggersearch" : "supersheet";
+  localStorage.setItem(modeOverrideKey(), next);
+  if (!installWorkbookData(state.workbookData)) {
+    if (oldOverride) localStorage.setItem(modeOverrideKey(), oldOverride);
+    else localStorage.removeItem(modeOverrideKey());
+    showToast("That Sheet cannot be used in the other mode");
+    return;
+  }
+  renderResults(); updateModeSettings(); focusSearchSoon();
+  showToast(`Switched to ${next === "supersheet" ? "SuperSheet" : "Trigger Search"}`);
+}
+
+function resetModeOverride() {
+  const oldOverride = modeOverride();
+  localStorage.removeItem(modeOverrideKey());
+  if (state.workbookData.length && !installWorkbookData(state.workbookData)) {
+    if (oldOverride) localStorage.setItem(modeOverrideKey(), oldOverride);
+    showToast("The Sheet mode setting cannot parse this workbook");
+    return;
+  }
+  renderResults(); updateModeSettings(); focusSearchSoon();
+  showToast("Using the Sheet mode setting");
 }
 
 function focusServiceQuerySoon() {
@@ -218,6 +282,64 @@ function parseTab(csv, category, gid) {
   return items;
 }
 
+function parseSuperSheetTab(csv, category, gid) {
+  const rows = parseCsv(csv);
+  if (rows.length < 2) return [];
+  const headers = rows[0].map(cell => trim(cell.replace(/^\uFEFF/, "")));
+  const hasLabels = headers.some(Boolean);
+  const items = [];
+  rows.slice(1).forEach((row, offset) => {
+    const sheetRow = offset + 2;
+    let identityIndex = trim(row[0]) ? 0 : row.findIndex(cell => trim(cell));
+    if (identityIndex < 0) return;
+    const rowIdentity = trim(row[identityIndex]);
+    const populated = row.map((value, index) => ({ value, index }))
+      .filter(cell => trim(cell.value));
+    populated.forEach(({ value, index }) => {
+      const display = trim(value).replace(/\s+/g, " ");
+      const columnLabel = hasLabels ? headers[index] || "" : "";
+      const seen = new Set([normalize(display)]), context = [];
+      [rowIdentity, columnLabel, category].forEach(part => {
+        const cleaned = trim(part).replace(/\s+/g, " "), key = normalize(cleaned);
+        if (cleaned && !seen.has(key)) { seen.add(key); context.push(cleaned); }
+      });
+      const template = normalizeSearchTemplate(value);
+      items.push({
+        key: `${category}:${sheetRow}:${index + 1}`,
+        type: template ? "search-service" : "supersheet-cell",
+        label: display, content: value, aliases: [], category, gid,
+        row: sheetRow, column: index + 1, columnLabel, rowIdentity, context,
+        isSuperSheetCell: true, isRowRepresentative: index === identityIndex,
+        rowCellCount: populated.length, details: [], aiPrompt: "",
+        urlTemplate: template || "",
+        serviceLabel: normalize(rowIdentity) !== normalize(display)
+          ? rowIdentity : (columnLabel || display),
+      });
+    });
+  });
+  return items;
+}
+
+function parseSettings(csv) {
+  const rows = parseCsv(csv).filter(row => row.some(cell => trim(cell)));
+  const settings = { mode: "triggersearch", inboxSheet: "Inbox" };
+  if (!rows.length) return settings;
+  const headers = rows[0].map(cell => normalize(cell.replace(/^\uFEFF/, "")));
+  const settingIndex = headers.indexOf("setting"), valueIndex = headers.indexOf("value");
+  if (settingIndex < 0 || valueIndex < 0) return settings;
+  rows.slice(1).forEach(row => {
+    const key = tabKey(row[settingIndex]), value = trim(row[valueIndex]);
+    if (key === "mode") {
+      settings.mode = tabKey(value) === "supersheet" ? "supersheet" : "triggersearch";
+    } else if (key === "inboxsheet") {
+      settings.inboxSheet = value || "Inbox";
+    }
+  });
+  return settings;
+}
+
+function parseMode(csv) { return parseSettings(csv).mode; }
+
 function parseIncludedSheets(csv, primarySheetId) {
   const rows = parseCsv(csv).filter(row => row.some(cell => trim(cell) !== ""));
   if (!rows.length) return [];
@@ -253,6 +375,7 @@ function recentKey() { return `triggerSearch.recents.${state.sheetId}`; }
 
 async function loadWorkbook() {
   if (!state.sheetId) { openSettings(true); return; }
+  lastWorkbookLoadAt = Date.now();
   ui.status.textContent = "Refreshing…";
   try {
     const fetchWorkbook = async (sheetId, sourceName = "") => {
@@ -273,6 +396,10 @@ async function loadWorkbook() {
 
     const primaryData = await fetchWorkbook(state.sheetId);
     const settings = primaryData.find(sheet => tabKey(sheet.name) === "settingshelp" || tabKey(sheet.name) === "settings");
+    const sheetSettings = settings ? parseSettings(settings.csv)
+      : { mode: "triggersearch", inboxSheet: "Inbox" };
+    state.sheetMode = sheetSettings.mode;
+    state.inboxSheet = sheetSettings.inboxSheet;
     const included = settings ? parseIncludedSheets(settings.csv, state.sheetId) : [];
     const hiddenTabs = settings ? parseHiddenTabs(settings.csv) : new Set();
     const includedData = (await Promise.all(included.map(async source => {
@@ -284,18 +411,30 @@ async function loadWorkbook() {
       && !hiddenTabs.has(tabKey(sheet.name))
       && !hiddenTabs.has(tabKey(sheet.category)));
     if (!data.length) throw new Error("No visible autocomplete tabs were found");
-    state.items = data.flatMap(sheet => parseTab(sheet.csv, sheet.category, sheet.gid));
-    state.categories = data.map(sheet => sheet.category);
-    state.categoryGids = Object.fromEntries(data.map(sheet => [sheet.category, sheet.gid]));
-    state.categorySheetIds = Object.fromEntries(data.map(sheet => [sheet.category, sheet.sheetId]));
-    localStorage.setItem(cacheKey(), JSON.stringify({ items: state.items, categories: state.categories, categoryGids: state.categoryGids, categorySheetIds: state.categorySheetIds, savedAt: Date.now() }));
+    if (!installWorkbookData(data)) throw new Error("No usable rows were found for this mode");
+    localStorage.setItem(cacheKey(), JSON.stringify({
+      sheetMode: state.sheetMode, inboxSheet: state.inboxSheet,
+      workbookData: data, savedAt: Date.now(),
+    }));
     ui.status.textContent = "";
   } catch (error) {
     const cached = JSON.parse(localStorage.getItem(cacheKey()) || "null");
     if (!cached) { ui.status.textContent = error.message; openSettings(false); return; }
-    state.items = cached.items || []; state.categories = cached.categories || [];
-    state.categoryGids = cached.categoryGids || {};
-    state.categorySheetIds = cached.categorySheetIds || {};
+    if (cached.workbookData) {
+      state.sheetMode = cached.sheetMode || "triggersearch";
+      state.inboxSheet = cached.inboxSheet || "Inbox";
+      if (!installWorkbookData(cached.workbookData)) {
+        ui.status.textContent = error.message;
+        openSettings(false);
+        return;
+      }
+    } else {
+      state.items = cached.items || []; state.categories = cached.categories || [];
+      state.mode = cached.mode || "triggersearch"; state.sheetMode = state.mode;
+      state.categoryGids = cached.categoryGids || {};
+      state.categorySheetIds = cached.categorySheetIds || {};
+      syncModeUi();
+    }
     ui.status.textContent = `Offline copy · ${state.items.length} items`;
   }
   renderResults();
@@ -306,16 +445,40 @@ function recentItems() {
   return keys.map(key => state.items.find(item => item.key === key)).filter(Boolean).slice(0, 9);
 }
 
+function isInboxCategory(category) {
+  const target = tabKey(state.inboxSheet || "Inbox");
+  const parts = String(category || "").split(" · ");
+  return tabKey(category) === target || (parts.length > 1 && tabKey(parts.at(-1)) === target);
+}
+
+function latestInboxItem() {
+  const item = state.items.find(candidate => isInboxCategory(candidate.category)
+    && (state.mode !== "supersheet" || candidate.isRowRepresentative));
+  return item ? { ...item, isPinnedInbox: true } : null;
+}
+
+function homeItems() {
+  const pinned = latestInboxItem();
+  const recents = isMobileView() ? [] : recentItems();
+  return [pinned, ...recents.filter(item => !pinned || item.key !== pinned.key)]
+    .filter(Boolean).slice(0, 9);
+}
+
 function recordRecent(item) {
   const keys = JSON.parse(localStorage.getItem(recentKey()) || "[]").filter(key => key !== item.key);
   localStorage.setItem(recentKey(), JSON.stringify([item.key, ...keys].slice(0, 9)));
 }
 
-function categorySheetUrl(category, row = "") {
+function categorySheetUrl(category, row = "", column = 0) {
   const gid = state.categoryGids[category] ?? state.items.find(item => item.category === category)?.gid;
   const sheetId = state.categorySheetIds[category] || state.sheetId;
   if (!sheetId || gid == null) return "";
-  const range = row ? `&range=A${row}:ZZ${row}` : "";
+  const columnName = index => {
+    let result = "", value = index;
+    while (value > 0) { value -= 1; result = String.fromCharCode(65 + (value % 26)) + result; value = Math.floor(value / 26); }
+    return result;
+  };
+  const range = row ? (column ? `&range=${columnName(column)}${row}` : `&range=A${row}:ZZ${row}`) : "";
   return `https://docs.google.com/spreadsheets/d/${encodeURIComponent(sheetId)}/edit#gid=${encodeURIComponent(gid)}${range}`;
 }
 
@@ -340,12 +503,31 @@ function categoryChoices(query) {
 
 function enterCategory(category) {
   state.activeCategory = category;
+  state.activeRow = null;
   state.query = ""; state.selectedIndex = 0; ui.search.value = "";
   ui.search.placeholder = `Search ${category}`;
   syncClearSearch(); renderResults(); focusSearchSoon();
 }
 
+function enterRow(item) {
+  if (!item?.isSuperSheetCell || item.rowCellCount < 2) return false;
+  state.activeRow = { category: item.category, row: item.row, label: item.rowIdentity };
+  state.query = ""; state.selectedIndex = 0; ui.search.value = "";
+  ui.search.placeholder = `←  ${item.rowIdentity}`;
+  syncClearSearch(); renderResults(); focusSearchSoon();
+  return true;
+}
+
+function leaveRow() {
+  if (!state.activeRow) return false;
+  state.activeRow = null; state.query = ""; state.selectedIndex = 0; ui.search.value = "";
+  ui.search.placeholder = state.activeCategory ? `Search ${state.activeCategory}` : "Search";
+  syncClearSearch(); renderResults(); focusSearchSoon();
+  return true;
+}
+
 function leaveCategory() {
+  if (leaveRow()) return true;
   if (!state.activeCategory) return false;
   state.activeCategory = "";
   state.query = ""; state.selectedIndex = 0; ui.search.value = "";
@@ -356,12 +538,18 @@ function leaveCategory() {
 
 function rankedItems() {
   const query = normalize(state.query);
-  if (!query && !state.activeCategory) return isMobileView() ? [] : recentItems();
-  const source = state.activeCategory
-    ? state.items.filter(item => item.category === state.activeCategory)
-    : state.items;
-  if (!query) return [...source].sort((a, b) => a.label.localeCompare(b.label));
-  const matches = source.map(item => {
+  if (!query && !state.activeCategory && !state.activeRow) return homeItems();
+  const source = state.activeRow
+    ? state.items.filter(item => item.isSuperSheetCell
+      && item.category === state.activeRow.category && item.row === state.activeRow.row)
+    : state.activeCategory
+      ? state.items.filter(item => item.category === state.activeCategory
+        && (state.mode !== "supersheet" || item.isRowRepresentative))
+      : state.items;
+  if (!query) {
+    return [...source];
+  }
+  const matches = source.map((item, sourceOrder) => {
     const label = normalize(item.label), aliases = item.aliases.map(normalize), content = normalize(item.content);
     let rank = 99;
     if (aliases.includes(query)) rank = 0;
@@ -372,12 +560,15 @@ function rankedItems() {
     else if (label.includes(query)) rank = 5;
     else if (content.includes(query)) rank = 6;
     else if (item.details.some(detail => normalize(`${detail.label} ${detail.content}`).includes(query))) rank = 7;
-    return { item, rank };
+    return { item, rank, sourceOrder };
   }).filter(match => match.rank < 99);
-  if (!state.activeCategory) {
-    categoryChoices(state.query).forEach(item => matches.push({ item, rank: item.searchRank }));
+  if (!state.activeCategory && !state.activeRow) {
+    categoryChoices(state.query).forEach((item, categoryOrder) => matches.push({
+      item, rank: item.searchRank, sourceOrder: source.length + categoryOrder,
+    }));
   }
-  return matches.sort((a, b) => a.rank - b.rank || a.item.label.localeCompare(b.item.label)).map(match => match.item);
+  return matches.sort((a, b) => a.rank - b.rank || a.sourceOrder - b.sourceOrder)
+    .map(match => match.item);
 }
 
 function extractSingleUrl(value) {
@@ -442,9 +633,13 @@ function renderResults() {
     const node = ui.template.content.firstElementChild.cloneNode(true);
     node.dataset.key = item.key; node.dataset.selected = String(index === state.selectedIndex);
     const title = node.querySelector(".result-title"); title.textContent = item.label;
-    if (item.type === "search-service" || item.type === "category-browser" || item.details.length) { const arrow = document.createElement("span"); arrow.className = "arrow"; arrow.textContent = "→"; title.append(arrow); }
+    if (item.type === "search-service" || item.type === "category-browser" || item.details.length || item.rowCellCount > 1) { const arrow = document.createElement("span"); arrow.className = "arrow"; arrow.textContent = "→"; title.append(arrow); }
     const summary = trim(item.content);
-    node.querySelector(".result-meta").textContent = `${item.category}${summary && summary !== item.label ? ` · ${summary.replace(/\s+/g, " ")}` : ""}`;
+    const meta = item.isSuperSheetCell
+      ? item.context.join(" · ")
+      : `${item.category}${summary && summary !== item.label ? ` · ${summary.replace(/\s+/g, " ")}` : ""}`;
+    node.querySelector(".result-meta").textContent = item.isPinnedInbox
+      ? `Pinned latest · ${meta}` : meta;
     const actions = node.querySelector(".result-actions");
     if (item.type === "category-browser") {
       const browseButton = makeButton("Browse", "Browse tab", () => enterCategory(item.tabName));
@@ -510,7 +705,7 @@ function openPreview(item, content = item.content, title = item.label) {
 
 function openSearchService(item) {
   state.searchServiceItem = item;
-  ui.searchServiceTitle.textContent = item.label;
+  ui.searchServiceTitle.textContent = item.serviceLabel || item.label;
   ui.serviceQuery.value = "";
   ui.searchService.showModal();
   focusServiceQuerySoon();
@@ -575,7 +770,7 @@ function openActions(item) {
   if (url) add("Open link", "O", () => { recordRecent(item); openExternal(url); });
   if (trim(item.aiPrompt)) add("Ask AI", "A", () => askAi(buildAiPrompt(item.aiPrompt, item), item));
   if (!item.type?.startsWith("category-") && item.row) {
-    const editUrl = categorySheetUrl(item.category, item.row);
+    const editUrl = categorySheetUrl(item.category, item.row, item.column || 0);
     if (editUrl) add("Edit in Google Sheets", "E", () => openExternal(editUrl));
   }
   ui.actions.showModal();
@@ -585,14 +780,22 @@ function openSettings(firstRun) {
   ui.sheetUrl.value = state.sheetId ? `https://docs.google.com/spreadsheets/d/${state.sheetId}/edit` : "";
   document.querySelector("#disconnect-button").hidden = firstRun || !state.sheetId;
   document.querySelector("#share-button").hidden = !state.sheetId;
+  updateModeSettings();
   if (!ui.settings.open) ui.settings.showModal();
+}
+
+function updateModeSettings() {
+  const toggle = document.querySelector("#mode-toggle-button");
+  const reset = document.querySelector("#mode-reset-button");
+  if (toggle) toggle.textContent = `Switch to ${state.mode === "supersheet" ? "Trigger Search" : "SuperSheet"}`;
+  if (reset) reset.hidden = !modeOverride();
 }
 
 async function shareCurrentSheet() {
   if (!state.sheetId) return;
   const url = sheetShareUrl();
   if (navigator.share) {
-    try { await navigator.share({ title: "Trigger Search", url }); return; }
+    try { await navigator.share({ title: state.mode === "supersheet" ? "SuperSheet" : "Trigger Search", url }); return; }
     catch (error) { if (error?.name === "AbortError") return; }
   }
   await copyText(url);
@@ -601,6 +804,8 @@ async function shareCurrentSheet() {
 
 document.querySelector("#settings-button").addEventListener("click", () => openSettings(false));
 document.querySelector("#share-button").addEventListener("click", shareCurrentSheet);
+document.querySelector("#mode-toggle-button")?.addEventListener("click", toggleMode);
+document.querySelector("#mode-reset-button")?.addEventListener("click", resetModeOverride);
 document.querySelector("#details-back").addEventListener("click", () => ui.details.close());
 document.querySelector("#actions-back").addEventListener("click", () => ui.actions.close());
 document.querySelector("#preview-back").addEventListener("click", () => ui.preview.close());
@@ -621,7 +826,7 @@ ui.searchService.addEventListener("click", event => {
   focusServiceQuerySoon();
 });
 document.querySelectorAll("[data-close]").forEach(button => button.addEventListener("click", () => document.querySelector(`#${button.dataset.close}`).close()));
-document.querySelector("#disconnect-button").addEventListener("click", () => { localStorage.removeItem("triggerSearch.sheetId"); state.sheetId = ""; syncSheetUrl(""); state.items = []; state.categories = []; state.categoryGids = {}; state.activeCategory = ""; ui.status.textContent = ""; ui.settings.close(); renderResults(); openSettings(true); });
+document.querySelector("#disconnect-button").addEventListener("click", () => { localStorage.removeItem("triggerSearch.sheetId"); state.sheetId = ""; syncSheetUrl(""); state.items = []; state.categories = []; state.categoryGids = {}; state.activeCategory = ""; state.activeRow = null; state.mode = "triggersearch"; state.sheetMode = "triggersearch"; state.inboxSheet = "Inbox"; state.workbookData = []; syncModeUi(); ui.status.textContent = ""; ui.settings.close(); renderResults(); openSettings(true); });
 document.querySelector("#settings-form").addEventListener("submit", event => {
   event.preventDefault(); const id = parseSheetId(ui.sheetUrl.value);
   if (!id) { showToast("That does not look like a Google Sheets link"); return; }
@@ -675,6 +880,11 @@ document.addEventListener("keydown", event => {
     return;
   }
   const items = rankedItems();
+  if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "m") {
+    event.preventDefault();
+    if (event.shiftKey) resetModeOverride(); else toggleMode();
+    return;
+  }
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
     const item = items[state.selectedIndex];
     if (item) { event.preventDefault(); openActions(item); }
@@ -683,13 +893,24 @@ document.addEventListener("keydown", event => {
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "g" && trim(ui.search.value)) { event.preventDefault(); openExternal(`https://www.google.com/search?q=${encodeURIComponent(trim(ui.search.value))}`); return; }
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "e") {
     const item = items[state.selectedIndex];
-    const url = item?.type?.startsWith("category-") ? categorySheetUrl(item.tabName) : item ? categorySheetUrl(item.category, item.row) : "";
+    const url = item?.type?.startsWith("category-") ? categorySheetUrl(item.tabName) : item ? categorySheetUrl(item.category, item.row, item.column || 0) : "";
     if (url) { event.preventDefault(); openExternal(url); }
     return;
   }
   if ((event.metaKey || event.ctrlKey) && /^[1-9]$/.test(event.key)) { const item = items[Number(event.key) - 1]; if (item) { event.preventDefault(); copyItem(item); } return; }
   if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); const delta = event.key === "ArrowDown" ? 1 : -1; state.selectedIndex = Math.max(0, Math.min(items.length - 1, state.selectedIndex + delta)); renderResults(); document.querySelectorAll(".result")[state.selectedIndex]?.focus(); return; }
-  if (event.key === "ArrowRight") { const item = items[state.selectedIndex]; if (item?.type === "category-browser" || item?.type === "search-service" || item?.details.length) { event.preventDefault(); item.type === "category-browser" ? enterCategory(item.tabName) : item.type === "search-service" ? openSearchService(item) : openDetails(item); } return; }
+  if (event.key === "ArrowRight") { const item = items[state.selectedIndex]; if (item?.type === "category-browser" || item?.type === "search-service" || item?.details.length || item?.rowCellCount > 1) { event.preventDefault(); item.type === "category-browser" ? enterCategory(item.tabName) : item.type === "search-service" ? openSearchService(item) : item.isSuperSheetCell ? enterRow(item) : openDetails(item); } return; }
+  if (event.key === "Tab" && state.mode === "supersheet" && document.activeElement === ui.search) {
+    const item = items[state.selectedIndex];
+    if (item?.isSuperSheetCell) {
+      const target = state.items.find(candidate => candidate.isSuperSheetCell
+        && candidate.category === item.category && candidate.row === item.row
+        && candidate.column === item.column + (event.shiftKey ? -1 : 1));
+      event.preventDefault();
+      if (target) performPrimaryAction(target); else showToast(event.shiftKey ? "The cell to the left is blank" : "The cell to the right is blank");
+    }
+    return;
+  }
   if (event.key === "ArrowLeft" && leaveCategory()) { event.preventDefault(); return; }
   if (event.key === "Enter" && document.activeElement === ui.search) {
     const item = items[state.selectedIndex];
@@ -702,6 +923,18 @@ document.addEventListener("keydown", event => {
   if (event.key === "Escape") { if (!leaveCategory()) clearMainSearch(); }
 });
 
+function refreshHomeIfVisible() {
+  if (document.visibilityState !== "visible" || !state.sheetId
+      || state.query || state.activeCategory || state.activeRow || anyDialogOpen()
+      || Date.now() - lastWorkbookLoadAt < 2000) return;
+  loadWorkbook();
+}
+
 if ("serviceWorker" in navigator) window.addEventListener("load", () => navigator.serviceWorker.register("service-worker.js"));
-window.addEventListener("pageshow", focusSearchSoon);
+window.addEventListener("pageshow", event => {
+  focusSearchSoon();
+  if (event.persisted) refreshHomeIfVisible();
+});
+document.addEventListener("visibilitychange", refreshHomeIfVisible);
+setInterval(refreshHomeIfVisible, 60000);
 syncClearSearch(); renderResults(); focusSearchSoon(); loadWorkbook();

@@ -15,6 +15,10 @@ local googleSearchHotkey
 local backHotkey
 local escapeHotkey
 local returnHotkey
+local tabHotkey
+local reverseTabHotkey
+local modeHotkey
+local resetModeHotkey
 local launcherHotkey
 local launcherTapKeyCode
 local launcherTapPressed = false
@@ -24,7 +28,6 @@ local actionChoice
 local actionReturnQuery = ""
 local actionReturnRow = 1
 local actionReturning = false
-local chooserClickPending = false
 local actionHud
 local actionHudTimer
 local previewWebview
@@ -45,20 +48,26 @@ local refreshTimer
 local refresh
 local promptForGoogleSheet
 local rankedSnippets
+local rootPlaceholder
 local showChooser
 local updateLauncherHotkey
 local showActions
 local launchAiPrompt
 local launchSearchQuery
+local toggleMode
+local resetModeOverride
 local refreshInProgress = false
 local snippets = {}
+local installedSheetCsvs
 local atBoundary = true
 local previousApp
+local previousWindow
 local discoveredSheetNames
 local newSnippetTargets = {}
 local detailParent
 local searchServiceParent
 local categoryParent
+local superSheetRowParent
 local rootQuery = ""
 local returnParentCategory
 local returnParentRow
@@ -74,6 +83,9 @@ local config = {
   launcherModifier = "None",
   launcherKey = "None",
   aiEngine = "ChatGPT",
+  inboxSheet = "Inbox",
+  mode = "triggersearch",
+  sheetMode = "triggersearch",
   cachePath = hs.configdir .. "/autocomplete-snippets-cache.json",
   refreshInterval = 60,
   rows = 9,
@@ -108,9 +120,24 @@ local function recentSettingsKey()
   return "triggerSearchRecentItems." .. config.sheetId
 end
 
+local function modeOverrideSettingsKey()
+  if trim(config.sheetId) == "" then return nil end
+  return "triggerSearchModeOverride." .. config.sheetId
+end
+
+local function savedModeOverride()
+  local key = modeOverrideSettingsKey()
+  local value = key and trim(hs.settings.get(key)):lower() or ""
+  if value == "supersheet" or value == "triggersearch" then return value end
+  return nil
+end
+
 local function sameRecentItem(entry, choice)
-  return type(entry) == "table"
-    and trim(entry.category) == trim(choice.category)
+  if type(entry) ~= "table" or type(choice) ~= "table" then return false end
+  if trim(entry.cellKey) ~= "" or trim(choice.cellKey) ~= "" then
+    return trim(entry.cellKey) == trim(choice.cellKey)
+  end
+  return trim(entry.category) == trim(choice.category)
     and trim(entry.groupLabel) == trim(choice.groupLabel)
     and trim(entry.detailName) == trim(choice.detailName)
 end
@@ -128,6 +155,7 @@ local function recordRecent(choice)
     category = choice.category,
     groupLabel = choice.groupLabel,
     detailName = choice.detailName or "",
+    cellKey = choice.cellKey or "",
   }}
   for _, entry in ipairs(saved) do
     if not sameRecentItem(entry, choice) and #updated < recentLimit then
@@ -157,6 +185,46 @@ local function recentChoices()
       end
     end
     if #choices >= recentLimit then break end
+  end
+  return choices
+end
+
+local function normalizedSheetName(value)
+  return trim(value):lower():gsub("[%s_&%-]+", "")
+end
+
+local function isInboxCategory(category)
+  local target = normalizedSheetName(config.inboxSheet)
+  if target == "" then target = "inbox" end
+  if normalizedSheetName(category) == target then return true end
+  local includedName = tostring(category or ""):match("·%s*(.-)%s*$")
+  return includedName ~= nil and normalizedSheetName(includedName) == target
+end
+
+local function latestInboxChoice()
+  for _, snippet in ipairs(snippets) do
+    if isInboxCategory(snippet.category)
+        and not snippet.isDetail
+        and (config.mode ~= "supersheet" or snippet.isRowRepresentative) then
+      local choice = {}
+      for field, value in pairs(snippet) do choice[field] = value end
+      choice.isPinnedInbox = true
+      choice.subText = "Pinned latest  •  " .. trim(choice.subText)
+      return choice
+    end
+  end
+  return nil
+end
+
+local function homeChoices()
+  local choices = {}
+  local pinned = latestInboxChoice()
+  if pinned then choices[#choices + 1] = pinned end
+  for _, choice in ipairs(recentChoices()) do
+    if (not pinned or not sameRecentItem(choice, pinned))
+        and #choices < recentLimit then
+      choices[#choices + 1] = choice
+    end
   end
   return choices
 end
@@ -919,13 +987,115 @@ local function parseSheet(csv, category)
   return parsed
 end
 
+local function parseSuperSheet(csv, category)
+  local rows = csvRows(csv)
+  if #rows < 2 then return {} end
+
+  local headers = rows[1] or {}
+  local hasLabels = false
+  for _, value in ipairs(headers) do
+    if trim(value):gsub("^\239\187\191", "") ~= "" then
+      hasLabels = true
+      break
+    end
+  end
+
+  local parsed = {}
+  for rowIndex = 2, #rows do
+    local row = rows[rowIndex]
+    local identityColumn
+    if trim(row[1] or "") ~= "" then
+      identityColumn = 1
+    else
+      for columnIndex, value in ipairs(row) do
+        if trim(value) ~= "" then identityColumn = columnIndex; break end
+      end
+    end
+
+    if identityColumn then
+      local rowIdentity = trim(row[identityColumn] or "")
+      local rowCellCount = 0
+      for _, value in ipairs(row) do
+        if trim(value) ~= "" then rowCellCount = rowCellCount + 1 end
+      end
+
+      for columnIndex, value in ipairs(row) do
+        local content = value or ""
+        if trim(content) ~= "" then
+          local display = trim(content):gsub("%s+", " ")
+          local columnLabel = hasLabels
+            and trim(headers[columnIndex] or ""):gsub("^\239\187\191", "") or ""
+          local context, seen = {}, { [display:lower()] = true }
+          local function addContext(part)
+            local cleaned = trim(part):gsub("%s+", " ")
+            local key = cleaned:lower()
+            if cleaned ~= "" and not seen[key] then
+              context[#context + 1] = cleaned
+              seen[key] = true
+            end
+          end
+          addContext(rowIdentity)
+          addContext(columnLabel)
+          addContext(category)
+
+          local gid = type(config.sheetGids) == "table"
+            and config.sheetGids[category] or nil
+          local editUrl
+          if gid ~= nil then
+            local sourceSheetId = config.sheetSourceIds[category] or config.sheetId
+            editUrl = "https://docs.google.com/spreadsheets/d/"
+              .. sourceSheetId .. "/edit#gid=" .. tostring(gid)
+              .. "&range=" .. columnLetter(columnIndex) .. tostring(rowIndex)
+          end
+
+          local template = normalizeSearchTemplate(content)
+          parsed[#parsed + 1] = {
+            text = display,
+            subText = table.concat(context, "  •  "),
+            label = content,
+            groupLabel = template and rowIdentity:lower() ~= display:lower()
+              and rowIdentity or display,
+            detailOrder = columnIndex,
+            isDetail = false,
+            isSuperSheetCell = true,
+            isRowRepresentative = columnIndex == identityColumn,
+            rowCellCount = rowCellCount,
+            rowIndex = rowIndex,
+            columnIndex = columnIndex,
+            cellKey = category .. ":" .. tostring(rowIndex) .. ":" .. tostring(columnIndex),
+            columnLabel = columnLabel,
+            rowIdentity = rowIdentity,
+            category = category,
+            content = content,
+            hasSavedContent = true,
+            aiPrompt = "",
+            editUrl = editUrl,
+            aliases = {},
+            detailCount = 0,
+            detailSearch = "",
+            isSearchService = template ~= nil,
+            searchTemplate = template,
+            image = rowChoiceImage,
+          }
+        end
+      end
+    end
+  end
+  return parsed
+end
+
 local function parseSheets(sheetCsvs)
   local parsed = {}
   for _, category in ipairs(configuredSheetNames()) do
     local csv = sheetCsvs[category]
     if not csv then return nil, 'missing response for tab "' .. category .. '"' end
 
-    local categorySnippets, errorMessage = parseSheet(csv, category)
+    local categorySnippets, errorMessage
+    if config.mode == "supersheet" then
+      categorySnippets = parseSuperSheet(csv, category)
+    else
+      categorySnippets, errorMessage = parseSheet(csv, category)
+    end
     if not categorySnippets then
       print('Mac autocomplete: skipped tab "' .. category .. '": ' .. errorMessage)
     else
@@ -933,20 +1103,12 @@ local function parseSheets(sheetCsvs)
     end
   end
 
-  table.sort(parsed, function(a, b)
-    if a.groupLabel:lower() ~= b.groupLabel:lower() then
-      return a.groupLabel:lower() < b.groupLabel:lower()
-    end
-    if a.category:lower() ~= b.category:lower() then
-      return a.category:lower() < b.category:lower()
-    end
-    if a.detailOrder ~= b.detailOrder then return a.detailOrder < b.detailOrder end
-    return a.label:lower() < b.label:lower()
-  end)
   return parsed
 end
 
 local function applySheetSettings(sheetCsvs)
+  config.sheetMode = "triggersearch"
+  config.inboxSheet = "Inbox"
   for sheetName, csv in pairs(sheetCsvs or {}) do
     local normalizedSheetName = trim(sheetName):lower():gsub("[%s_&%-]+", "")
     if normalizedSheetName == "settings"
@@ -974,6 +1136,14 @@ local function applySheetSettings(sheetCsvs)
             if key == "aiengine" and value ~= "" then
               config.aiEngine = value
             end
+            if key == "inboxsheet" then
+              config.inboxSheet = value ~= "" and value or "Inbox"
+            end
+            if key == "mode" then
+              local normalizedMode = value:lower():gsub("[%s_%-]+", "")
+              config.sheetMode = normalizedMode == "supersheet"
+                and "supersheet" or "triggersearch"
+            end
           end
         else
           print('Mac autocomplete: Settings needs "Setting" and "Value" columns')
@@ -981,6 +1151,7 @@ local function applySheetSettings(sheetCsvs)
       end
     end
   end
+  config.mode = savedModeOverride() or config.sheetMode
 end
 
 local function readFile(path)
@@ -1009,6 +1180,7 @@ local function installSheets(sheetCsvs, source)
   end
 
   snippets = parsed
+  installedSheetCsvs = sheetCsvs
   local targets = {}
   for _, category in ipairs(configuredSheetNames()) do
     if sheetCsvs[category] then
@@ -1020,6 +1192,55 @@ local function installSheets(sheetCsvs, source)
   if chooser then chooser:choices(rankedSnippets(chooser:query() or "")) end
   print(string.format("Mac autocomplete: loaded %d snippets from %s", #snippets, source))
   return true
+end
+
+local function resetModeView()
+  detailParent = nil
+  searchServiceParent = nil
+  categoryParent = nil
+  superSheetRowParent = nil
+  rootQuery = ""
+  if chooser then
+    chooser:placeholderText(rootPlaceholder())
+    chooser:query("")
+    chooser:choices(rankedSnippets(""))
+  end
+end
+
+toggleMode = function()
+  if not installedSheetCsvs then
+    hs.alert.show("Refresh the Sheet before switching modes")
+    return
+  end
+  local oldOverride = savedModeOverride()
+  local oldMode = config.mode
+  local nextMode = config.mode == "supersheet" and "triggersearch" or "supersheet"
+  hs.settings.set(modeOverrideSettingsKey(), nextMode)
+  if installSheets(installedSheetCsvs, "mode switch") then
+    resetModeView()
+    hs.alert.show("Switched to " .. (nextMode == "supersheet"
+      and "SuperSheet" or "Trigger Search"))
+  else
+    if oldOverride then hs.settings.set(modeOverrideSettingsKey(), oldOverride)
+    else hs.settings.clear(modeOverrideSettingsKey()) end
+    config.mode = oldMode
+    hs.alert.show("That Sheet cannot be used in the other mode")
+  end
+end
+
+resetModeOverride = function()
+  local key = modeOverrideSettingsKey()
+  local oldOverride = savedModeOverride()
+  local oldMode = config.mode
+  if key then hs.settings.clear(key) end
+  if installedSheetCsvs and installSheets(installedSheetCsvs, "Sheet mode setting") then
+    resetModeView()
+    hs.alert.show("Using the Sheet mode setting")
+  elseif oldOverride then
+    hs.settings.set(key, oldOverride)
+    config.mode = oldMode
+    hs.alert.show("The Sheet mode setting cannot parse this workbook")
+  end
 end
 
 rankedSnippets = function(query)
@@ -1044,19 +1265,25 @@ rankedSnippets = function(query)
 
   -- The root chooser opens with locally remembered Sheet items. Typing still
   -- searches the complete workbook; nested views reveal their saved details.
-  if not detailParent and not categoryParent and needle == "" then
-    return recentChoices()
+  if not detailParent and not categoryParent and not superSheetRowParent
+      and needle == "" then
+    return homeChoices()
   end
 
   local matches = {}
-  for _, snippet in ipairs(snippets) do
+  for sourceOrder, snippet in ipairs(snippets) do
     local inCurrentView
-    if detailParent then
+    if superSheetRowParent then
+      inCurrentView = snippet.isSuperSheetCell
+        and snippet.category == superSheetRowParent.category
+        and snippet.rowIndex == superSheetRowParent.rowIndex
+    elseif detailParent then
       inCurrentView = snippet.isDetail
         and snippet.category == detailParent.category
         and snippet.rowIndex == detailParent.rowIndex
     elseif categoryParent then
       inCurrentView = not snippet.isDetail and snippet.category == categoryParent
+        and (config.mode ~= "supersheet" or snippet.isRowRepresentative)
     else
       inCurrentView = not snippet.isDetail
     end
@@ -1102,15 +1329,20 @@ rankedSnippets = function(query)
     end
 
     if rank ~= nil then
-      matches[#matches + 1] = { choice = snippet, rank = rank }
+      matches[#matches + 1] = {
+        choice = snippet,
+        rank = rank,
+        sourceOrder = sourceOrder,
+      }
     end
   end
 
   -- Sheet tabs are searchable folder-like parents in the normal result list.
   -- Their names and initials act as natural aliases (for example, "i" finds
   -- Inbox and "pm" finds Psych Meds) without adding another settings schema.
-  if not detailParent and not categoryParent and needle ~= "" then
-    for _, categoryName in ipairs(configuredSheetNames()) do
+  if not detailParent and not categoryParent and not superSheetRowParent
+      and needle ~= "" then
+    for categoryOrder, categoryName in ipairs(configuredSheetNames()) do
       local normalized = categoryName:lower()
       local initials = normalized:gsub("[^%w]+", " ")
         :gsub("(%w)%w*%s*", "%1")
@@ -1127,6 +1359,7 @@ rankedSnippets = function(query)
           .. sourceSheetId .. "/edit#gid=" .. tostring(gid)) or nil
         matches[#matches + 1] = {
           rank = rank,
+          sourceOrder = #snippets + categoryOrder,
           choice = {
             text = categoryName,
             subText = "Google Sheet  ·  Return or → to browse",
@@ -1149,6 +1382,9 @@ rankedSnippets = function(query)
 
   table.sort(matches, function(a, b)
     if a.rank ~= b.rank then return a.rank < b.rank end
+    if a.sourceOrder ~= b.sourceOrder then
+      return (a.sourceOrder or math.huge) < (b.sourceOrder or math.huge)
+    end
     if a.choice.groupLabel:lower() ~= b.choice.groupLabel:lower() then
       return a.choice.groupLabel:lower() < b.choice.groupLabel:lower()
     end
@@ -1162,7 +1398,8 @@ rankedSnippets = function(query)
   end)
 
   local choices = {}
-  local utility = not detailParent and not categoryParent and utilityChoice(query)
+  local utility = not detailParent and not categoryParent
+    and not superSheetRowParent and utilityChoice(query)
   if utility then
     utility.image = rowChoiceImage
     choices[#choices + 1] = utility
@@ -1273,7 +1510,8 @@ local function updateChooserHotkeys()
     if visible then openDetailsHotkey:enable() else openDetailsHotkey:disable() end
   end
   if backHotkey then
-    if actionVisible or (visible and (detailParent or searchServiceParent or categoryParent)) then
+    if actionVisible or (visible and (detailParent or searchServiceParent
+        or categoryParent or superSheetRowParent)) then
       backHotkey:enable()
     else
       backHotkey:disable()
@@ -1291,10 +1529,48 @@ local function updateChooserHotkeys()
   if returnHotkey then
     if visible then returnHotkey:enable() else returnHotkey:disable() end
   end
+  if tabHotkey then
+    if visible and config.mode == "supersheet" then tabHotkey:enable()
+    else tabHotkey:disable() end
+  end
+  if reverseTabHotkey then
+    if visible and config.mode == "supersheet" then reverseTabHotkey:enable()
+    else reverseTabHotkey:disable() end
+  end
+  if modeHotkey then
+    if visible then modeHotkey:enable() else modeHotkey:disable() end
+  end
+  if resetModeHotkey then
+    if visible then resetModeHotkey:enable() else resetModeHotkey:disable() end
+  end
 end
 
-local function rootPlaceholder()
-  return "Search"
+rootPlaceholder = function()
+  return config.mode == "supersheet" and "Search SuperSheet" or "Search"
+end
+
+local function currentPlaceholder()
+  if searchServiceParent then return "←  " .. searchServiceParent.groupLabel end
+  if detailParent then return "←  " .. detailParent.groupLabel end
+  if superSheetRowParent then return "←  " .. superSheetRowParent.rowIdentity end
+  if categoryParent then return "←  " .. categoryParent end
+  return rootPlaceholder()
+end
+
+local function openSuperSheetRow(choice)
+  if not choice or not choice.isSuperSheetCell or choice.rowCellCount < 2 then return end
+  rootQuery = chooser:query() or rootQuery
+  returnParentCategory = choice.category
+  returnParentRow = choice.rowIndex
+  superSheetRowParent = choice
+  chooser:placeholderText("←  " .. choice.rowIdentity)
+  chooser:query("")
+  local choices = rankedSnippets("")
+  chooser:choices(choices)
+  for index, cell in ipairs(choices) do
+    if cell.columnIndex == choice.columnIndex then chooser:selectedRow(index); break end
+  end
+  updateChooserHotkeys()
 end
 
 local function openDetails(choice)
@@ -1357,6 +1633,12 @@ local function openSelectedAction(choice)
     openSearchService(choice)
     return
   end
+  if not detailParent and not searchServiceParent and not superSheetRowParent
+      and choice.isSuperSheetCell
+      and choice.rowCellCount > 1 then
+    openSuperSheetRow(choice)
+    return
+  end
   if not detailParent and not choice.isDetail and choice.detailCount
       and choice.detailCount > 0 then
     openDetails(choice)
@@ -1370,13 +1652,15 @@ local function closeDetails()
     searchServiceParent = nil
   elseif detailParent then
     detailParent = nil
+  elseif superSheetRowParent then
+    superSheetRowParent = nil
   elseif categoryParent then
     categoryParent = nil
     rootQuery = ""
   else
     return
   end
-  chooser:placeholderText(rootPlaceholder())
+  chooser:placeholderText(currentPlaceholder())
   chooser:query(rootQuery)
   local choices = rankedSnippets(rootQuery)
   chooser:choices(choices)
@@ -1402,12 +1686,22 @@ local function pasteExpandedContent(expandedContent, cursorLeft)
   hideActionHud()
 
   local targetApp = previousApp
-  if targetApp then targetApp:activate() end
+  local targetWindow = previousWindow
+  local function focusPasteTarget()
+    if targetApp then pcall(function() targetApp:activate(true) end) end
+    if targetWindow then pcall(function() targetWindow:focus() end) end
+  end
+  focusPasteTarget()
 
-  hs.timer.doAfter(0.08, function()
+  -- App activation is asynchronous on macOS. Restore the exact window once
+  -- more after the chooser has finished closing, then paste only after that
+  -- focus handoff has had time to settle.
+  hs.timer.doAfter(0.08, focusPasteTarget)
+  hs.timer.doAfter(0.18, function()
     -- Be defensive about chooser focus during the application handoff.
     if chooser and chooser:isVisible() then chooser:hide() end
     if actionChooser and actionChooser:isVisible() then actionChooser:hide() end
+    focusPasteTarget()
     hs.eventtap.keyStroke({ "cmd" }, "v", 0)
     if cursorLeft > 0 then
       hs.timer.doAfter(0.04, function()
@@ -1449,6 +1743,41 @@ local function pasteSnippet(choice, forcePaste)
     choice.content, hs.pasteboard.getContents() or "")
   recordRecent(choice)
   pasteExpandedContent(expandedContent, cursorLeft)
+end
+
+local function actOnSuperSheetCell(choice)
+  if not choice then return end
+  if choice.isSearchService then
+    openSearchService(choice)
+    chooser:show()
+  else
+    pasteSnippet(choice)
+  end
+end
+
+local function actOnAdjacentCell(delta)
+  if not chooser or not chooser:isVisible() then return end
+  local choice = chooser:selectedRowContents()
+  if not choice or not choice.isSuperSheetCell then return end
+  local target
+  for _, candidate in ipairs(snippets) do
+    if candidate.isSuperSheetCell and candidate.category == choice.category
+        and candidate.rowIndex == choice.rowIndex
+        and ((delta > 0 and candidate.columnIndex > choice.columnIndex)
+          or (delta < 0 and candidate.columnIndex < choice.columnIndex)) then
+      if not target
+          or (delta > 0 and candidate.columnIndex < target.columnIndex)
+          or (delta < 0 and candidate.columnIndex > target.columnIndex) then
+        target = candidate
+      end
+    end
+  end
+  if target then
+    actOnSuperSheetCell(target)
+    return
+  end
+  hs.alert.show(delta > 0 and "There is no populated cell to the right"
+    or "There is no populated cell to the left")
 end
 
 local function editSnippet(choice)
@@ -1562,8 +1891,7 @@ end
 
 local function restoreAfterActions()
   if not chooser then return end
-  chooser:placeholderText(detailParent and ("←  " .. detailParent.groupLabel)
-    or rootPlaceholder())
+  chooser:placeholderText(currentPlaceholder())
   chooser:query(actionReturnQuery)
   chooser:choices(rankedSnippets(actionReturnQuery))
   if actionReturnRow and actionReturnRow > 0 then chooser:selectedRow(actionReturnRow) end
@@ -1572,8 +1900,7 @@ end
 
 local function restoreAfterPreview()
   if not chooser then return end
-  chooser:placeholderText(detailParent and ("←  " .. detailParent.groupLabel)
-    or rootPlaceholder())
+  chooser:placeholderText(currentPlaceholder())
   chooser:query(previewReturnQuery)
   chooser:choices(rankedSnippets(previewReturnQuery))
   if previewReturnRow and previewReturnRow > 0 then
@@ -1758,10 +2085,12 @@ showChooser = function()
     return
   end
 
+  previousWindow = hs.window.focusedWindow()
   previousApp = hs.application.frontmostApplication()
   detailParent = nil
   searchServiceParent = nil
   categoryParent = nil
+  superSheetRowParent = nil
   rootQuery = ""
   returnParentCategory = nil
   returnParentRow = nil
@@ -2182,9 +2511,10 @@ local function downloadConfiguredWorkbooks(sheetId, allowFallback, callback)
 end
 
 local function installWorkbook(data, source, sheetId)
-  local oldNames, oldGids, oldSourceIds, oldTrigger, oldLauncherModifier, oldLauncherKey =
+  local oldNames, oldGids, oldSourceIds, oldTrigger, oldLauncherModifier,
+    oldLauncherKey, oldMode, oldSheetMode =
     discoveredSheetNames, config.sheetGids, config.sheetSourceIds, config.trigger,
-    config.launcherModifier, config.launcherKey
+    config.launcherModifier, config.launcherKey, config.mode, config.sheetMode
   discoveredSheetNames = data.sheetNames
   config.sheetGids = data.sheetGids or {}
   config.sheetSourceIds = data.sheetSourceIds or {}
@@ -2193,9 +2523,11 @@ local function installWorkbook(data, source, sheetId)
       oldNames, oldGids, oldSourceIds
     config.trigger = oldTrigger
     config.launcherModifier, config.launcherKey = oldLauncherModifier, oldLauncherKey
+    config.mode = oldMode
+    config.sheetMode = oldSheetMode
     if updateLauncherHotkey then updateLauncherHotkey() end
-    return false, "No usable autocomplete rows were found. "
-      .. "Use Name/Alias/Content headers, or one to three headerless columns."
+    return false, "No usable rows were found for "
+      .. (config.mode == "supersheet" and "SuperSheet." or "Trigger Search.")
   end
 
   local cacheJson = hs.json.encode({
@@ -2337,7 +2669,13 @@ local function buildSettingsMenu()
   settingsMenu:setMenu(function()
     local missingSheet = config.sheetId == ""
     return {
-      { title = "Open Trigger Search", fn = showChooser },
+      { title = config.mode == "supersheet" and "Open SuperSheet"
+          or "Open Trigger Search", fn = showChooser },
+      { title = "Mode: " .. (config.mode == "supersheet"
+          and "SuperSheet" or "Trigger Search"), disabled = true },
+      { title = "Switch Mode  ⌘M", fn = toggleMode },
+      { title = "Use Sheet Mode  ⇧⌘M", fn = resetModeOverride,
+        disabled = savedModeOverride() == nil },
       {
         title = "New Snippet",
         menu = buildNewSnippetMenu(),
@@ -2392,18 +2730,6 @@ function M.start(userConfig)
       chooser:show()
       return
     end
-    if chooserClickPending then
-      chooserClickPending = false
-      if not detailParent and not searchServiceParent
-          and not choice.isDetail and choice.detailCount
-          and choice.detailCount > 0 then
-        openDetails(choice)
-        chooser:show()
-      elseif not choice.isUtilityError then
-        showActions()
-      end
-      return
-    end
     pasteSnippet(choice)
   end)
     :placeholderText(rootPlaceholder())
@@ -2412,7 +2738,8 @@ function M.start(userConfig)
     :width(config.width)
     :invalidCallback(function() end)
     :queryChangedCallback(function(query)
-      if not detailParent and not searchServiceParent and not categoryParent then
+      if not detailParent and not searchServiceParent and not categoryParent
+          and not superSheetRowParent then
         rootQuery = query
       end
       chooser:choices(rankedSnippets(query))
@@ -2477,6 +2804,13 @@ function M.start(userConfig)
     end
   end)
 
+  tabHotkey = hs.hotkey.new({}, "tab", function() actOnAdjacentCell(1) end)
+  reverseTabHotkey = hs.hotkey.new({ "shift" }, "tab", function()
+    actOnAdjacentCell(-1)
+  end)
+  modeHotkey = hs.hotkey.new({ "cmd" }, "m", toggleMode)
+  resetModeHotkey = hs.hotkey.new({ "cmd", "shift" }, "m", resetModeOverride)
+
   openLinkHotkey = hs.hotkey.new({ "cmd" }, "o", function()
     if chooser and chooser:isVisible() then
       openChoiceLink(chooser:selectedRowContents(), false)
@@ -2493,6 +2827,7 @@ function M.start(userConfig)
     -- An empty chooser can return an empty table instead of nil.
     if type(choice) ~= "table" or next(choice) == nil or not choice.text then
       if not detailParent and not searchServiceParent and not categoryParent
+          and not superSheetRowParent
           and trim(chooser:query()) ~= "" then
         searchGoogleQuery()
       end
@@ -2528,6 +2863,7 @@ function M.start(userConfig)
     detailParent = nil
     searchServiceParent = nil
     categoryParent = nil
+    superSheetRowParent = nil
     rootQuery = ""
     if actionChooser and actionChooser:isVisible() then actionChooser:hide() end
     if chooser and chooser:isVisible() then chooser:hide() end
@@ -2572,11 +2908,6 @@ function M.start(userConfig)
     hs.eventtap.event.types.otherMouseDown,
   }, function(event)
     if launcherTapArmed then launcherTapArmed = false end
-    if event:getType() == hs.eventtap.event.types.leftMouseDown
-        and chooser and chooser:isVisible() then
-      chooserClickPending = true
-      hs.timer.doAfter(0.4, function() chooserClickPending = false end)
-    end
     -- Web editors such as Gmail often update their focused Accessibility
     -- element just after the click. Re-check once focus settles; if the app
     -- exposes no cursor context, treat the click as a new typing run.
@@ -2644,6 +2975,10 @@ function M.parseSheet(csv, category)
   return parseSheet(csv or "", category or "Test")
 end
 
+function M.parseSuperSheet(csv, category)
+  return parseSuperSheet(csv or "", category or "Test")
+end
+
 function M.stop()
   if keyWatcher then keyWatcher:stop(); keyWatcher = nil end
   if editHotkey then editHotkey:disable(); editHotkey:delete(); editHotkey = nil end
@@ -2665,6 +3000,14 @@ function M.stop()
   end
   if openDetailsHotkey then
     openDetailsHotkey:disable(); openDetailsHotkey:delete(); openDetailsHotkey = nil
+  end
+  if tabHotkey then tabHotkey:disable(); tabHotkey:delete(); tabHotkey = nil end
+  if reverseTabHotkey then
+    reverseTabHotkey:disable(); reverseTabHotkey:delete(); reverseTabHotkey = nil
+  end
+  if modeHotkey then modeHotkey:disable(); modeHotkey:delete(); modeHotkey = nil end
+  if resetModeHotkey then
+    resetModeHotkey:disable(); resetModeHotkey:delete(); resetModeHotkey = nil
   end
   if openLinkHotkey then
     openLinkHotkey:disable(); openLinkHotkey:delete(); openLinkHotkey = nil

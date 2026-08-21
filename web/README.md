@@ -24,17 +24,35 @@ works as an installable Progressive Web App.
   result, submitting Search opens that phrase in Google.
 - Includes Sheet tabs as folder-like ordinary search results. Enter or Right
   Arrow browses a tab as a vertical list; Command/Control-E opens the tab in
-  Google Sheets, and Left Arrow returns one level.
+  Google Sheets, and Left Arrow returns one level. Tabs, rows, columns, and
+  equally relevant search matches retain their Google Sheets order.
 - Supports Up/Down to navigate, Right Arrow to open nested details, Left Arrow
   to return, Enter to preview, Command/Control 1–9 to copy, and
   Command/Control-G to Google the typed phrase on desktop.
 - Falls back to the last successful local cache when the Sheet is unavailable.
+- Pins the first usable row from the tab named by `Inbox Sheet` (default
+  `Inbox`) on the blank home screen. Desktop follows it with Recents; mobile
+  shows the pin without the Recents list. Returning to the visible web app
+  refreshes the Sheet so an iPhone Shortcut capture is immediately available.
 - Shows contextual actions from each result's `•••` button. On desktop,
   Command-K or Control-K opens the same menu for the selected result; its
   displayed single-key shortcuts work while the menu is open.
 
 The browser cannot paste into another application. The web workflow is copy,
 switch applications, and paste.
+
+Set `Mode` to `SuperSheet` in the `Setting` / `Value` table on `Settings & Help`
+to search every nonblank data cell. Row 1 provides optional labels; leave that
+whole row blank for no labels, with data starting on row 2. Results show row
+identity, column label, and tab context without duplicates. Right Arrow opens
+a row, Left Arrow returns, and Tab/Shift-Tab acts on the immediate right/left
+cell. On the web, acting means the existing open, search-template, copy, or
+preview behavior. Set the value back to `Trigger Search` to restore the normal
+schema.
+On desktop, Command-M or Control-M switches immediately and remembers the
+choice for this Sheet in the current browser. Add Shift to clear the local
+override and use the Sheet's `Mode` row again. The Settings dialog provides
+the same controls for touch devices.
 
 The primary workbook may also list public shared collections in its
 `Settings & Help` tab using `Included Sheet Name`, `Google Sheet URL`, and

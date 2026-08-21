@@ -131,6 +131,8 @@ Google Sheet's `Settings & Help` tab:
 | Launcher Modifier | None |
 | Launcher Key | None |
 | AI Engine | ChatGPT |
+| Mode | Trigger Search |
+| Inbox Sheet | Inbox |
 
 Replace `;` with another single printable character whenever you prefer. The
 local `trigger` value in `init.lua` remains an offline fallback. The two
@@ -144,6 +146,18 @@ For safety, a single ordinary letter, number, Space, Return, or Tab is not
 accepted without a modifier. A single F1–F12 key is allowed. Set either
 launcher field to `None` to disable the extra launcher shortcut.
 
+Set `Mode` to `SuperSheet` to make every nonblank data cell searchable without
+changing installations. Row 1 contains optional labels (leave the entire row
+blank for no labels), and data begins on row 2. Return acts on the selected
+cell; Tab/Shift-Tab acts on the nearest populated right/left cell, skipping
+blanks. Right Arrow opens the selected row and Left Arrow returns. Set `Mode`
+back to `Trigger Search`
+to restore the original Name/Alias/Content behavior.
+While the launcher is open, Command-M switches modes immediately and remembers
+that override for this Sheet on this Mac. Shift-Command-M clears the override
+and uses the Sheet's `Mode` value again. Both actions also appear in the menu
+bar menu.
+
 ## 3. Use
 
 Type the configured trigger at the start of a typing run or directly after a
@@ -153,10 +167,16 @@ clearing the query restores the recent items. Continue typing to filter,
 use the arrow keys to navigate, press Return to paste, or Escape to cancel.
 If the typed text has no matching result, Return searches Google for it in the
 default browser.
+The first usable row in the tab configured by the `Inbox Sheet` setting
+(default `Inbox`) is always pinned above Recents and is not duplicated there.
+Opening the launcher starts a Sheet refresh, so a newly captured Inbox item
+replaces the pin as soon as the refresh completes.
 Sheet tabs appear as folder-like results in the ordinary search. Type a short
 prefix (`i` for `Inbox`) or the initials of a multiword tab (`pm` for
 `Psych Meds`). Return or Right Arrow shows that tab's entries; Command-E opens
 the tab itself. Inside the tab, Command-E opens the selected item's exact row.
+Tabs, rows, columns, and equally relevant search matches retain their Google
+Sheets order, so a newest-first Inbox keeps its latest capture at the top.
 Left Arrow returns to the complete search. Nested item fields remain vertical.
 Rows use a small, pale version of the Trigger Search lightning logo. Nested
 items additionally show a larger `→` beside their names.
