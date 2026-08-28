@@ -2,8 +2,8 @@
 #SingleInstance Force
 Persistent
 
-; Sheet Autocomplete version 0.14.0
-global AppVersion := "0.14.0"
+; Sheet Autocomplete version 0.14.1
+global AppVersion := "0.14.1"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -114,6 +114,7 @@ Initialize() {
 
     OnMessage 0x0100, HandleGuiKeyDown
     OnMessage 0x0104, HandleGuiKeyDown
+    OnMessage 0x004E, DrawSelectedResult
     DirCreate CacheDir
     A_IconTip := "Trigger Search v" AppVersion
     LoadSheetConfiguration()
@@ -172,6 +173,45 @@ BuildChooser() {
     ChooserGui.OnEvent("Escape", (*) => CancelChooser())
 
     SetSearchPlaceholder("Search")
+}
+
+DrawSelectedResult(wParam, lParam, msg, hwnd) {
+    global ResultsView
+
+    if !IsObject(ResultsView) || NumGet(lParam, 0, "Ptr") != ResultsView.Hwnd
+        return
+
+    ; Keep focus in the search box for uninterrupted typing, but draw the
+    ; current row with Windows' active selection colors instead of the faint
+    ; inactive ListView highlight. System colors preserve high-contrast themes.
+    notificationCode := NumGet(lParam, A_PtrSize * 2, "Int")
+    if notificationCode != -12 ; NM_CUSTOMDRAW
+        return
+
+    drawStageOffset := A_PtrSize = 8 ? 24 : 12
+    drawStage := NumGet(lParam, drawStageOffset, "UInt")
+    if drawStage = 0x00000001 ; CDDS_PREPAINT
+        return 0x00000020 ; CDRF_NOTIFYITEMDRAW
+    if drawStage != 0x00010001 ; CDDS_ITEMPREPAINT
+        return
+
+    itemOffset := A_PtrSize = 8 ? 56 : 36
+    row := NumGet(lParam, itemOffset, "UPtr") + 1
+    selectedRow := ResultsView.GetNext(0, "F")
+    if selectedRow = 0
+        selectedRow := ResultsView.GetNext(0, "S")
+    if row != selectedRow
+        return
+
+    stateOffset := A_PtrSize = 8 ? 64 : 40
+    itemState := NumGet(lParam, stateOffset, "UInt")
+    NumPut("UInt", itemState & ~0x0001, lParam, stateOffset) ; Remove CDIS_SELECTED.
+
+    textColorOffset := A_PtrSize = 8 ? 80 : 48
+    backgroundColorOffset := A_PtrSize = 8 ? 84 : 52
+    NumPut("UInt", DllCall("GetSysColor", "Int", 14, "UInt"), lParam, textColorOffset)
+    NumPut("UInt", DllCall("GetSysColor", "Int", 13, "UInt"), lParam, backgroundColorOffset)
+    return 0x00000002 ; CDRF_NEWFONT applies the supplied colors.
 }
 
 SetSearchPlaceholder(text) {
