@@ -2,8 +2,8 @@
 #SingleInstance Force
 Persistent
 
-; Sheet Autocomplete version 0.14.1
-global AppVersion := "0.14.1"
+; Sheet Autocomplete version 0.14.2
+global AppVersion := "0.14.2"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -198,8 +198,9 @@ DrawSelectedResult(wParam, lParam, msg, hwnd) {
     itemOffset := A_PtrSize = 8 ? 56 : 36
     row := NumGet(lParam, itemOffset, "UPtr") + 1
     selectedRow := ResultsView.GetNext(0, "F")
+    ; With RowType omitted, GetNext returns the next selected row.
     if selectedRow = 0
-        selectedRow := ResultsView.GetNext(0, "S")
+        selectedRow := ResultsView.GetNext(0)
     if row != selectedRow
         return
 
@@ -1084,8 +1085,9 @@ SelectedChoice() {
     global ResultsView, VisibleChoices
 
     row := ResultsView.GetNext(0, "F")
+    ; With RowType omitted, GetNext returns the next selected row.
     if row = 0
-        row := ResultsView.GetNext(0, "S")
+        row := ResultsView.GetNext(0)
     if row < 1 || row > VisibleChoices.Length
         return 0
     return VisibleChoices[row]
