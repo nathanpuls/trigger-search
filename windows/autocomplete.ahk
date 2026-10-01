@@ -433,6 +433,7 @@ ShowChooser(*) {
     }
 
     TargetWindow := WinExist("A")
+    RefreshInboxLive()
     ChooserOpen := true
     DetailParent := 0
     SearchServiceParent := 0
@@ -2212,6 +2213,50 @@ RefreshData(force := false, *) {
         }
     } finally {
         Refreshing := false
+    }
+}
+
+RefreshInboxLive() {
+    global SheetId, SheetInfos, InboxSheet, Snippets
+
+    if SheetId = "" || SheetInfos.Length = 0
+        return
+
+    targetName := NormalizeSheetName(InboxSheet != "" ? InboxSheet : "Inbox")
+    inboxInfo := 0
+    for info in SheetInfos {
+        if NormalizeSheetName(info.Name) = targetName {
+            inboxInfo := info
+            break
+        }
+    }
+    if !inboxInfo
+        return
+
+    ; Never present a cached Inbox row as though this live check succeeded.
+    ; Keep non-Inbox snippets intact if Google is temporarily unavailable.
+    try {
+        cacheBust := A_NowUTC A_MSec
+        csv := FetchSheetCsv(inboxInfo, cacheBust, SheetId)
+        freshInbox := []
+        ParseSheet csv, inboxInfo, freshInbox
+
+        merged := []
+        for item in Snippets {
+            if !IsInboxCategory(item.Category)
+                merged.Push(item)
+        }
+        for item in freshInbox
+            merged.Push(item)
+        Snippets := merged
+    } catch as problem {
+        merged := []
+        for item in Snippets {
+            if !IsInboxCategory(item.Category)
+                merged.Push(item)
+        }
+        Snippets := merged
+        TrayTip "Could not verify the latest Inbox item.", "Trigger Search"
     }
 }
 
