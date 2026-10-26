@@ -49,11 +49,12 @@ function Invoke-AhkCheck([string]$Directory, [switch]$SelfTest) {
         $err = $out + '.err'
         try {
             $proc = Start-Process -FilePath $AutoHotkeyPath -ArgumentList $arguments -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
+            # Cache the native handle before exit (Windows PowerShell 5.1 otherwise loses ExitCode).
+            $null = $proc.Handle
             if (-not $proc.WaitForExit(30000)) { $proc.Kill(); throw "Validation timed out: $relative" }
-            $proc.Refresh()
             if ($proc.ExitCode -ne 0) {
                 $detail = (Get-Content $out, $err -Raw -ErrorAction SilentlyContinue) -join "`n"
-                throw "Validation failed: $relative`n$detail"
+                throw "Validation failed: $relative (exit $($proc.ExitCode))`n$detail"
             }
         } finally { Remove-Item $out, $err -Force -ErrorAction SilentlyContinue }
     }
