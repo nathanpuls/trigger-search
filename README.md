@@ -4,6 +4,29 @@ A lightweight personal autocomplete powered by a public Google Sheet. The same
 snippet collection works across macOS with Hammerspoon and Windows with
 AutoHotkey v2—without OAuth, sign-in, a browser extension, or a dedicated app.
 
+## Windows: upgrade and restart
+
+On the Dell, open **Windows PowerShell** and paste this entire block:
+
+```powershell
+$triggerSetupPath = Join-Path $env:TEMP 'trigger-search-install.ps1'
+Invoke-WebRequest 'https://raw.githubusercontent.com/nathanpuls/trigger-search/codex/unified-windows-20261026/windows/refresh-all.ps1' -OutFile $triggerSetupPath -UseBasicParsing
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File $triggerSetupPath -Ref 'codex/unified-windows-20261026'
+```
+
+This installs the current **0.16.0 preview** and automatically restarts a managed
+Trigger Search installation. It repairs the upgrade from 0.15.0; no separate
+`Start-Trigger-Search.cmd` step is needed after a successful managed upgrade.
+Your Google Sheet settings and original Dell script files are preserved.
+
+Afterward, open Trigger Search, press **Ctrl+R**, and search **`of`** for office
+follow-up. The tray version should read **0.16.0**. Future managed updates use
+**Refresh all scripts** or **Update script from GitHub** in the tray.
+
+The preview includes the expanded 24-action automation catalog. It is on the
+[Windows preview branch](https://github.com/nathanpuls/trigger-search/tree/codex/unified-windows-20261026)
+while testing on the Dell continues; the command deliberately selects that branch.
+
 ## Choose your platform
 
 - **macOS:** See [`mac/README.md`](mac/README.md) and install Hammerspoon.
