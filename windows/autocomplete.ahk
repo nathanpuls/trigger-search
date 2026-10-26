@@ -2608,15 +2608,10 @@ RunSelfTests() {
     global Snippets, DetailParent, SearchServiceParent, RecentItems, InboxSheet
     global ChooserOpen, PreviewOpen, CategoryParent
 
-    FileAppend "TEST inbox`n", "*"
     TestInboxWriter()
-    FileAppend "TEST remaps`n", "*"
     TestKeyboardRemaps()
-    FileAppend "TEST geometry`n", "*"
     TestZoomWindowControls()
-    FileAppend "TEST accessibility`n", "*"
     TestZoomAccessibility()
-    FileAppend "TEST chooser`n", "*"
     automationRows := ParseCsv('Name,Alias,Description,Script ID`n'
         . 'Office visit,of,Office follow up,advancedmd.follow-up-office`n'
         . 'Renamed duplicate,other,Duplicate,advancedmd.follow-up-office`n'
@@ -4197,17 +4192,12 @@ FindZoomAccessibilityButton(hwnd, pattern) {
             DllCall("ole32\CoInitializeEx", "ptr", 0, "uint", 2)
             initialized := true
         }
-        trace := A_Args.Length > 0 && A_Args[1] = "--self-test"
-        if trace
-            FileAppend "TEST acquiring accessibility root`n", "*"
         iid := Buffer(16)
         DllCall("ole32\CLSIDFromString", "wstr", "{618736E0-3C3D-11CF-810C-00AA00389B71}", "ptr", iid)
         pointer := 0
         if DllCall("oleacc\AccessibleObjectFromWindow", "ptr", hwnd, "uint", 0xFFFFFFFC,
             "ptr", iid, "ptr*", &pointer, "int") != 0 || !pointer
             return 0
-        if trace
-            FileAppend "TEST root acquired`n", "*"
         root := ComValue(9, pointer, 1)
         budget := 600
         return FindZoomAccessibleNode(root, 0, pattern, 0, &budget)
@@ -4218,23 +4208,16 @@ FindZoomAccessibleNode(acc, child, pattern, depth, &budget) {
     if budget <= 0 || depth > 12
         return 0
     budget -= 1
-    trace := A_Args.Length > 0 && A_Args[1] = "--self-test"
-    if trace
-        FileAppend "TEST node " depth ":" child " role`n", "*"
     try {
         ; Match buttons only. Never invoke controls by approximate position.
-        if acc.accRole(child) = 43 && !(acc.accState(child) & 0x8001)
-            && RegExMatch(Trim(StrReplace(acc.accName(child), "&")), pattern)
+        if acc.accRole[child] = 43 && !(acc.accState[child] & 0x8001)
+            && RegExMatch(Trim(StrReplace(acc.accName[child], "&")), pattern)
             return {Acc: acc, Child: child}
     }
-    if trace
-        FileAppend "TEST node role returned`n", "*"
     if child != 0
         return 0
     try {
         count := Min(acc.accChildCount, budget)
-        if trace
-            FileAppend "TEST child count " count "`n", "*"
         if count <= 0
             return 0
         size := 8 + 2 * A_PtrSize
@@ -4243,8 +4226,6 @@ FindZoomAccessibleNode(acc, child, pattern, depth, &budget) {
         if DllCall("oleacc\AccessibleChildren", "ptr", ComObjValue(acc), "int", 0,
             "int", count, "ptr", children, "int*", &obtained, "int") < 0
             return 0
-        if trace
-            FileAppend "TEST children obtained " obtained "`n", "*"
         result := 0
         Loop obtained {
             offset := (A_Index - 1) * size
@@ -4267,8 +4248,7 @@ FindZoomAccessibleNode(acc, child, pattern, depth, &budget) {
     return 0
 }
 TestZoomAccessibility() {
-    ; Test against another process, as in production. Querying MSAA on this
-    ; script's own GUI can deadlock its STA message thread.
+    ; Test lookup and invocation across processes, as with the actual Zoom app.
     script := A_Temp "\trigger-zoom-accessibility-fixture.ahk"
     result := A_Temp "\trigger-zoom-accessibility-fixture.txt"
     if FileExist(result)
@@ -4287,13 +4267,9 @@ TestZoomAccessibility() {
         Run '"' A_AhkPath '" /ErrorStdOut=UTF-8 "' script '"', , , &fixturePid
         hwnd := WinWait("Trigger Search accessibility fixture ahk_pid " fixturePid, , 5)
         Assert hwnd != 0, "The isolated accessibility fixture must open."
-        FileAppend "TEST fixture ready`n", "*"
         button := FindZoomAccessibilityButton(hwnd, "i)^Show full meeting window$")
-        FileAppend "TEST button lookup returned`n", "*"
         Assert IsObject(button), "Find the exact thumbnail expansion button using real Windows accessibility."
-        FileAppend "TEST invoking button`n", "*"
         button.Acc.accDoDefaultAction(button.Child)
-        FileAppend "TEST button invoked`n", "*"
         deadline := A_TickCount + 2000
         while !FileExist(result) && A_TickCount < deadline
             Sleep 50
