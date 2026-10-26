@@ -140,17 +140,12 @@ All web helpers stop if their expected window cannot be activated.
 The configured launcher key (F6 when selected in Settings & Help) toggles the
 launcher open and closed. Escape closes it from the search, Actions, or Preview.
 
-## Dell Shortcut reference column
+## Shortcut reference
 
-Automations may include a fifth `Dell Shortcut` column (and additional reference
-columns). It documents the existing shortcut; editing that text does not rebind
-keys. `None` means the original action has no enabled standalone shortcut.
-Apostrophe/semicolon sequences marked `(type)` are hotstrings. Right Shift is
-Espanso's original standalone binding, not a managed launcher binding.
-The remaps cell has a note listing each key's action. Semicolon-prefixed hotstrings
-still compete with the boundary-sensitive launcher trigger; their search aliases
-remain available. The four original data headers are still required.
+Standalone Dell shortcuts are appended to the existing Description values in
+the Automations tab. No extra column is needed. This is reference text; editing
+it does not rebind keys. Typed hotstrings and standalone-only bindings are
+labelled accordingly. Entries without a binding say so.
 
-0.16.2 also accepts the four specific AMD Script ID aliases already in the Sheet.
-Display names remain editable independently of dispatch IDs. Use Refresh all
-scripts to install 0.16.2 before relying on the expanded five-column layout.
+0.16.2 also accepts the four specific AMD Script ID aliases already in the Sheet
+and tolerates additional reference columns if users add them later.
