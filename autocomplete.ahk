@@ -56,6 +56,8 @@ global AutomationRegistry := Map(
     "keyboard.remaps", {File: "", Action: "builtin:remaps"},
     "trigger-search.refresh-all", {File: "", Action: "builtin:refresh-all"}
 )
+global ZoomThumbnailClass := ""
+global ZoomThumbnailClassLoaded := false
 global SpecialClipboard := ""
 global SpecialClipboardSet := false
 global RemapsEnabled := false
@@ -3952,7 +3954,7 @@ ActiveZoomMeeting() {
     if !hwnd
         return 0
     try {
-        return ZoomControlCandidate(WinGetTitle(hwnd), WinGetClass(hwnd)) || ZoomThumbnailButton(hwnd) ? hwnd : 0
+        return ZoomControlCandidate(WinGetTitle(hwnd), WinGetClass(hwnd)) || KnownZoomThumbnail(hwnd) ? hwnd : 0
     }
     return 0
 }
@@ -4022,7 +4024,7 @@ ZoomWindowCommand(command) {
         if ActiveZoomMeeting() != hwnd
             return
         window := "ahk_id " hwnd
-        thumbnail := ZoomThumbnailButton(hwnd)
+        thumbnail := KnownZoomThumbnail(hwnd)
         if command = "2" {
             if !thumbnail
                 EnterZoomThumbnail hwnd
@@ -4030,7 +4032,10 @@ ZoomWindowCommand(command) {
         }
         ; Direction keys move the thumbnail itself; size keys expand it first.
         if thumbnail && RegExMatch(command, "^[3-6]$") {
-            hwnd := RestoreZoomThumbnail(hwnd, thumbnail)
+            button := ZoomThumbnailButton(hwnd)
+            if !button
+                throw Error("Could not identify Zoom's thumbnail expansion button. Use Show full meeting window once, then try again.")
+            hwnd := RestoreZoomThumbnail(hwnd, button)
             window := "ahk_id " hwnd
         }
         if command = "6" {
@@ -4087,19 +4092,38 @@ TestZoomWindowControls() {
 ; Use Windows accessibility to identify Zoom's documented thumbnail expansion
 ; button, not guessed window classes, screen coordinates, or a tiny resized main
 ; window. English button names only. No UI text is saved or logged.
-ZoomThumbnailButton(hwnd) {
-    static cache := Map()
-    try {
-        pid := WinGetPID(hwnd)
-        if cache.Has(hwnd) && cache[hwnd].Pid = pid && A_TickCount - cache[hwnd].Tick < 500
-            return cache[hwnd].Button
-        button := FindZoomAccessibilityButton(hwnd, "i)^(Show full meeting window|Exit minimi[sz]ed video|Exit mini window|Restore full meeting window)$")
-        if cache.Count > 32
-            cache.Clear()
-        cache[hwnd] := {Pid: pid, Tick: A_TickCount, Button: button}
-        return button
+KnownZoomThumbnail(hwnd) {
+    global SettingsPath, ZoomThumbnailClass, ZoomThumbnailClassLoaded
+    if !ZoomThumbnailClassLoaded {
+        ZoomThumbnailClass := IniRead(SettingsPath, "zoom-window", "thumbnailClass", "")
+        ZoomThumbnailClassLoaded := true
     }
-    return 0
+    if ZoomThumbnailClass = ""
+        return false
+    try {
+        if WinGetClass(hwnd) != ZoomThumbnailClass || WinGetMinMax(hwnd) = -1
+            return false
+        WinGetPos , , &width, &height, hwnd
+        maxWidth := Integer(IniRead(SettingsPath, "zoom-window", "thumbnailMaxWidth", "600"))
+        maxHeight := Integer(IniRead(SettingsPath, "zoom-window", "thumbnailMaxHeight", "400"))
+        return width <= maxWidth && height <= maxHeight
+    }
+    return false
+}
+RememberZoomThumbnail(hwnd) {
+    global SettingsPath, ZoomThumbnailClass, ZoomThumbnailClassLoaded
+    ZoomThumbnailClass := WinGetClass(hwnd)
+    ZoomThumbnailClassLoaded := true
+    ; Store only the window class, never a meeting title or clipboard content.
+    IniWrite ZoomThumbnailClass, SettingsPath, "zoom-window", "thumbnailClass"
+    WinGetPos , , &width, &height, hwnd
+    IniWrite width + 64, SettingsPath, "zoom-window", "thumbnailMaxWidth"
+    IniWrite height + 64, SettingsPath, "zoom-window", "thumbnailMaxHeight"
+}
+ZoomThumbnailButton(hwnd) {
+    ; Visible recognized main windows cannot be thumbnails unless Zoom has
+    ; repurposed that same class. Actual mini detection uses the exact UI button.
+    return FindZoomAccessibilityButton(hwnd, "i)^(Show full meeting window|Exit minimi[sz]ed video|Exit mini window|Restore full meeting window)$")
 }
 FindZoomThumbnail(pid := 0) {
     for hwnd in WinGetList("ahk_exe Zoom.exe") {
@@ -4108,8 +4132,8 @@ FindZoomThumbnail(pid := 0) {
                 continue
             if WinGetMinMax(hwnd) = -1
                 continue
-            if button := ZoomThumbnailButton(hwnd)
-                return {Hwnd: hwnd, Button: button}
+            if KnownZoomThumbnail(hwnd)
+                return {Hwnd: hwnd}
         }
     }
     return 0
@@ -4119,7 +4143,7 @@ FindZoomMainWindow(pid) {
     try {
         for hwnd in WinGetList("ahk_exe Zoom.exe ahk_pid " pid) {
             try {
-                if ZoomControlCandidate(WinGetTitle(hwnd), WinGetClass(hwnd)) && !ZoomThumbnailButton(hwnd)
+                if ZoomControlCandidate(WinGetTitle(hwnd), WinGetClass(hwnd)) && !KnownZoomThumbnail(hwnd)
                     return hwnd
             }
         }
@@ -4134,23 +4158,26 @@ EnterZoomThumbnail(hwnd) {
     area := ZoomControlArea(x, y, width, height)
     horizontal := ZoomControlAnchor(x, area.Left, area.Right - area.Left, width)
     vertical := ZoomControlAnchor(y, area.Top, area.Bottom - area.Top, height)
-    button := FindZoomAccessibilityButton(hwnd, "i)^(Minimi[sz]e|Minimi[sz]e meeting|Minimi[sz]e window)$")
-    if button
-        InvokeZoomAccessibleButton(button)
-    else
-        ; Deliver the same system command as the native title-bar minimize
-        ; button, allowing Zoom to handle its own thumbnail mode.
-        PostMessage 0x0112, 0xF020, 0, , hwnd
-    deadline := A_TickCount + 2000
-    while A_TickCount < deadline {
-        if mini := FindZoomThumbnail(pid) {
-            WinGetPos , , &w, &h, mini.Hwnd
-            WinMove area.Left + Round(Max(0, area.Right - area.Left - w) * horizontal / 2),
-                area.Top + Round(Max(0, area.Bottom - area.Top - h) * vertical / 2), , , mini.Hwnd
-            WinActivate mini.Hwnd
-            return
+    ; Ask Zoom to handle its native minimize action, not WinMinimize/resize.
+    PostMessage 0x0112, 0xF020, 0, , hwnd
+    Sleep 250
+    try {
+        for candidate in WinGetList("ahk_exe Zoom.exe ahk_pid " pid) {
+            if WinGetMinMax(candidate) = -1
+                continue
+            WinGetPos , , &w, &h, candidate
+            if w < 100 || h < 60 || w > 900 || h > 700
+                continue
+            if ZoomThumbnailButton(candidate) {
+                RememberZoomThumbnail candidate
+                WinMove area.Left + Round(Max(0, area.Right - area.Left - w) * horizontal / 2),
+                    area.Top + Round(Max(0, area.Bottom - area.Top - h) * vertical / 2), , , candidate
+                WinActivate candidate
+                return
+            }
         }
-        Sleep 100
+    } catch {
+        ; Restore below on either timeout or unsupported accessibility controls.
     }
     ; Never silently leave the call hidden when the requested visible thumbnail
     ; could not be positively identified. Restore the original main window.
@@ -4184,72 +4211,77 @@ RestoreZoomThumbnail(hwnd, button) {
     throw Error("Zoom did not expand its thumbnail. Use its Show full meeting window button, then try the size key again.")
 }
 FindZoomAccessibilityButton(hwnd, pattern) {
-    try {
-        ; Initialize COM before the native accessibility call, not only when
-        ; the returned interface is subsequently wrapped in ComValue.
-        static initialized := false
-        if !initialized {
-            DllCall("ole32\CoInitializeEx", "ptr", 0, "uint", 2)
-            initialized := true
-        }
-        iid := Buffer(16)
-        DllCall("ole32\CLSIDFromString", "wstr", "{618736E0-3C3D-11CF-810C-00AA00389B71}", "ptr", iid)
-        pointer := 0
-        if DllCall("oleacc\AccessibleObjectFromWindow", "ptr", hwnd, "uint", 0xFFFFFFFC,
-            "ptr", iid, "ptr*", &pointer, "int") != 0 || !pointer
-            return 0
-        root := ComValue(9, pointer, 1)
-        budget := 600
-        return FindZoomAccessibleNode(root, 0, pattern, 0, &budget)
-    }
-    return 0
+    result := ZoomUiAutomation(hwnd, pattern, false)
+    return result ? {Hwnd: hwnd, Pattern: pattern} : 0
 }
-FindZoomAccessibleNode(acc, child, pattern, depth, &budget) {
-    if budget <= 0 || depth > 12
-        return 0
-    budget -= 1
-    try {
-        ; Match buttons only. Never invoke controls by approximate position.
-        if ZoomAccessibleProperty(acc, child, 13) = 43 && !(ZoomAccessibleProperty(acc, child, 14) & 0x8001)
-            && RegExMatch(Trim(StrReplace(ZoomAccessibleProperty(acc, child, 10, true), "&")), pattern)
-            return {Acc: acc, Child: child}
-    }
-    if child != 0
-        return 0
-    try {
-        count := Min(ZoomAccessibleChildCount(acc), budget)
-        if count <= 0
-            return 0
-        size := 8 + 2 * A_PtrSize
-        children := Buffer(count * size, 0)
-        obtained := 0
-        ; Child objects are returned as IDispatch. Query the IAccessible
-        ; interface explicitly before passing it to the native enumeration API.
-        container := ComObjQuery(acc, "{618736E0-3C3D-11CF-810C-00AA00389B71}")
-        if DllCall("oleacc\AccessibleChildren", "ptr", container.Ptr, "int", 0,
-            "int", count, "ptr", children, "int*", &obtained, "int") < 0
-            return 0
-        result := 0
-        Loop obtained {
-            offset := (A_Index - 1) * size
-            type := NumGet(children, offset, "ushort")
-            try {
-                if !result && type = 9 {
-                    ; Transfer the child's COM reference to an owning wrapper.
-                    pointer := NumGet(children, offset + 8, "ptr")
-                    NumPut "ptr", 0, children, offset + 8
-                    node := ComValue(9, pointer, 1)
-                    result := FindZoomAccessibleNode(node, 0, pattern, depth + 1, &budget)
-                } else if !result && type = 3
-                    result := FindZoomAccessibleNode(acc, NumGet(children, offset + 8, "int"), pattern, depth + 1, &budget)
-            } finally {
-                DllCall("oleaut32\VariantClear", "ptr", children.Ptr + offset)
+InvokeZoomAccessibleButton(button) {
+    if !ZoomUiAutomation(button.Hwnd, button.Pattern, true)
+        throw Error("Zoom's requested button was not available. Use Zoom's own window controls and try again.")
+}
+ZoomUiAutomation(hwnd, pattern, invoke) {
+    ; Only fixed internal patterns and a numeric HWND enter this on-demand
+    ; Windows UI Automation bridge. No clipboard, titles, numbers, or Sheet code.
+    static script := A_Temp "\trigger-search-zoom-ui-" DllCall("GetCurrentProcessId") ".ps1"
+    static source := ""
+    if source = "" {
+        OnExit CleanupZoomUiScript.Bind(script)
+        source := '
+(
+param([UInt64]$Window, [string]$Pattern, [string]$ResultPath, [switch]$Invoke)
+$ErrorActionPreference = "Stop"
+$found = $false
+try {
+    Add-Type -AssemblyName UIAutomationClient
+    Add-Type -AssemblyName UIAutomationTypes
+    $root = [System.Windows.Automation.AutomationElement]::FromHandle([IntPtr]::new([Int64]$Window))
+    $condition = [System.Windows.Automation.PropertyCondition]::new(
+        [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
+        [System.Windows.Automation.ControlType]::Button)
+    $buttons = $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $condition)
+    foreach ($button in $buttons) {
+        $state = $button.Current
+        if ($state.IsEnabled -and -not $state.IsOffscreen -and $state.Name -match $Pattern) {
+            if ($Invoke) {
+                $action = $null
+                if ($button.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$action)) {
+                    $action.Invoke()
+                } elseif ($button.TryGetCurrentPattern([System.Windows.Automation.LegacyIAccessiblePattern]::Pattern, [ref]$action)) {
+                    $action.DoDefaultAction()
+                } else { break }
             }
+            $found = $true
+            break
         }
-        return result
     }
-    return 0
+} catch { $found = $false }
+# Fixed status only: never serialize accessible names or exception details.
+[System.IO.File]::WriteAllText($ResultPath, $(if ($found) { "FOUND" } else { "MISSING" }))
+)'
+    }
+    if !FileExist(script) || FileRead(script, "UTF-8") != source {
+        if FileExist(script)
+            FileDelete script
+        FileAppend source, script, "UTF-8-RAW"
+    }
+    response := A_Temp "\trigger-search-zoom-ui-result-" DllCall("GetCurrentProcessId") "-" A_TickCount ".txt"
+    pid := 0
+    try {
+        expression := RegExReplace(pattern, "^i\)", "(?i)")
+        powershell := A_WinDir "\System32\WindowsPowerShell\v1.0\powershell.exe"
+        command := '"' powershell '" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' script
+            . '" -Window ' Integer(hwnd) ' -Pattern "' expression '" -ResultPath "' response '"' (invoke ? " -Invoke" : "")
+        Run command, , "Hide", &pid
+        if !ProcessWaitClose(pid, 5) {
+            ProcessClose pid
+            throw Error("Zoom's window controls did not respond within five seconds. Trigger Search is still running.")
+        }
+        return FileExist(response) && Trim(FileRead(response, "UTF-8")) = "FOUND"
+    } finally {
+        if FileExist(response)
+            FileDelete response
+    }
 }
+
 TestZoomAccessibility() {
     ; Test lookup and invocation across processes, as with the actual Zoom app.
     script := A_Temp "\trigger-zoom-accessibility-fixture.ahk"
@@ -4296,50 +4328,7 @@ ZoomDirectionChord(command, left, right, up, down) {
 }
 
 
-; Call the IAccessible methods directly. Their child argument is a VT_I4
-; VARIANT passed by value; do not rely on IDispatch's property/method coercion.
-ZoomAccessibleCall(acc, child, method, output := 0) {
-    accessible := ComObjQuery(acc, "{618736E0-3C3D-11CF-810C-00AA00389B71}")
-    variant := Buffer(8 + 2 * A_PtrSize, 0)
-    NumPut "ushort", 3, variant, 0
-    NumPut "int", child, variant, 8
-    if A_PtrSize = 8 {
-        if output
-            ComCall method, accessible, "ptr", variant, "ptr", output
-        else
-            ComCall method, accessible, "ptr", variant
-    } else {
-        if output
-            ComCall method, accessible, "int64", NumGet(variant, 0, "int64"), "int64", NumGet(variant, 8, "int64"), "ptr", output
-        else
-            ComCall method, accessible, "int64", NumGet(variant, 0, "int64"), "int64", NumGet(variant, 8, "int64")
-    }
-}
-ZoomAccessibleProperty(acc, child, method, text := false) {
-    output := Buffer(text ? A_PtrSize : 8 + 2 * A_PtrSize, 0)
-    ZoomAccessibleCall acc, child, method, output.Ptr
-    if text {
-        pointer := NumGet(output, "ptr")
-        if !pointer
-            return ""
-        try {
-            return StrGet(pointer, "UTF-16")
-        } finally {
-            DllCall("oleaut32\SysFreeString", "ptr", pointer)
-        }
-    }
-    try {
-        return NumGet(output, "ushort") = 3 ? NumGet(output, 8, "int") : 0
-    } finally {
-        DllCall("oleaut32\VariantClear", "ptr", output)
-    }
-}
-ZoomAccessibleChildCount(acc) {
-    accessible := ComObjQuery(acc, "{618736E0-3C3D-11CF-810C-00AA00389B71}")
-    count := 0
-    ComCall 8, accessible, "int*", &count
-    return count
-}
-InvokeZoomAccessibleButton(button) {
-    ZoomAccessibleCall button.Acc, button.Child, 25
+
+CleanupZoomUiScript(path, *) {
+    try FileDelete path
 }
