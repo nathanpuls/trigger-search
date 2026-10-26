@@ -60,9 +60,17 @@ jobs:
           Remove-Item $result -ErrorAction SilentlyContinue
           $test = Start-Process `
             -FilePath $exe.FullName `
-            -ArgumentList @("$PWD\windows\autocomplete.ahk", "--self-test") `
-            -Wait `
+            -ArgumentList @('/ErrorStdOut=UTF-8', ('"' + "$PWD\windows\autocomplete.ahk" + '"'), '--self-test') `
+            -RedirectStandardOutput "$env:TEMP\trigger-self-test-output.txt" `
+            -RedirectStandardError "$env:TEMP\trigger-self-test-error.txt" `
             -PassThru
+          $null = $test.Handle
+          if (-not $test.WaitForExit(30000)) {
+            $test.Kill()
+            Get-Content "$env:TEMP\trigger-self-test-output.txt", "$env:TEMP\trigger-self-test-error.txt" -ErrorAction SilentlyContinue
+            throw 'AutoHotkey runtime smoke tests timed out.'
+          }
+          Get-Content "$env:TEMP\trigger-self-test-output.txt", "$env:TEMP\trigger-self-test-error.txt" -ErrorAction SilentlyContinue
           if (Test-Path $result) {
             Get-Content $result
           }
