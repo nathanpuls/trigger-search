@@ -12,9 +12,11 @@ global HelperActions := Map(
     "sid", Sid, "plan-navigation", PlanNavigation, "mse-navigation", MseNavigation,
     "hpi", Hpi, "launch-advancedmd", LaunchAdvancedMD, "morning-startup", MorningStartup,
     "blueprint", Blueprint, "it-ticket", ItTicket, "schedule-email", ScheduleEmail,
-    "copilot", Copilot, "espanso", Espanso, "copy-back", CopyBack, "join-zoom", JoinZoom)
+    "copilot", Copilot, "espanso", Espanso, "copy-back", CopyBack, "join-zoom", JoinZoom,
+    "end-zoom", EndZoom, "teams-call-clipboard", TeamsCallClipboard)
 if DryRun {
     TestZoomPlacement()
+    TestClipboardPhoneNumber()
     if RequiresOriginWindow("launch-advancedmd") || !RequiresOriginWindow("mse")
         ExitApp 1
     left := LeftmostDisplay([{Left: 1920, Top: 0, Right: 3840, Bottom: 1080},
@@ -53,7 +55,7 @@ try {
     HelperActions[A_Args[2]].Call()
 } catch as problem {
     ; Fixed error messages only; no window titles or clipboard contents are logged.
-    MsgBox problem.Message, "Trigger Search 0.16.17 — " A_Args[2]
+    MsgBox problem.Message, "Trigger Search 0.16.18 — " A_Args[2]
 } finally {
     DllCall("CloseHandle", "ptr", mutex)
 }
@@ -459,6 +461,7 @@ RequiresOriginWindow(action) {
     ; Opening AMD activates its own identified login window. The launcher may
     ; have started it from any application. Form-filling actions retain focus checks.
     return action != "launch-advancedmd" && action != "join-zoom"
+        && action != "end-zoom" && action != "teams-call-clipboard"
 }
 
 JoinZoom() {
@@ -581,4 +584,71 @@ TestZoomPlacement() {
         || ValidZoomMeetingUrl("https://example.com/j/123")
         || ValidZoomMeetingUrl("https://zoom.us.example.com/my/example.user")
         throw Error("Only Zoom meeting links may be launched.")
+}
+
+
+EndZoom() {
+    global DryRun, Steps
+    if DryRun {
+        Steps.Push(["Close", "Zoom.exe only"])
+        return
+    }
+    ; Preserve Nathan's original force-close behavior, but never the broad
+    ; *Zoom* wildcard. Verify executable name on the SAME process handle used
+    ; for termination so PID reuse cannot target an unrelated application.
+    failures := 0
+    service := ComObjGet("winmgmts:")
+    for process in service.ExecQuery("SELECT ProcessId FROM Win32_Process WHERE Name='Zoom.exe'") {
+        handle := DllCall("OpenProcess", "uint", 0x1001, "int", 0, "uint", process.ProcessId, "ptr")
+        if !handle {
+            if ProcessExist(process.ProcessId)
+                failures += 1
+            continue
+        }
+        try {
+            capacity := 32768
+            path := Buffer(capacity * 2)
+            if !DllCall("QueryFullProcessImageNameW", "ptr", handle, "uint", 0, "ptr", path, "uint*", &capacity)
+                failures += 1
+            else if RegExMatch(StrGet(path, capacity, "UTF-16"), "i)\\Zoom\.exe$") {
+                if !DllCall("TerminateProcess", "ptr", handle, "uint", 0)
+                    failures += 1
+            }
+        } finally {
+            DllCall("CloseHandle", "ptr", handle)
+        }
+    }
+    if failures
+        throw Error("Some Zoom processes could not be closed. Close Zoom normally; no other applications were stopped.")
+}
+ClipboardPhoneNumber(text) {
+    ; Accept one phone number, not a note containing several numbers. Preserve
+    ; the original script's 10-15 digit range and tel: default-app routing.
+    text := Trim(text)
+    if !RegExMatch(text, "^\+?[0-9() .-]+$")
+        return ""
+    digits := RegExReplace(text, "\D")
+    return RegExMatch(digits, "^[0-9]{10,15}$") ? digits : ""
+}
+TeamsCallClipboard() {
+    global DryRun, Steps
+    if DryRun {
+        Steps.Push(["Dial", "tel: validated clipboard number"])
+        return
+    }
+    number := ClipboardPhoneNumber(A_Clipboard)
+    if number = ""
+        throw Error("Copy one phone number first (10-15 digits). Letters, extensions, and multiple numbers are not accepted.")
+    ; Teams must be the Dell's default TEL handler, matching the working Raycast
+    ; script. Do not log or save the clipboard or number, or launch a browser URL.
+    Run "tel:" number
+}
+TestClipboardPhoneNumber() {
+    if ClipboardPhoneNumber("(202) 555-0123") != "2025550123"
+        || ClipboardPhoneNumber("+44 20 7946 0123") != "442079460123"
+        || ClipboardPhoneNumber("123") != ""
+        || ClipboardPhoneNumber("2025550123 2025550124") != ""
+        || ClipboardPhoneNumber("Call patient 2025550123") != ""
+        || ClipboardPhoneNumber("2025550123 ext 42") != ""
+        throw Error("Clipboard calling must accept a single formatted number and reject notes, extensions, or multiple numbers.")
 }

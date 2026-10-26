@@ -3,7 +3,7 @@
 Persistent
 
 ; Trigger Search Windows client
-global AppVersion := "0.16.17"
+global AppVersion := "0.16.18"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -49,6 +49,8 @@ global AutomationRegistry := Map(
     "dell.espanso", {File: "dell/helpers.ahk", Action: "espanso"},
     "dell.copy-back", {File: "dell/helpers.ahk", Action: "copy-back"},
     "zoom.join", {File: "dell/helpers.ahk", Action: "join-zoom"},
+    "zoom.end", {File: "dell/helpers.ahk", Action: "end-zoom"},
+    "teams.call-clipboard", {File: "dell/helpers.ahk", Action: "teams-call-clipboard"},
     "clipboard.store", {File: "", Action: "builtin:clipboard-store"},
     "clipboard.paste", {File: "", Action: "builtin:clipboard-paste"},
     "keyboard.remaps", {File: "", Action: "builtin:remaps"},
@@ -123,16 +125,18 @@ if KeyboardTestMode {
 !Right::ZoomWindowCommand("right")
 !Up::ZoomWindowCommand("up")
 !Down::ZoomWindowCommand("down")
-!1::ZoomWindowCommand("1")
 !2::ZoomWindowCommand("2")
 !3::ZoomWindowCommand("3")
 !4::ZoomWindowCommand("4")
 !5::ZoomWindowCommand("5")
+!6::ZoomWindowCommand("6")
 #HotIf
 
 ; These shortcuts replace the corresponding Dell listeners only in managed installs.
 #HotIf ManagedAutomationsAvailable() && !IsTriggerSearchOpen()
 !z::RunAutomation("zoom.join")
+!1::RunAutomation("zoom.end")
+!p::RunAutomation("teams.call-clipboard")
 !o::RunAutomation("advancedmd.follow-up-office")
 !t::RunAutomation("advancedmd.follow-up-tele")
 !0::RunAutomation("advancedmd.intake-office")
@@ -3985,9 +3989,9 @@ ZoomControlBounds(area, x, y, width, height, command) {
         case "up-right": horizontal := 2, vertical := 0
         case "down-left": horizontal := 0, vertical := 2
         case "down-right": horizontal := 2, vertical := 2
-        case "2": width := 640, height := 480
-        case "3": width := 960, height := 720
-        case "4": width := 1280, height := 960
+        case "3": width := 640, height := 480
+        case "4": width := 960, height := 720
+        case "5": width := 1280, height := 960
         default: throw Error("Unknown Zoom window command.")
     }
     width := Min(width, availableWidth), height := Min(height, availableHeight)
@@ -4020,17 +4024,17 @@ ZoomWindowCommand(command) {
             return
         window := "ahk_id " hwnd
         thumbnail := ZoomThumbnailButton(hwnd)
-        if command = "1" {
+        if command = "2" {
             if !thumbnail
                 EnterZoomThumbnail hwnd
             return
         }
         ; Direction keys move the thumbnail itself; size keys expand it first.
-        if thumbnail && RegExMatch(command, "^[2-5]$") {
+        if thumbnail && RegExMatch(command, "^[3-6]$") {
             hwnd := RestoreZoomThumbnail(hwnd, thumbnail)
             window := "ahk_id " hwnd
         }
-        if command = "5" {
+        if command = "6" {
             WinMaximize window
             return
         }
@@ -4072,9 +4076,9 @@ TestZoomWindowControls() {
     Assert b.Vertical = 1 && b.Horizontal = 0, "Zoom arrows move independently through a three-by-three grid."
     b := ZoomControlBounds(area, b.X, b.Y, b.Width, b.Height, "down")
     Assert b.Y = 536, "A second down press reaches the bottom."
-    b := ZoomControlBounds(area, b.X, b.Y, b.Width, b.Height, "3")
+    b := ZoomControlBounds(area, b.X, b.Y, b.Width, b.Height, "4")
     Assert b.X = area.Left && b.Y = 296 && b.Width = 960 && b.Height = 720, "Zoom resizing preserves bottom-left anchor."
-    b := ZoomControlBounds({Left: 24, Top: 64, Right: 576, Bottom: 416}, 24, 64, 552, 352, "4")
+    b := ZoomControlBounds({Left: 24, Top: 64, Right: 576, Bottom: 416}, 24, 64, 552, 352, "5")
     Assert b.Width = 552 && b.Height = 352, "Zoom size presets fit small work areas."
     Assert !ZoomControlCandidate("Zoom Workplace", "HomeWindow") && ZoomControlCandidate("Zoom Meeting", "MeetingWindow"),
         "Zoom controls must not intercept shortcuts in the home window."
@@ -4238,20 +4242,42 @@ FindZoomAccessibleNode(acc, child, pattern, depth, &budget) {
     return 0
 }
 TestZoomAccessibility() {
-    fixture := Gui("+ToolWindow", "Trigger Search accessibility fixture")
-    counter := {Count: 0}
-    fixture.AddButton("w200", "Show full meeting window").OnEvent("Click", (*) => counter.Count += 1)
-    fixture.AddButton("w200", "End meeting").OnEvent("Click", (*) => counter.Count += 100)
-    fixture.Show("NA w240 h120")
+    ; Test against another process, as in production. Querying MSAA on this
+    ; script's own GUI can deadlock its STA message thread.
+    script := A_Temp "\trigger-zoom-accessibility-fixture.ahk"
+    result := A_Temp "\trigger-zoom-accessibility-fixture.txt"
+    if FileExist(result)
+        FileDelete result
+    if FileExist(script)
+        FileDelete script
+    code := "#Requires AutoHotkey v2.0`n#SingleInstance Off`n"
+        . 'g := Gui(, "Trigger Search accessibility fixture")' "`n"
+        . 'g.AddButton("w200", "Show full meeting window").OnEvent("Click", (*) => FileAppend("expanded", A_Temp "\trigger-zoom-accessibility-fixture.txt", "UTF-8-RAW"))' "`n"
+        . 'g.AddButton("w200", "End meeting").OnEvent("Click", (*) => FileAppend("ended", A_Temp "\trigger-zoom-accessibility-fixture.txt", "UTF-8-RAW"))' "`n"
+        . 'g.OnEvent("Close", (*) => ExitApp())' "`n"
+        . 'g.Show("NA w240 h120")' "`n"
+    FileAppend code, script, "UTF-8-RAW"
+    fixturePid := 0
     try {
-        button := FindZoomAccessibilityButton(fixture.Hwnd, "i)^Show full meeting window$")
+        Run '"' A_AhkPath '" /ErrorStdOut=UTF-8 "' script '"', , , &fixturePid
+        hwnd := WinWait("Trigger Search accessibility fixture ahk_pid " fixturePid, , 5)
+        Assert hwnd != 0, "The isolated accessibility fixture must open."
+        button := FindZoomAccessibilityButton(hwnd, "i)^Show full meeting window$")
         Assert IsObject(button), "Find the exact thumbnail expansion button using real Windows accessibility."
         button.Acc.accDoDefaultAction(button.Child)
-        Sleep 100
-        Assert counter.Count = 1, "Invoke only the expansion button, never End meeting."
-        Assert !FindZoomAccessibilityButton(fixture.Hwnd, "i)^Minimize$"), "A missing control must not trigger a guessed click."
+        deadline := A_TickCount + 2000
+        while !FileExist(result) && A_TickCount < deadline
+            Sleep 50
+        Assert FileExist(result) && FileRead(result, "UTF-8") = "expanded",
+            "Invoke only the expansion button, never End meeting."
+        Assert !FindZoomAccessibilityButton(hwnd, "i)^Minimize$"), "A missing control must not trigger a guessed click."
     } finally {
-        fixture.Destroy()
+        if fixturePid && ProcessExist(fixturePid)
+            ProcessClose fixturePid
+        if FileExist(script)
+            FileDelete script
+        if FileExist(result)
+            FileDelete result
     }
 }
 

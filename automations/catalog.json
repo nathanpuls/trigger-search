@@ -160,5 +160,17 @@
     "refresh, update scripts, refresh all scripts",
     "Update approved GitHub code, validate, and restart Trigger Search. Shortcut: tray Refresh all scripts.",
     "trigger-search.refresh-all"
+  ],
+  [
+    "End Zoom",
+    "end zoom, close zoom",
+    "Force-close Zoom.exe, ending any active call. Shortcut: Alt + 1.",
+    "zoom.end"
+  ],
+  [
+    "Teams Call from Clipboard",
+    "phone, call, teams call",
+    "Call one copied phone number through the Windows TEL handler (set it to Teams). Shortcut: Alt + P.",
+    "teams.call-clipboard"
   ]
 ]

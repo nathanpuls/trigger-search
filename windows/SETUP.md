@@ -323,7 +323,7 @@ restart, and rollback support. It refreshes code; Ctrl+R still refreshes Sheet
 data in place. Sheet rows cannot supply arbitrary update commands.
 
 
-## Zoom keyboard controls (0.16.17)
+## Zoom keyboard controls (0.16.18)
 
 Remove **Alt+Z** from the Dell Raycast Join Zoom command before using it here.
 Trigger Search cannot edit the Dell's Raycast settings remotely. Keep Raycast's
@@ -341,21 +341,21 @@ With the Zoom meeting or its floating video focused, hold Alt and use:
 | Left / Right | One horizontal step: left, center, right |
 | Up / Down | One vertical step: top, middle, bottom |
 | Left+Up / Right+Up / Left+Down / Right+Down | Snap directly to that corner |
-| 1 | Zoom's native tiny floating video thumbnail |
-| 2 | Small regular window: request 640 x 480 |
-| 3 | Medium: request 960 x 720 |
-| 4 | Large: request 1280 x 960 |
-| 5 | Maximize (not Zoom fullscreen) |
+| 2 | Zoom's native tiny floating video thumbnail |
+| 3 | Small regular window: request 640 x 480 |
+| 4 | Medium: request 960 x 720 |
+| 5 | Large: request 1280 x 960 |
+| 6 | Maximize (not Zoom fullscreen) |
 
-Alt+1 invokes Zoom's own Minimize button through Windows accessibility, with a
+Alt+2 invokes Zoom's own Minimize button through Windows accessibility, with a
 native title-bar system-command fallback. It positively identifies the resulting
 thumbnail by its **Show full meeting window** button (also accepts Exit minimized
 video / Exit mini window / Restore full meeting window). If no supported visible
 thumbnail appears within two seconds, it restores the main meeting and reports
 the issue. It never substitutes a small regular window or silently leaves the
-meeting hidden. Repeating Alt+1 while in thumbnail mode leaves it there.
+meeting hidden. Repeating Alt+2 while in thumbnail mode leaves it there.
 
-Arrows move the thumbnail itself without resizing it. Alt+2–5 invoke its expansion
+Arrows move the thumbnail itself without resizing it. Alt+3–6 invoke its expansion
 button first, then size the full meeting window. Alt+Z focuses an existing
 thumbnail without expanding it. **Alt+M is no longer intercepted** and retains
 Zoom's native behavior. The controls require English accessibility button names;
@@ -374,9 +374,9 @@ Zoom home/settings/chat windows are excluded. **Outside Zoom, Alt+4 keeps AMD
 plan navigation and Alt+5 keeps stored-clipboard paste.** Exit Zoom fullscreen
 before arranging it if needed.
 
-Dell check: refresh and confirm tray version **0.16.17**. During a test meeting,
-try Alt+1: video must remain visible in Zoom's native tiny window. Then focus it
-with Alt+Z, move it with arrows, and test Alt+2–5 to expand it. Repeat after a
+Dell check: refresh and confirm tray version **0.16.18**. During a test meeting,
+try Alt+2: video must remain visible in Zoom's native tiny window. Then focus it
+with Alt+Z, move it with arrows, and test Alt+3–6 to expand it. Repeat after a
 Trigger Search refresh while already in thumbnail mode. Confirm ordinary chat
 typing, Alt+4 in AMD, and Alt+5 clipboard paste outside Zoom still work. Test both
 monitors. Automated Windows checks cover geometry, accessibility button lookup
@@ -384,3 +384,32 @@ and invocation on a harmless fixture, syntax, and the existing updater/rollback
 suite; they cannot verify Zoom's actual accessible control names on your Dell.
 Use **Rollback.cmd** to return to the previous release. Restore Raycast's Alt+Z
 assignment too if reverting ownership.
+
+
+## End Zoom and clipboard calls (0.16.18)
+
+Remove the Dell Raycast assignments **Alt+1** (End Zoom), **Alt+P** (Teams Call
+from Clipboard), and **Alt+Z** (Join Zoom) before using the Trigger Search
+versions. Raycast's other commands and snippets are unchanged.
+
+- **Alt+1**, or searchable **End Zoom** (`zoom.end`), immediately force-closes
+  processes whose executable is exactly `Zoom.exe`, ending any active Zoom call
+  without an End/Leave confirmation. This preserves the supplied script's
+  behavior but excludes unrelated processes whose name merely contains Zoom.
+  Process identity is checked using the same native handle used to stop it.
+- **Alt+P**, or searchable **Teams Call from Clipboard**
+  (`teams.call-clipboard`), takes one formatted 10–15 digit phone number from the
+  clipboard and opens `tel:<digits>`, matching the supplied Raycast script.
+  **Teams must be the Windows default for TEL links.** This does not force Teams
+  if Windows has a different default. The clipboard remains unchanged, and no
+  number or clipboard contents are saved or logged. Notes, letters, extensions,
+  multiple numbers, and empty/short/long input are rejected before opening a
+  link. Review the number in the calling app before placing the call.
+
+The supplied Raycast PowerShell versions are retained under
+`integrations/raycast/originals/`. Their existing behavior is documented; they
+are reference copies and are not launched by the updater or installed into
+Raycast. Trigger Search dispatches the maintained AutoHotkey implementations in
+`automations/dell/helpers.ahk`. Both commands run on demand, without another
+resident script or tray icon. No real Zoom call was ended or phone number dialed
+in automated tests.
