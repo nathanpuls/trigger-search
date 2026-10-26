@@ -3372,16 +3372,23 @@ RunAutomation(scriptId, choice := 0) {
 }
 
 CopyLatestInboxNow(*) {
-    global Snippets
+    global Snippets, ChooserGui, ChooserOpen, TargetWindow
     if !RefreshInboxLive()
         return
     choice := LatestInboxChoice()
-    if !choice {
+    if !choice || Trim(choice.Content) = "" {
         TrayTip "Inbox has no usable item.", "Trigger Search"
         return
     }
     expanded := ExpandDynamicContent(choice.Content, A_Clipboard)
     A_Clipboard := expanded.Text
+    if ChooserOpen {
+        HideModifierHud()
+        ChooserGui.Hide()
+        ChooserOpen := false
+        if TargetWindow && WinExist("ahk_id " TargetWindow)
+            try WinActivate "ahk_id " TargetWindow
+    }
     TrayTip "Latest Inbox item copied.", "Trigger Search"
 }
 

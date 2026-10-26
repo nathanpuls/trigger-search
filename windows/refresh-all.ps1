@@ -120,6 +120,7 @@ try {
         Stop-ManagedLauncher
         Write-State $previous $statePath
         Write-State $current $previousPath
+        Copy-Item -LiteralPath (Join-Path $directory 'windows/refresh-all.ps1') -Destination (Join-Path $InstallRoot 'refresh-all.ps1') -Force
         if (-not $NoStart) { Start-Release $previous }
         Write-Host "Rolled back to $($previous.commit)."
         return
@@ -149,7 +150,7 @@ try {
         Move-Item -LiteralPath $stage -Destination $release
         $stage = $null
     }
-    $next = @{ commit = $commit; ref = $Ref; autoHotkeyPath = $AutoHotkeyPath }
+    $next = [ordered]@{ commit = $commit; ref = $Ref; autoHotkeyPath = $AutoHotkeyPath }
     Stop-ManagedLauncher
     try {
         if ($current -and $current.commit -ne $commit) { Write-State $current $previousPath }
