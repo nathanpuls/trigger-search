@@ -2,8 +2,8 @@
 #SingleInstance Force
 Persistent
 
-; Sheet Autocomplete version 0.16.3
-global AppVersion := "0.16.3"
+; Sheet Autocomplete version 0.16.4
+global AppVersion := "0.16.4"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -608,17 +608,28 @@ HandleGuiKeyDown(wParam, lParam, msg, hwnd) {
 }
 
 RefreshAndReopen(*) {
-    global Refreshing, ChooserOpen
+    global Refreshing, ChooserOpen, FooterText, SearchBox, LastRefreshError
     if !ChooserOpen
         return
     if Refreshing {
         TrayTip "A Sheet refresh is already running.", "Trigger Search"
         return
     }
-    CancelChooser()
-    TrayTip "Refreshing the Sheet…", "Trigger Search"
-    RefreshData(true)
-    ShowChooser()
+
+    ; RefreshData updates the visible results through RefreshOpenChooser.
+    ; Keep the original target window, query, selection, and GUI position.
+    HideModifierHud()
+    FooterText.Text := "Refreshing the Sheet…"
+    try {
+        RefreshData(true)
+    } finally {
+        if ChooserOpen {
+            FooterText.Text := LastRefreshError != ""
+                ? "Refresh failed — Ctrl+R to retry"
+                : "Ctrl+R  Refresh now"
+            SearchBox.Focus()
+        }
+    }
 }
 
 ManualRefresh(*) {
