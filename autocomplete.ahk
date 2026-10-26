@@ -3,7 +3,7 @@
 Persistent
 
 ; Trigger Search Windows client
-global AppVersion := "0.16.16"
+global AppVersion := "0.16.17"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -116,7 +116,8 @@ if KeyboardTestMode {
 !i::SendClipboardToInbox()
 
 ; Keep this variant before the general Alt+4 AMD binding: Zoom owns it only
-; while an actual meeting is focused. Ordinary typing and arrows are untouched.
+; while an actual meeting is focused. Alt+5 also overrides clipboard paste only
+; in a focused meeting. Ordinary typing and arrows are untouched.
 #HotIf ManagedAutomationsAvailable() && !IsTriggerSearchOpen() && ActiveZoomMeeting()
 !Left::ZoomWindowCommand("left")
 !Right::ZoomWindowCommand("right")
@@ -126,7 +127,7 @@ if KeyboardTestMode {
 !2::ZoomWindowCommand("2")
 !3::ZoomWindowCommand("3")
 !4::ZoomWindowCommand("4")
-!m::ZoomWindowCommand("minimize")
+!5::ZoomWindowCommand("5")
 #HotIf
 
 ; These shortcuts replace the corresponding Dell listeners only in managed installs.
@@ -2607,6 +2608,7 @@ RunSelfTests() {
     TestInboxWriter()
     TestKeyboardRemaps()
     TestZoomWindowControls()
+    TestZoomAccessibility()
     automationRows := ParseCsv('Name,Alias,Description,Script ID`n'
         . 'Office visit,of,Office follow up,advancedmd.follow-up-office`n'
         . 'Renamed duplicate,other,Duplicate,advancedmd.follow-up-office`n'
@@ -3552,7 +3554,12 @@ RunAutomation(scriptId, choice := 0) {
             RunBuiltinAutomation entry.Action
         else {
             arguments := entry.Action != "" ? ' "' entry.Action '"' : ""
-            Run '"' A_AhkPath '" "' path '" ' target arguments
+            ; Alt+Z and the searchable action focus an existing thumbnail as-is.
+            mini := scriptId = "zoom.join" ? FindZoomThumbnail() : 0
+            if mini
+                WinActivate mini.Hwnd
+            else
+                Run '"' A_AhkPath '" "' path '" ' target arguments
         }
         if choice
             RecordRecent choice
@@ -3942,7 +3949,7 @@ ActiveZoomMeeting() {
     if !hwnd
         return 0
     try {
-        return ZoomControlCandidate(WinGetTitle("ahk_id " hwnd), WinGetClass("ahk_id " hwnd)) ? hwnd : 0
+        return ZoomControlCandidate(WinGetTitle(hwnd), WinGetClass(hwnd)) || ZoomThumbnailButton(hwnd) ? hwnd : 0
     }
     return 0
 }
@@ -3974,9 +3981,13 @@ ZoomControlBounds(area, x, y, width, height, command) {
         case "right": horizontal := Min(2, horizontal + 1)
         case "up": vertical := Max(0, vertical - 1)
         case "down": vertical := Min(2, vertical + 1)
-        case "1": width := 640, height := 480
-        case "2": width := 960, height := 720
-        case "3": width := 1280, height := 960
+        case "up-left": horizontal := 0, vertical := 0
+        case "up-right": horizontal := 2, vertical := 0
+        case "down-left": horizontal := 0, vertical := 2
+        case "down-right": horizontal := 2, vertical := 2
+        case "2": width := 640, height := 480
+        case "3": width := 960, height := 720
+        case "4": width := 1280, height := 960
         default: throw Error("Unknown Zoom window command.")
     }
     width := Min(width, availableWidth), height := Min(height, availableHeight)
@@ -3993,12 +4004,33 @@ ZoomWindowCommand(command) {
         return
     busy := true
     try {
+        if RegExMatch(command, "^(left|right|up|down)$") {
+            ; Capture both key-down orders. The second hotkey may be suppressed
+            ; by busy, but its physical key state is still sampled here.
+            left := command = "left" || GetKeyState("Left", "P")
+            right := command = "right" || GetKeyState("Right", "P")
+            up := command = "up" || GetKeyState("Up", "P")
+            down := command = "down" || GetKeyState("Down", "P")
+            Sleep 45
+            command := ZoomDirectionChord(command, left || GetKeyState("Left", "P"),
+                right || GetKeyState("Right", "P"), up || GetKeyState("Up", "P"), down || GetKeyState("Down", "P"))
+        }
+        ; Do not move a window if the user switched applications during sampling.
+        if ActiveZoomMeeting() != hwnd
+            return
         window := "ahk_id " hwnd
-        if command = "minimize" {
-            WinMinimize window
+        thumbnail := ZoomThumbnailButton(hwnd)
+        if command = "1" {
+            if !thumbnail
+                EnterZoomThumbnail hwnd
             return
         }
-        if command = "4" {
+        ; Direction keys move the thumbnail itself; size keys expand it first.
+        if thumbnail && RegExMatch(command, "^[2-5]$") {
+            hwnd := RestoreZoomThumbnail(hwnd, thumbnail)
+            window := "ahk_id " hwnd
+        }
+        if command = "5" {
             WinMaximize window
             return
         }
@@ -4017,23 +4049,214 @@ ZoomWindowCommand(command) {
         WinMove area.Left + Round(Max(0, area.Right - area.Left - actualWidth) * bounds.Horizontal / 2),
             area.Top + Round(Max(0, area.Bottom - area.Top - actualHeight) * bounds.Vertical / 2), , , window
     } catch as problem {
-        TrayTip "Could not arrange Zoom. Exit Zoom fullscreen and try again.", "Trigger Search"
+        TrayTip problem.Message, "Trigger Search Zoom"
     } finally {
         busy := false
     }
 }
 TestZoomWindowControls() {
     area := {Left: -1896, Top: 24, Right: -24, Bottom: 1016}
+    for direction in ["left", "up"] {
+        chord := ZoomDirectionChord(direction, true, false, true, false)
+        corner := ZoomControlBounds(area, -664, 536, 640, 480, chord)
+        Assert corner.X = area.Left && corner.Y = area.Top,
+            "Either key-down order of Left+Up must snap directly from bottom right to top left."
+    }
+    for keys in [[false, true, true, false, "up-right"], [true, false, false, true, "down-left"],
+        [false, true, false, true, "down-right"]]
+        Assert ZoomDirectionChord("left", keys[1], keys[2], keys[3], keys[4]) = keys[5], "All four diagonal chords must be supported."
+    Assert ZoomDirectionChord("left", true, true, true, false) = "left", "Opposing arrow keys must not invent a diagonal."
     b := ZoomControlBounds(area, -1280, 24, 640, 480, "left")
     Assert b.X = -1896 && b.Y = 24 && b.Width = 640, "Zoom left preserves size and top anchor on a negative-coordinate monitor."
     b := ZoomControlBounds(area, b.X, b.Y, b.Width, b.Height, "down")
     Assert b.Vertical = 1 && b.Horizontal = 0, "Zoom arrows move independently through a three-by-three grid."
     b := ZoomControlBounds(area, b.X, b.Y, b.Width, b.Height, "down")
     Assert b.Y = 536, "A second down press reaches the bottom."
-    b := ZoomControlBounds(area, b.X, b.Y, b.Width, b.Height, "2")
+    b := ZoomControlBounds(area, b.X, b.Y, b.Width, b.Height, "3")
     Assert b.X = area.Left && b.Y = 296 && b.Width = 960 && b.Height = 720, "Zoom resizing preserves bottom-left anchor."
-    b := ZoomControlBounds({Left: 24, Top: 64, Right: 576, Bottom: 416}, 24, 64, 552, 352, "3")
+    b := ZoomControlBounds({Left: 24, Top: 64, Right: 576, Bottom: 416}, 24, 64, 552, 352, "4")
     Assert b.Width = 552 && b.Height = 352, "Zoom size presets fit small work areas."
     Assert !ZoomControlCandidate("Zoom Workplace", "HomeWindow") && ZoomControlCandidate("Zoom Meeting", "MeetingWindow"),
         "Zoom controls must not intercept shortcuts in the home window."
+}
+
+
+; Use Windows accessibility to identify Zoom's documented thumbnail expansion
+; button, not guessed window classes, screen coordinates, or a tiny resized main
+; window. English button names only. No UI text is saved or logged.
+ZoomThumbnailButton(hwnd) {
+    static cache := Map()
+    try {
+        pid := WinGetPID(hwnd)
+        if cache.Has(hwnd) && cache[hwnd].Pid = pid && A_TickCount - cache[hwnd].Tick < 500
+            return cache[hwnd].Button
+        button := FindZoomAccessibilityButton(hwnd, "i)^(Show full meeting window|Exit minimi[sz]ed video|Exit mini window|Restore full meeting window)$")
+        if cache.Count > 32
+            cache.Clear()
+        cache[hwnd] := {Pid: pid, Tick: A_TickCount, Button: button}
+        return button
+    }
+    return 0
+}
+FindZoomThumbnail(pid := 0) {
+    for hwnd in WinGetList("ahk_exe Zoom.exe") {
+        try {
+            if pid && WinGetPID(hwnd) != pid
+                continue
+            if WinGetMinMax(hwnd) = -1
+                continue
+            if button := ZoomThumbnailButton(hwnd)
+                return {Hwnd: hwnd, Button: button}
+        }
+    }
+    return 0
+}
+FindZoomMainWindow(pid) {
+    previous := DetectHiddenWindows(true)
+    try {
+        for hwnd in WinGetList("ahk_exe Zoom.exe ahk_pid " pid) {
+            try {
+                if ZoomControlCandidate(WinGetTitle(hwnd), WinGetClass(hwnd)) && !ZoomThumbnailButton(hwnd)
+                    return hwnd
+            }
+        }
+    } finally {
+        DetectHiddenWindows previous
+    }
+    return 0
+}
+EnterZoomThumbnail(hwnd) {
+    pid := WinGetPID(hwnd)
+    WinGetPos &x, &y, &width, &height, hwnd
+    area := ZoomControlArea(x, y, width, height)
+    horizontal := ZoomControlAnchor(x, area.Left, area.Right - area.Left, width)
+    vertical := ZoomControlAnchor(y, area.Top, area.Bottom - area.Top, height)
+    button := FindZoomAccessibilityButton(hwnd, "i)^(Minimi[sz]e|Minimi[sz]e meeting|Minimi[sz]e window)$")
+    if button
+        button.Acc.accDoDefaultAction(button.Child)
+    else
+        ; Deliver the same system command as the native title-bar minimize
+        ; button, allowing Zoom to handle its own thumbnail mode.
+        PostMessage 0x0112, 0xF020, 0, , hwnd
+    deadline := A_TickCount + 2000
+    while A_TickCount < deadline {
+        if mini := FindZoomThumbnail(pid) {
+            WinGetPos , , &w, &h, mini.Hwnd
+            WinMove area.Left + Round(Max(0, area.Right - area.Left - w) * horizontal / 2),
+                area.Top + Round(Max(0, area.Bottom - area.Top - h) * vertical / 2), , , mini.Hwnd
+            WinActivate mini.Hwnd
+            return
+        }
+        Sleep 100
+    }
+    ; Never silently leave the call hidden when the requested visible thumbnail
+    ; could not be positively identified. Restore the original main window.
+    WinShow hwnd
+    WinRestore hwnd
+    WinActivate hwnd
+    throw Error("Could not confirm Zoom's floating video. The main window was restored. Try Zoom's minimize button; its thumbnail control may differ on this version.")
+}
+RestoreZoomThumbnail(hwnd, button) {
+    pid := WinGetPID(hwnd)
+    WinGetPos &x, &y, &width, &height, hwnd
+    area := ZoomControlArea(x, y, width, height)
+    horizontal := ZoomControlAnchor(x, area.Left, area.Right - area.Left, width)
+    vertical := ZoomControlAnchor(y, area.Top, area.Bottom - area.Top, height)
+    button.Acc.accDoDefaultAction(button.Child)
+    deadline := A_TickCount + 2000
+    while A_TickCount < deadline {
+        main := FindZoomMainWindow(pid)
+        if main && DllCall("IsWindowVisible", "ptr", main) && WinGetMinMax(main) != -1 {
+            WinActivate main
+            if !WinWaitActive("ahk_id " main, , 1)
+                throw Error("Zoom did not focus the full meeting window. Use its Show full meeting window button.")
+            WinRestore main
+            WinGetPos , , &w, &h, main
+            WinMove area.Left + Round(Max(0, area.Right - area.Left - w) * horizontal / 2),
+                area.Top + Round(Max(0, area.Bottom - area.Top - h) * vertical / 2), , , main
+            return main
+        }
+        Sleep 100
+    }
+    throw Error("Zoom did not expand its thumbnail. Use its Show full meeting window button, then try the size key again.")
+}
+FindZoomAccessibilityButton(hwnd, pattern) {
+    try {
+        iid := Buffer(16)
+        DllCall("ole32\CLSIDFromString", "wstr", "{618736E0-3C3D-11CF-810C-00AA00389B71}", "ptr", iid)
+        pointer := 0
+        if DllCall("oleacc\AccessibleObjectFromWindow", "ptr", hwnd, "uint", 0xFFFFFFFC,
+            "ptr", iid, "ptr*", &pointer, "int") != 0 || !pointer
+            return 0
+        root := ComValue(9, pointer, 1)
+        budget := 600
+        return FindZoomAccessibleNode(root, 0, pattern, 0, &budget)
+    }
+    return 0
+}
+FindZoomAccessibleNode(acc, child, pattern, depth, &budget) {
+    if budget <= 0 || depth > 12
+        return 0
+    budget -= 1
+    try {
+        ; Match buttons only. Never invoke controls by approximate position.
+        if acc.accRole(child) = 43 && !(acc.accState(child) & 0x8001)
+            && RegExMatch(Trim(StrReplace(acc.accName(child), "&")), pattern)
+            return {Acc: acc, Child: child}
+    }
+    if child != 0
+        return 0
+    try {
+        count := Min(acc.accChildCount, budget)
+        if count <= 0
+            return 0
+        size := 8 + 2 * A_PtrSize
+        children := Buffer(count * size, 0)
+        obtained := 0
+        if DllCall("oleacc\AccessibleChildren", "ptr", ComObjValue(acc), "int", 0,
+            "int", count, "ptr", children, "int*", &obtained, "int") < 0
+            return 0
+        result := 0
+        Loop obtained {
+            offset := (A_Index - 1) * size
+            type := NumGet(children, offset, "ushort")
+            try {
+                if !result && type = 9 {
+                    ; Transfer the child's COM reference to an owning wrapper.
+                    pointer := NumGet(children, offset + 8, "ptr")
+                    NumPut "ptr", 0, children, offset + 8
+                    node := ComValue(9, pointer, 1)
+                    result := FindZoomAccessibleNode(node, 0, pattern, depth + 1, &budget)
+                } else if !result && type = 3
+                    result := FindZoomAccessibleNode(acc, NumGet(children, offset + 8, "int"), pattern, depth + 1, &budget)
+            } finally {
+                DllCall("oleaut32\VariantClear", "ptr", children.Ptr + offset)
+            }
+        }
+        return result
+    }
+    return 0
+}
+TestZoomAccessibility() {
+    fixture := Gui("+ToolWindow", "Trigger Search accessibility fixture")
+    counter := {Count: 0}
+    fixture.AddButton("w200", "Show full meeting window").OnEvent("Click", (*) => counter.Count += 1)
+    fixture.AddButton("w200", "End meeting").OnEvent("Click", (*) => counter.Count += 100)
+    fixture.Show("NA w240 h120")
+    try {
+        button := FindZoomAccessibilityButton(fixture.Hwnd, "i)^Show full meeting window$")
+        Assert IsObject(button), "Find the exact thumbnail expansion button using real Windows accessibility."
+        button.Acc.accDoDefaultAction(button.Child)
+        Sleep 100
+        Assert counter.Count = 1, "Invoke only the expansion button, never End meeting."
+        Assert !FindZoomAccessibilityButton(fixture.Hwnd, "i)^Minimize$"), "A missing control must not trigger a guessed click."
+    } finally {
+        fixture.Destroy()
+    }
+}
+
+ZoomDirectionChord(command, left, right, up, down) {
+    if left != right && up != down
+        return (up ? "up" : "down") "-" (left ? "left" : "right")
+    return command
 }

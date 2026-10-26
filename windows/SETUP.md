@@ -323,45 +323,64 @@ restart, and rollback support. It refreshes code; Ctrl+R still refreshes Sheet
 data in place. Sheet rows cannot supply arbitrary update commands.
 
 
-## Zoom keyboard controls (0.16.16)
+## Zoom keyboard controls (0.16.17)
 
 Remove **Alt+Z** from the Dell Raycast Join Zoom command before using it here.
-This release cannot edit the Dell's Raycast settings remotely. Keep Raycast's
-other shortcuts and snippets. Its optional Join Zoom wrapper can remain without
-a hotkey, or you can remove that command if no longer needed.
+Trigger Search cannot edit the Dell's Raycast settings remotely. Keep Raycast's
+other snippets and shortcuts. Its optional Join Zoom wrapper can remain unbound.
 
-**Alt+Z** globally invokes the same `zoom.join` action as the searchable Join Zoom
-entry. An existing meeting is focused without repositioning or resizing it;
-a minimized meeting is restored. When no meeting exists, the saved link is
-opened and the new meeting starts compact and top-centered as before.
+**Alt+Z** focuses the existing meeting or its floating video, keeping its current
+size and position. If no meeting exists, it opens the saved link. The searchable
+Join Zoom action uses the same behavior. The main window is also detected while
+hidden behind Zoom's floating thumbnail, preventing a second call from opening.
 
-With a Zoom meeting focused, hold Alt and use:
+With the Zoom meeting or its floating video focused, hold Alt and use:
 
 | Keys | Action |
 |---|---|
 | Left / Right | One horizontal step: left, center, right |
 | Up / Down | One vertical step: top, middle, bottom |
-| 1 | Small: request 640 x 480 |
-| 2 | Medium: request 960 x 720 |
-| 3 | Large: request 1280 x 960 |
-| 4 | Maximize (not Zoom fullscreen) |
-| M | Minimize; Alt+Z brings it back |
+| Left+Up / Right+Up / Left+Down / Right+Down | Snap directly to that corner |
+| 1 | Zoom's native tiny floating video thumbnail |
+| 2 | Small regular window: request 640 x 480 |
+| 3 | Medium: request 960 x 720 |
+| 4 | Large: request 1280 x 960 |
+| 5 | Maximize (not Zoom fullscreen) |
 
-Movement retains size; resizing retains the nearest grid anchor. Repeated
-arrows stop at the edge of the current monitor's work area, with a 24-pixel
-margin. Zoom can enforce larger minimum sizes. From top center, Alt+Left goes
-top left; Alt+Right returns to center, then a second right goes top right.
-Ordinary arrows, numbers and typing are unaffected. These Alt combinations
-intentionally replace any native Zoom use of the same keys in a focused meeting,
-including while its chat field is focused. They do not apply to Zoom's home,
-settings, separate chat windows, browsers, or other apps. **Alt+4 retains the AMD
-plan-navigation action outside a meeting.** Alt+Z is a focus/open action, not a
-hide toggle. Exit Zoom's own fullscreen before arranging it if necessary.
+Alt+1 invokes Zoom's own Minimize button through Windows accessibility, with a
+native title-bar system-command fallback. It positively identifies the resulting
+thumbnail by its **Show full meeting window** button (also accepts Exit minimized
+video / Exit mini window / Restore full meeting window). If no supported visible
+thumbnail appears within two seconds, it restores the main meeting and reports
+the issue. It never substitutes a small regular window or silently leaves the
+meeting hidden. Repeating Alt+1 while in thumbnail mode leaves it there.
 
-Dell check after refreshing: confirm tray version 0.16.16, remove Raycast's
-Alt+Z binding, open/focus with Alt+Z, test arrows and sizes 1–4, minimize with
-Alt+M, then restore with Alt+Z. Confirm ordinary chat typing and Alt+4 in AMD
-still work. Test on both monitors, including a monitor left of the primary.
-The Windows CI checks geometry and syntax; physical Dell/Zoom behavior still
-requires this check. Use **Rollback.cmd** to return to the previous
-release; restore Raycast's Alt+Z assignment if reverting ownership too.
+Arrows move the thumbnail itself without resizing it. Alt+2–5 invoke its expansion
+button first, then size the full meeting window. Alt+Z focuses an existing
+thumbnail without expanding it. **Alt+M is no longer intercepted** and retains
+Zoom's native behavior. The controls require English accessibility button names;
+actual Zoom/Dell compatibility must be checked locally.
+
+Hold Alt and press two perpendicular arrows together to snap directly to a corner
+(either key-down order is accepted, with a 45-millisecond chord window). Single
+arrows still move through the center positions. Movement retains size; resizing
+retains the nearest grid anchor. Repeated arrows
+stop at the current monitor's edge with a 24-pixel margin. Zoom may enforce larger
+minimum sizes. From top center, Left goes top left; Right returns to center,
+then another Right goes top right. Ordinary arrows, numbers and typing are
+unaffected. The Alt shortcuts intentionally override matching native Zoom uses
+in the meeting, including while its embedded chat field is focused. Separate
+Zoom home/settings/chat windows are excluded. **Outside Zoom, Alt+4 keeps AMD
+plan navigation and Alt+5 keeps stored-clipboard paste.** Exit Zoom fullscreen
+before arranging it if needed.
+
+Dell check: refresh and confirm tray version **0.16.17**. During a test meeting,
+try Alt+1: video must remain visible in Zoom's native tiny window. Then focus it
+with Alt+Z, move it with arrows, and test Alt+2–5 to expand it. Repeat after a
+Trigger Search refresh while already in thumbnail mode. Confirm ordinary chat
+typing, Alt+4 in AMD, and Alt+5 clipboard paste outside Zoom still work. Test both
+monitors. Automated Windows checks cover geometry, accessibility button lookup
+and invocation on a harmless fixture, syntax, and the existing updater/rollback
+suite; they cannot verify Zoom's actual accessible control names on your Dell.
+Use **Rollback.cmd** to return to the previous release. Restore Raycast's Alt+Z
+assignment too if reverting ownership.

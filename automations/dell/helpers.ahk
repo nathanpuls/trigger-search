@@ -53,7 +53,7 @@ try {
     HelperActions[A_Args[2]].Call()
 } catch as problem {
     ; Fixed error messages only; no window titles or clipboard contents are logged.
-    MsgBox problem.Message, "Trigger Search 0.16.16 — " A_Args[2]
+    MsgBox problem.Message, "Trigger Search 0.16.17 — " A_Args[2]
 } finally {
     DllCall("CloseHandle", "ptr", mutex)
 }
@@ -472,9 +472,11 @@ JoinZoom() {
     if meeting {
         ; Focusing an existing call must preserve its geometry and maximized state.
         window := "ahk_id " meeting
-        if WinGetMinMax(window) = -1
-            WinRestore window
-        WinActivate window
+        if !DllCall("IsWindowVisible", "ptr", meeting)
+            WinShow meeting
+        if WinGetMinMax(meeting) = -1
+            WinRestore meeting
+        WinActivate meeting
         return
     }
     url := LocalZoomMeetingUrl()
@@ -517,11 +519,18 @@ ZoomMeetingCandidate(title, className) {
     return className = "ZPContentViewWndClass" || RegExMatch(title, "i)Zoom (Meeting|Webinar)") != 0
 }
 FindZoomMeeting() {
-    for hwnd in WinGetList("ahk_exe Zoom.exe") {
-        try {
-            if ZoomMeetingCandidate(WinGetTitle("ahk_id " hwnd), WinGetClass("ahk_id " hwnd))
-                return hwnd
+    ; Zoom can hide the main meeting while its floating thumbnail is visible.
+    ; Include that hidden main window so a refresh never starts a second call.
+    previous := DetectHiddenWindows(true)
+    try {
+        for hwnd in WinGetList("ahk_exe Zoom.exe") {
+            try {
+                if ZoomMeetingCandidate(WinGetTitle(hwnd), WinGetClass(hwnd))
+                    return hwnd
+            }
         }
+    } finally {
+        DetectHiddenWindows previous
     }
     return 0
 }
