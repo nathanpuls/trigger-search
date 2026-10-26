@@ -30,7 +30,7 @@ this Dell folder, including autocomplete, form macros, MSE, clipboard, and remap
 listeners. The managed launcher now owns their action shortcuts. Old/debug
 follow-up scripts and `test-esc.ahk` also have competing Escape/Alt+4 bindings. Do not run `Start_All_My_Scripts.ahk` alongside this setup.
 Keep the original files unchanged so returning to them remains possible.
-Keyboard remaps are available as a searchable toggle. Espanso remains available
+Keyboard remaps are enabled by default in managed installs. Search for the remap toggle or use the tray menu to turn them off/on; that choice survives restarts and code refreshes. Espanso remains available
 as an action; Right Shift is left to normal typing in the managed launcher.
 
 Double-click **Start-Trigger-Search.cmd**. The existing local Google Sheet and
@@ -222,16 +222,18 @@ Open AMD reacquires and activates the identified Chrome login window before each
 
 ## Send Dell clipboard to Inbox
 
-In 0.16.10, **Ctrl+Alt+I** works globally, including when the launcher is closed.
+In 0.16.11, **Alt+I** works globally, including when the launcher is closed.
 It sends the current plain-text clipboard to the existing Google Apps Script
 Inbox API. That endpoint inserts the entry at row 2, immediately below the header,
 with a Dell timestamp label. It never appends at the bottom. Clipboard contents
 are not changed or written to request/error logs. No browser opens during use.
 
-Download your private **Trigger-Search-Inbox-Setup.ini** to the Dell Downloads
-folder, run **Refresh all scripts**, then copy some text and press Ctrl+Alt+I.
-The first press imports the setup file automatically from Downloads (or asks
-you to select it if missing). Configuration stays in
+Run **Refresh all scripts**, then copy some text and press Alt+I.
+If the setup file is not already in Downloads, the first press opens its private
+Google Drive page. Download **Trigger-Search-Inbox-Setup.ini** to any folder,
+then select it when asked. ChatGPT is not required on the Dell. The tray menu
+also offers **Open private Inbox setup (Google Drive)**. Only the file owner
+can access it; no public sharing was enabled. Configuration stays in
 `%APPDATA%\SheetAutocomplete\inbox-api.ini`, outside GitHub and the public Sheet.
 The file must match the active Sheet ID and use an HTTPS script.google.com
 Apps Script endpoint. Keep its token private. No API token belongs in this repo.
@@ -249,3 +251,25 @@ Endpoint health was verified in the connected Google session. Windows CI covers
 JSON/Unicode, success/rejection handling, clipboard preservation, and destination
 validation with mock requests. Sending from the actual Dell still needs a device
 check. The existing server code/deployment was not changed.
+
+### Single-key Dell remaps (0.16.11)
+
+Trigger Search supplies these itself while the original scripts are OFF. They
+are enabled by default and stay inactive inside the launcher so its text fields
+and navigation work normally. The Sheet's existing `keyboard.remaps` automation
+and the tray toggle both save an explicit ON/OFF preference locally.
+
+| Key | Action |
+| --- | --- |
+| Insert | Copy |
+| Home | Paste |
+| Delete | Cut |
+| Page Up | Select all |
+| Page Down | Undo |
+| Windows + End | Save |
+| Numpad End | Close tab |
+| F10 | Find |
+
+No additional resident AutoHotkey process is needed. Physical key delivery on
+the Dell remains a device check; Windows tests cover default enablement, the
+saved toggle, and keeping remaps inactive inside the launcher.

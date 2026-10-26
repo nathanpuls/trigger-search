@@ -3,7 +3,7 @@
 Persistent
 
 ; Trigger Search Windows client
-global AppVersion := "0.16.10"
+global AppVersion := "0.16.11"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -111,7 +111,7 @@ if KeyboardTestMode {
 ~*SC11D::BeginRightControlTap()
 ~*SC11D Up::EndRightControlTap()
 ^!Space::ShowChooser()
-^!i::SendClipboardToInbox()
+!i::SendClipboardToInbox()
 
 ; These shortcuts replace the corresponding Dell listeners only in managed installs.
 #HotIf ManagedAutomationsAvailable() && !IsTriggerSearchOpen()
@@ -193,6 +193,7 @@ Initialize() {
     InstallTrigger(Trigger)
     InstallLauncherHotkey(LauncherModifier, LauncherKey)
     StartKeyboardWatcher()
+    InitializeKeyboardRemaps()
 
     A_TrayMenu.Add()
     A_TrayMenu.Add("Trigger Search v" AppVersion, (*) => 0)
@@ -201,7 +202,9 @@ Initialize() {
     A_TrayMenu.Add("Open autocomplete", (*) => ShowChooser())
     A_TrayMenu.Add("Refresh snippets", ManualRefresh)
     A_TrayMenu.Add("Copy latest Inbox now", CopyLatestInboxNow)
-    A_TrayMenu.Add("Send clipboard to Inbox (Ctrl+Alt+I)", SendClipboardToInbox)
+    A_TrayMenu.Add("Send clipboard to Inbox (Alt+I)", SendClipboardToInbox)
+    A_TrayMenu.Add("Open private Inbox setup (Google Drive)", OpenInboxSetupDrive)
+    A_TrayMenu.Add("Toggle Dell keyboard remaps", (*) => RunBuiltinAutomation("builtin:remaps"))
     A_TrayMenu.Add("Open Google Sheet", (*) => OpenWorkbook())
     A_TrayMenu.Add("Change Google Sheet...", (*) => PromptForGoogleSheet(false))
     A_TrayMenu.Add()
@@ -2577,6 +2580,7 @@ RunSelfTests() {
     global ChooserOpen, PreviewOpen, CategoryParent
 
     TestInboxWriter()
+    TestKeyboardRemaps()
     automationRows := ParseCsv('Name,Alias,Description,Script ID`n'
         . 'Office visit,of,Office follow up,advancedmd.follow-up-office`n'
         . 'Renamed duplicate,other,Duplicate,advancedmd.follow-up-office`n'
@@ -3579,13 +3583,7 @@ RunBuiltinAutomation(action) {
         A_Clipboard := SpecialClipboard
         Send "^v"
     } else if action = "builtin:remaps" {
-        RemapsEnabled := !RemapsEnabled
-        HotIf ShouldRemapKeys
-        mappings := Map("Insert", "^c", "Home", "^v", "Delete", "^x", "#End", "^s",
-            "PgUp", "^a", "PgDn", "^z", "NumpadEnd", "^w", "F10", "^f")
-        for key, value in mappings
-            Hotkey "$" key, SendRemappedKey.Bind(value), RemapsEnabled ? "On" : "Off"
-        HotIf
+        SetKeyboardRemaps !RemapsEnabled
         TrayTip RemapsEnabled ? "Dell remaps enabled." : "Dell remaps disabled.", "Trigger Search"
     } else
         throw Error("Unknown built-in automation.")
@@ -3595,7 +3593,8 @@ SendRemappedKey(value, *) {
 }
 
 ShouldRemapKeys(*) {
-    return !IsTriggerSearchOpen()
+    global RemapsEnabled
+    return RemapsEnabled && !IsTriggerSearchOpen()
 }
 
 RunKeyboardIntegrationTest(*) {
@@ -3738,8 +3737,11 @@ LoadInboxWriter() {
     path := CacheDir "\inbox-api.ini"
     if !FileExist(path) {
         downloaded := EnvGet("USERPROFILE") "\Downloads\Trigger-Search-Inbox-Setup.ini"
-        if !FileExist(downloaded)
+        if !FileExist(downloaded) {
+            OpenInboxSetupDrive()
+            MsgBox "Download Trigger-Search-Inbox-Setup.ini from your private Google Drive to any folder, then click OK and select it. You do not need ChatGPT on this computer.", "One-time Inbox setup"
             downloaded := FileSelect(1, , "Select your downloaded Trigger Search Inbox setup file", "Inbox setup (*.ini)")
+        }
         if downloaded = ""
             return 0
         candidate := ReadInboxWriter(downloaded)
@@ -3847,4 +3849,60 @@ TestInboxWriter() {
         rejected := true
     Assert rejected, "Inbox setup must not transmit clipboard data to another host."
     SheetId := oldSheet
+}
+
+KeyboardRemapMap() {
+    return Map("Insert", "^c", "Home", "^v", "Delete", "^x", "#End", "^s",
+        "PgUp", "^a", "PgDn", "^z", "NumpadEnd", "^w", "F10", "^f")
+}
+InitializeKeyboardRemaps() {
+    global SettingsPath
+    ; Existing Dell behavior belongs to the managed launcher now. A saved toggle
+    ; takes priority over the first-install default and survives code refreshes.
+    enabled := ManagedAutomationsAvailable()
+        && IniRead(SettingsPath, "keyboard", "remapsEnabled", "1") = "1"
+    SetKeyboardRemaps enabled, false
+}
+SetKeyboardRemaps(enabled, persist := true) {
+    global RemapsEnabled, SettingsPath
+    HotIf ShouldRemapKeys
+    for key, value in KeyboardRemapMap()
+        Hotkey "$" key, SendRemappedKey.Bind(value), enabled ? "On" : "Off"
+    HotIf
+    RemapsEnabled := !!enabled
+    if persist
+        IniWrite enabled ? "1" : "0", SettingsPath, "keyboard", "remapsEnabled"
+}
+TestKeyboardRemaps() {
+    global RemapsEnabled, ChooserOpen, PreviewOpen, SettingsPath
+    savedEnabled := RemapsEnabled
+    savedChooser := ChooserOpen
+    savedPreview := PreviewOpen
+    savedSettings := SettingsPath
+    SettingsPath := A_Temp "\trigger-remap-test-" A_TickCount ".ini"
+    try {
+        ChooserOpen := false
+        PreviewOpen := false
+        InitializeKeyboardRemaps()
+        Assert RemapsEnabled && ShouldRemapKeys(), "Managed installs must enable original single-key remaps by default."
+        ChooserOpen := true
+        Assert !ShouldRemapKeys(), "Remaps must leave navigation and editing normal inside the launcher."
+        ChooserOpen := false
+        SetKeyboardRemaps false
+        InitializeKeyboardRemaps()
+        Assert !RemapsEnabled && !ShouldRemapKeys(), "An explicit remap OFF choice must survive initialization."
+        SetKeyboardRemaps true
+        InitializeKeyboardRemaps()
+        Assert RemapsEnabled, "An explicit remap ON choice must survive initialization."
+    } finally {
+        if FileExist(SettingsPath)
+            FileDelete SettingsPath
+        SettingsPath := savedSettings
+        SetKeyboardRemaps savedEnabled, false
+        ChooserOpen := savedChooser
+        PreviewOpen := savedPreview
+    }
+}
+OpenInboxSetupDrive(*) {
+    Run "https://drive.google.com/file/d/1EjiWxMRvjII8yqJzbancrXXC3GOuykP_/view?usp=drivesdk"
 }
