@@ -56,6 +56,8 @@ global SpecialClipboard := ""
 global SpecialClipboardSet := false
 global RemapsEnabled := false
 global RightControlEventCount := 0
+global KeyboardTestMode := A_Args.Length > 0 && A_Args[1] = "--keyboard-test"
+global KeyboardTestLaunchCount := 0
 
 
 global AiEngine := "ChatGPT"
@@ -98,8 +100,12 @@ global ModifierHud := 0
 if A_Args.Length > 0 && A_Args[1] = "--self-test"
     RunSelfTestsAndExit()
 
-OnError HandleUnexpectedError
-Initialize()
+if KeyboardTestMode {
+    SetTimer RunKeyboardIntegrationTest, -50
+} else {
+    OnError HandleUnexpectedError
+    Initialize()
+}
 
 ; Right Ctrl is a tap-only parallel launcher. Combinations retain Ctrl behavior.
 ~*SC11D::BeginRightControlTap()
@@ -325,7 +331,7 @@ TrackTypedCharacter(input, characters) {
     global AtBoundary, Trigger, ChooserOpen
 
     global RightControlUsed
-    if GetKeyState("RControl", "P")
+    if GetKeyState("RControl", "P") || GetKeyState("RControl")
         RightControlUsed := true
     if ChooserOpen
         return
@@ -340,7 +346,7 @@ TrackNonTextKey(input, vk, sc) {
 
     global RightControlUsed
     keyName := GetKeyName(Format("vk{:x}sc{:x}", vk, sc))
-    if GetKeyState("RControl", "P") && vk != 0xA3 && sc != 0x11D
+    if GetKeyState("RControl", "P") || GetKeyState("RControl") && vk != 0xA3 && sc != 0x11D
         RightControlUsed := true
     if ChooserOpen
         return
@@ -359,7 +365,7 @@ TrackNonTextKey(input, vk, sc) {
 ResetBoundary(*) {
     global AtBoundary
     global RightControlUsed
-    if GetKeyState("RControl", "P")
+    if GetKeyState("RControl", "P") || GetKeyState("RControl")
         RightControlUsed := true
     AtBoundary := true
 }
@@ -3342,8 +3348,13 @@ EndRightControlTap(*) {
     tapped := RightControlDown && IsRightControlTap(A_TickCount - RightControlDown,
         RightControlUsed, "RControl")
     RightControlDown := 0
-    if tapped && !IsTriggerSearchOpen()
-        ShowChooser()
+    if tapped && !IsTriggerSearchOpen() {
+        global KeyboardTestMode, KeyboardTestLaunchCount
+        if KeyboardTestMode
+            KeyboardTestLaunchCount += 1
+        else
+            ShowChooser()
+    }
 }
 
 IsAutomationChoice(choice) {
@@ -3497,4 +3508,33 @@ SendRemappedKey(value, *) {
 
 ShouldRemapKeys(*) {
     return !IsTriggerSearchOpen()
+}
+
+RunKeyboardIntegrationTest(*) {
+    global RightControlEventCount, KeyboardTestLaunchCount, RightControlDown, RightControlUsed
+    result := A_Temp "\trigger-search-keyboard-test.txt"
+    try {
+        StartKeyboardWatcher()
+        SendLevel 2
+        SendEvent "{RControl down}"
+        Sleep 80
+        SendEvent "{RControl up}"
+        Sleep 150
+        Assert RightControlEventCount = 1, "Right Ctrl scan-code down hook did not fire."
+        Assert KeyboardTestLaunchCount = 1, "Right Ctrl tap did not request the launcher."
+        SendEvent "{RControl down}"
+        Sleep 80
+        SendEvent "{F24 down}"
+        Sleep 80
+        SendEvent "{F24 up}"
+        Sleep 80
+        SendEvent "{RControl up}"
+        Sleep 150
+        Assert KeyboardTestLaunchCount = 1, "A Ctrl combination incorrectly opened the launcher."
+        WriteTextAtomic result, "PASS"
+        ExitApp 0
+    } catch as problem {
+        WriteTextAtomic result, problem.Message
+        ExitApp 1
+    }
 }

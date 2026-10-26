@@ -109,3 +109,15 @@ jobs:
         run: |
           $exe = Get-ChildItem autohotkey -Recurse -Filter AutoHotkey64.exe | Select-Object -First 1
           ./tests/windows-refresh.ps1 -AutoHotkeyPath $exe.FullName -Ref $env:SOURCE_COMMIT
+
+      - name: Exercise Right Control keyboard hooks
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem autohotkey -Recurse -Filter AutoHotkey64.exe | Select-Object -First 1
+          $result = Join-Path $env:TEMP 'trigger-search-keyboard-test.txt'
+          Remove-Item $result -ErrorAction SilentlyContinue
+          $p = Start-Process $exe.FullName -ArgumentList @(('"' + "$PWD\windows\autocomplete.ahk" + '"'), '--keyboard-test') -PassThru
+          $null = $p.Handle
+          if (-not $p.WaitForExit(15000)) { $p.Kill(); throw 'Keyboard hook test timed out.' }
+          if (Test-Path $result) { Get-Content $result }
+          if ($p.ExitCode -ne 0 -or (Get-Content $result -Raw) -ne 'PASS') { throw 'Keyboard hooks failed.' }
