@@ -311,3 +311,7 @@ static method would require `[WinAPI]::MoveWindow(...)`. The wrapper eliminates
 that duplicate implementation rather than storing a personal meeting URL in
 source. CI validates script syntax, bounds, safe URL validation, home/meeting
 classification, and dry runs without starting Zoom or joining a meeting.
+
+Version 0.16.14 also accepts Zoom personal links using `/my/<name>` (with an
+optional trailing slash and query), alongside numeric `/j/` and `/s/` links.
+The configured meeting URL still stays only in local Dell settings.

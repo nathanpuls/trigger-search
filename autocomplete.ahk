@@ -3,7 +3,7 @@
 Persistent
 
 ; Trigger Search Windows client
-global AppVersion := "0.16.13"
+global AppVersion := "0.16.14"
 
 SendMode "Input"
 SetTitleMatchMode 2

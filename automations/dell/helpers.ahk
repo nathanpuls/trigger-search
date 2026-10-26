@@ -53,7 +53,7 @@ try {
     HelperActions[A_Args[2]].Call()
 } catch as problem {
     ; Fixed error messages only; no window titles or clipboard contents are logged.
-    MsgBox problem.Message, "Trigger Search 0.16.13 — " A_Args[2]
+    MsgBox problem.Message, "Trigger Search 0.16.14 — " A_Args[2]
 } finally {
     DllCall("CloseHandle", "ptr", mutex)
 }
@@ -503,12 +503,12 @@ LocalZoomMeetingUrl() {
         throw Error("Zoom setup cancelled. No meeting was opened.")
     value := Trim(result.Value)
     if !ValidZoomMeetingUrl(value)
-        throw Error("Use an HTTPS zoom.us /s/ or /j/ meeting link. Run Join Zoom again to correct it.")
+        throw Error("Use an HTTPS zoom.us /my/, /s/, or /j/ meeting link. Run Join Zoom again to correct it.")
     IniWrite value, path, "workflow-config", "ZoomMeetingUrl"
     return value
 }
 ValidZoomMeetingUrl(url) {
-    return RegExMatch(url, 'i)^https://(?:[a-z0-9-]+\.)?zoom\.us/[js]/[0-9]+(?:\?[^" <>\r\n]*)?$') != 0
+    return RegExMatch(url, 'i)^https://(?:[a-z0-9-]+\.)?zoom\.us/(?:[js]/[0-9]+|my/[a-z0-9._-]+)/?(?:\?[^" <>\r\n]*)?$') != 0
 }
 ZoomMeetingCandidate(title, className) {
     return className = "ZPContentViewWndClass" || RegExMatch(title, "i)Zoom (Meeting|Webinar)") != 0
@@ -563,6 +563,10 @@ TestZoomPlacement() {
         throw Error("Zoom placement must fit a small monitor work area.")
     if ZoomMeetingCandidate("Zoom Workplace", "HomeWindow") || !ZoomMeetingCandidate("Zoom Meeting", "MeetingWindow")
         throw Error("Zoom home must not be selected as the meeting window.")
-    if !ValidZoomMeetingUrl("https://example.zoom.us/j/1234567890") || ValidZoomMeetingUrl("https://example.com/j/123")
+    if !ValidZoomMeetingUrl("https://example.zoom.us/j/1234567890")
+        || !ValidZoomMeetingUrl("https://example.zoom.us/my/example.user")
+        || !ValidZoomMeetingUrl("https://zoom.us/my/example.user/?pwd=example")
+        || ValidZoomMeetingUrl("https://example.com/j/123")
+        || ValidZoomMeetingUrl("https://zoom.us.example.com/my/example.user")
         throw Error("Only Zoom meeting links may be launched.")
 }
