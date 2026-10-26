@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "files": [
+    {
+      "path": "windows/autocomplete.ahk",
+      "sha256": "43663173123438b112fa4cf2f832a28f3747cd601077e7a58a76546c46fe259c"
+    },
+    {
+      "path": "windows/refresh-all.ps1",
+      "sha256": "c256a6dcd0ad7208e3971e2baff8d788ef57636ce9cd3ead00d0431effda34f3"
+    },
+    {
+      "path": "automations/advancedmd/follow-up-office.ahk",
+      "sha256": "6f8009fe733dac8fe62b6e0c982add79eacbfd45c006c7f68d70ee088dbb5e12"
+    },
+    {
+      "path": "automations/advancedmd/follow-up-tele.ahk",
+      "sha256": "b41c5d8f75257054da0e1b53325eef2140a9a8f83edbc65b04b9d6f63c334357"
+    },
+    {
+      "path": "automations/advancedmd/intake-office.ahk",
+      "sha256": "0acdaca809d2aa757f6b78d014a9f279620c97c71841d6c721a51f85bdd04abf"
+    },
+    {
+      "path": "automations/dell/helpers.ahk",
+      "sha256": "bd5554d981c3da89f5773c11aa4bffa86e7148f0db19c315b0ccbd8a91a786eb"
+    }
+  ]
+}

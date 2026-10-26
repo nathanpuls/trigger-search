@@ -4,6 +4,12 @@ A lightweight personal autocomplete powered by a public Google Sheet. The same
 snippet collection works across macOS with Hammerspoon and Windows with
 AutoHotkey v2—without OAuth, sign-in, a browser extension, or a dedicated app.
 
+## Unified Windows automations (preview)
+
+See [the Dell setup guide](windows/SETUP.md) for the unified snippet/automation
+launcher and manual Refresh-All command. The preview includes the three core
+AdvancedMD form workflows and 21 additional workflow/helper actions from the Dell baseline; [the inventory](windows/DELL-INVENTORY.md) records them.
+
 ## Choose your platform
 
 - **macOS:** See [`mac/README.md`](mac/README.md) and install Hammerspoon.
@@ -205,3 +211,4 @@ service when the AI action is used.
 
 This is an intentionally small personal prototype. It favors understandable,
 working behavior over application architecture or visual polish.
+
