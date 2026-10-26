@@ -115,8 +115,10 @@ function Get-LegacyScriptPaths([string]$Folder) {
     foreach ($name in $names) {
         $path = Join-Path $Folder $name
         if (Test-Path -LiteralPath $path -PathType Leaf) {
+            $raw = $Folder.TrimEnd('\') + '\' + $name
+            $raw
             $full = [IO.Path]::GetFullPath($path)
-            $full
+            if ($full -ne $raw) { $full }
             $probe.TargetPath = $full
             if ($probe.TargetPath -ne $full) { $probe.TargetPath }
         }
