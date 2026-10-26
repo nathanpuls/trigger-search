@@ -2,8 +2,8 @@
 #SingleInstance Force
 Persistent
 
-; Sheet Autocomplete version 0.16.2
-global AppVersion := "0.16.2"
+; Sheet Autocomplete version 0.16.3
+global AppVersion := "0.16.3"
 
 SendMode "Input"
 SetTitleMatchMode 2

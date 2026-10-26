@@ -1,6 +1,6 @@
 # Try the unified Windows launcher
 
-Version **0.16.2** includes Trigger Search and all 24 current workflow/helper
+Version **0.16.3** includes Trigger Search and all 24 current workflow/helper
 actions in the Automations catalog. Old/debug copies stay excluded from startup. Nothing installs or runs on the Mac.
 
 ## Install on the Dell
@@ -63,7 +63,7 @@ column. Their existing snippets keep working.
    word, Escape, snippet paste, nested choices, URLs, and Ctrl+R.
 2. Tap Right Ctrl. Then test Right-Ctrl+C/V and Ctrl-click; those combinations
    must not open the launcher. In the tray, **Keyboard and installation status**
-   must show **0.16.2** and its Right Ctrl event count should increase. This status
+   must show **0.16.3** and its Right Ctrl event count should increase. This status
    records a count only, never typed text.
 3. Copy a non-sensitive Inbox test value from the phone; use Ctrl+Shift+I and
    paste in the text editor. No clipboard contents are logged.
@@ -103,7 +103,7 @@ those files. A running managed clinical macro also blocks refresh.
 For this upgrade, run the installer command above once, even if 0.15.0 was
 already installed: the earlier updater knows only the initial five bundle files.
 Future Refresh-All invocations use the expanded bundle. The tray updater on
-0.16.2 also offers bundle installation from a standalone script.
+0.16.3 also offers bundle installation from a standalone script.
 
 The initial install deliberately follows the feature branch for testing. After
 it is merged, switch the source once with:
@@ -129,8 +129,9 @@ hotstrings are provided by the managed launcher. Semicolon hotstrings still
 compete with the existing printable trigger at a word boundary; using the `sid`
 or `cc` search alias is dependable without changing semicolon behavior.
 
-The first use of login, IT ticket, or schedule email prompts for an office key or
-recipient list if missing. Values are saved only in the Dell settings.ini;
+Open AMD and morning startup always use office key `136732`, without a setup
+prompt. IT ticket and schedule email still ask for their local values if missing.
+Those prompted values are saved only in the Dell settings.ini;
 they never belong in the public Sheet or repository. Browser-navigation helpers
 retain fixed timing/coordinates and need testing against your current layout.
 The schedule helper composes a draft and does not send it. The IT-ticket source
@@ -147,5 +148,5 @@ the Automations tab. No extra column is needed. This is reference text; editing
 it does not rebind keys. Typed hotstrings and standalone-only bindings are
 labelled accordingly. Entries without a binding say so.
 
-0.16.2 also accepts the four specific AMD Script ID aliases already in the Sheet
+0.16.3 also accepts the four specific AMD Script ID aliases already in the Sheet
 and tolerates additional reference columns if users add them later.

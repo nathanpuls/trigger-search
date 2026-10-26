@@ -211,7 +211,7 @@ Hpi() {
     ClickAt 506, 367
 }
 LaunchAdvancedMD() {
-    key := ConfigValue("OfficeKey", "Enter your AdvancedMD office key.")
+    key := "136732"
     OpenUrl "https://login.advancedmd.com/?sso=1", "Login | AdvancedMD", true
     PauseFor 1800
     S key, "SendText"
@@ -224,7 +224,7 @@ LaunchAdvancedMD() {
         WinMaximize "A"
 }
 MorningStartup() {
-    key := ConfigValue("OfficeKey", "Enter your AdvancedMD office key.")
+    key := "136732"
     OpenUrl "https://login.advancedmd.com/?sso=1", "AdvancedMD", true
     global DryRun
     if !DryRun
