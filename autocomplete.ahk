@@ -4136,7 +4136,7 @@ EnterZoomThumbnail(hwnd) {
     vertical := ZoomControlAnchor(y, area.Top, area.Bottom - area.Top, height)
     button := FindZoomAccessibilityButton(hwnd, "i)^(Minimi[sz]e|Minimi[sz]e meeting|Minimi[sz]e window)$")
     if button
-        button.Acc.accDoDefaultAction(button.Child)
+        InvokeZoomAccessibleButton(button)
     else
         ; Deliver the same system command as the native title-bar minimize
         ; button, allowing Zoom to handle its own thumbnail mode.
@@ -4165,7 +4165,7 @@ RestoreZoomThumbnail(hwnd, button) {
     area := ZoomControlArea(x, y, width, height)
     horizontal := ZoomControlAnchor(x, area.Left, area.Right - area.Left, width)
     vertical := ZoomControlAnchor(y, area.Top, area.Bottom - area.Top, height)
-    button.Acc.accDoDefaultAction(button.Child)
+    InvokeZoomAccessibleButton(button)
     deadline := A_TickCount + 2000
     while A_TickCount < deadline {
         main := FindZoomMainWindow(pid)
@@ -4210,14 +4210,14 @@ FindZoomAccessibleNode(acc, child, pattern, depth, &budget) {
     budget -= 1
     try {
         ; Match buttons only. Never invoke controls by approximate position.
-        if acc.accRole[child] = 43 && !(acc.accState[child] & 0x8001)
-            && RegExMatch(Trim(StrReplace(acc.accName[child], "&")), pattern)
+        if ZoomAccessibleProperty(acc, child, 13) = 43 && !(ZoomAccessibleProperty(acc, child, 14) & 0x8001)
+            && RegExMatch(Trim(StrReplace(ZoomAccessibleProperty(acc, child, 10, true), "&")), pattern)
             return {Acc: acc, Child: child}
     }
     if child != 0
         return 0
     try {
-        count := Min(acc.accChildCount, budget)
+        count := Min(ZoomAccessibleChildCount(acc), budget)
         if count <= 0
             return 0
         size := 8 + 2 * A_PtrSize
@@ -4272,7 +4272,7 @@ TestZoomAccessibility() {
         Assert hwnd != 0, "The isolated accessibility fixture must open."
         button := FindZoomAccessibilityButton(hwnd, "i)^Show full meeting window$")
         Assert IsObject(button), "Find the exact thumbnail expansion button using real Windows accessibility."
-        button.Acc.accDoDefaultAction(button.Child)
+        InvokeZoomAccessibleButton(button)
         deadline := A_TickCount + 2000
         while !FileExist(result) && A_TickCount < deadline
             Sleep 50
@@ -4293,4 +4293,53 @@ ZoomDirectionChord(command, left, right, up, down) {
     if left != right && up != down
         return (up ? "up" : "down") "-" (left ? "left" : "right")
     return command
+}
+
+
+; Call the IAccessible methods directly. Their child argument is a VT_I4
+; VARIANT passed by value; do not rely on IDispatch's property/method coercion.
+ZoomAccessibleCall(acc, child, method, output := 0) {
+    accessible := ComObjQuery(acc, "{618736E0-3C3D-11CF-810C-00AA00389B71}")
+    variant := Buffer(8 + 2 * A_PtrSize, 0)
+    NumPut "ushort", 3, variant, 0
+    NumPut "int", child, variant, 8
+    if A_PtrSize = 8 {
+        if output
+            ComCall method, accessible, "ptr", variant, "ptr", output
+        else
+            ComCall method, accessible, "ptr", variant
+    } else {
+        if output
+            ComCall method, accessible, "int64", NumGet(variant, 0, "int64"), "int64", NumGet(variant, 8, "int64"), "ptr", output
+        else
+            ComCall method, accessible, "int64", NumGet(variant, 0, "int64"), "int64", NumGet(variant, 8, "int64")
+    }
+}
+ZoomAccessibleProperty(acc, child, method, text := false) {
+    output := Buffer(text ? A_PtrSize : 8 + 2 * A_PtrSize, 0)
+    ZoomAccessibleCall acc, child, method, output.Ptr
+    if text {
+        pointer := NumGet(output, "ptr")
+        if !pointer
+            return ""
+        try {
+            return StrGet(pointer, "UTF-16")
+        } finally {
+            DllCall("oleaut32\SysFreeString", "ptr", pointer)
+        }
+    }
+    try {
+        return NumGet(output, "ushort") = 3 ? NumGet(output, 8, "int") : 0
+    } finally {
+        DllCall("oleaut32\VariantClear", "ptr", output)
+    }
+}
+ZoomAccessibleChildCount(acc) {
+    accessible := ComObjQuery(acc, "{618736E0-3C3D-11CF-810C-00AA00389B71}")
+    count := 0
+    ComCall 8, accessible, "int*", &count
+    return count
+}
+InvokeZoomAccessibleButton(button) {
+    ZoomAccessibleCall button.Acc, button.Child, 25
 }
