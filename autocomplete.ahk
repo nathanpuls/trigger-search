@@ -3,7 +3,7 @@
 Persistent
 
 ; Sheet Autocomplete version 0.16.4
-global AppVersion := "0.16.5"
+global AppVersion := "0.16.6"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -149,7 +149,7 @@ Left::CloseDetails()
 ^o::OpenSelectedLink()
 ^g::SearchGoogleQuery()
 ^p::PreviewSelected()
-^r::RefreshAndReopen()
+^r::RefreshInPlace()
 ^+i::CopyLatestInboxNow()
 ^Enter::LaunchSelectedAi()
 ^k::ShowActionsMenu()
@@ -607,24 +607,26 @@ HandleGuiKeyDown(wParam, lParam, msg, hwnd) {
     return 0
 }
 
-RefreshAndReopen(*) {
-    global Refreshing, ChooserOpen
+RefreshInPlace(*) {
+    global Refreshing, ChooserOpen, FooterText, LastRefreshError
     if !ChooserOpen
         return
-    if Refreshing {
-        TrayTip "A Sheet refresh is already running.", "Trigger Search"
+    if Refreshing
         return
-    }
-    CancelChooser()
-    TrayTip "Refreshing the Sheet…", "Trigger Search"
+    FooterText.Text := "Refreshing the Sheet…"
+    ; RefreshData already updates the visible results through RefreshOpenChooser.
+    ; Leave the GUI, query, target window, and position intact throughout.
     RefreshData(true)
-    ShowChooser()
+    if ChooserOpen
+        FooterText.Text := LastRefreshError = ""
+            ? "Updated  •  Ctrl+R  Refresh now"
+            : "Refresh failed; saved results kept  •  Ctrl+R  Retry"
 }
 
 ManualRefresh(*) {
     global ChooserOpen
     if ChooserOpen
-        RefreshAndReopen()
+        RefreshInPlace()
     else
         RefreshData(true)
 }
@@ -3616,6 +3618,7 @@ IsControlCombination(controlHeld, vk, sc) {
 TestLauncherToggle() {
     global Snippets, SheetId, LastRefreshTick, ChooserOpen, PreviewOpen
     global ChooserGui, PreviewGui, TargetWindow, RecentItems, CategoryParent
+    global SearchBox, VisibleChoices, ResultsView
     global DetailParent, SearchServiceParent, ActionsForChoice, AtBoundary
     SheetId := "test-toggle-no-network"
     Snippets := [TestSnippet("Toggle test", "sample", [])]
@@ -3638,6 +3641,21 @@ TestLauncherToggle() {
         Assert TargetWindow = originalTarget && x = nextX && y = nextY,
             "Repeated open requests must retain the target and window position."
     }
+    SearchBox.Value := "toggle"
+    Snippets := [TestSnippet("Toggle test", "updated", []),
+        TestSnippet("Toggle new", "newly fetched", [])]
+    RefreshOpenChooser()
+    WinGetPos &nextX, &nextY, , , "ahk_id " ChooserGui.Hwnd
+    Assert ChooserOpen && SearchBox.Value = "toggle" && TargetWindow = originalTarget
+        && x = nextX && y = nextY && VisibleChoices.Length = 2
+        && VisibleChoices[1].Content = "updated",
+        "A refresh must update results without closing, clearing search, or moving the launcher."
+    ResultsView.Modify(0, "-Select -Focus")
+    ResultsView.Modify(2, "Select Focus Vis")
+    Snippets := [Snippets[2], Snippets[1]]
+    RefreshOpenChooser()
+    Assert SelectedChoice().Key = "Toggle new",
+        "Refreshing must preserve the selected item when it still exists."
     HandleLauncher()
     Assert !IsTriggerSearchOpen(), "A second F6 press must close the launcher."
     HandleLauncher()

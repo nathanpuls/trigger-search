@@ -46,7 +46,7 @@ cache settings under `%APPDATA%\SheetAutocomplete` are reused.
 | Type `of`, `tf`, or `oi`, then Enter | Office follow-up, telehealth follow-up, or office intake |
 | Alt+O / Alt+T / Alt+0 | The same three macros, preserving Dell shortcuts |
 | Escape during a macro | Cancel that macro; review the partially filled form |
-| Ctrl+R in the launcher | Refresh Sheet snippets and reopen |
+| Ctrl+R in the launcher | Refresh Sheet results in place; keep the launcher and search open |
 | Ctrl+Shift+I in the launcher | Fetch Inbox now and copy its first usable item |
 | Tray → Copy latest Inbox now | Same direct Inbox action without a full refresh |
 | Tray → Update script from GitHub / Refresh all scripts | Run the manual bundle updater |
