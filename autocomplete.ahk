@@ -3,7 +3,7 @@
 Persistent
 
 ; Trigger Search Windows client
-global AppVersion := "0.16.15"
+global AppVersion := "0.16.16"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -115,8 +115,23 @@ if KeyboardTestMode {
 ^!Space::ShowChooser()
 !i::SendClipboardToInbox()
 
+; Keep this variant before the general Alt+4 AMD binding: Zoom owns it only
+; while an actual meeting is focused. Ordinary typing and arrows are untouched.
+#HotIf ManagedAutomationsAvailable() && !IsTriggerSearchOpen() && ActiveZoomMeeting()
+!Left::ZoomWindowCommand("left")
+!Right::ZoomWindowCommand("right")
+!Up::ZoomWindowCommand("up")
+!Down::ZoomWindowCommand("down")
+!1::ZoomWindowCommand("1")
+!2::ZoomWindowCommand("2")
+!3::ZoomWindowCommand("3")
+!4::ZoomWindowCommand("4")
+!m::ZoomWindowCommand("minimize")
+#HotIf
+
 ; These shortcuts replace the corresponding Dell listeners only in managed installs.
 #HotIf ManagedAutomationsAvailable() && !IsTriggerSearchOpen()
+!z::RunAutomation("zoom.join")
 !o::RunAutomation("advancedmd.follow-up-office")
 !t::RunAutomation("advancedmd.follow-up-tele")
 !0::RunAutomation("advancedmd.intake-office")
@@ -2591,6 +2606,7 @@ RunSelfTests() {
 
     TestInboxWriter()
     TestKeyboardRemaps()
+    TestZoomWindowControls()
     automationRows := ParseCsv('Name,Alias,Description,Script ID`n'
         . 'Office visit,of,Office follow up,advancedmd.follow-up-office`n'
         . 'Renamed duplicate,other,Duplicate,advancedmd.follow-up-office`n'
@@ -3917,4 +3933,107 @@ TestKeyboardRemaps() {
 }
 OpenInboxSetupDrive(*) {
     Run "https://drive.google.com/file/d/1EjiWxMRvjII8yqJzbancrXXC3GOuykP_/view?usp=drivesdk"
+}
+
+
+; Zoom window controls run in the existing launcher, without another resident.
+ActiveZoomMeeting() {
+    hwnd := WinActive("ahk_exe Zoom.exe")
+    if !hwnd
+        return 0
+    try {
+        return ZoomControlCandidate(WinGetTitle("ahk_id " hwnd), WinGetClass("ahk_id " hwnd)) ? hwnd : 0
+    }
+    return 0
+}
+ZoomControlCandidate(title, className) {
+    return className = "ZPContentViewWndClass" || RegExMatch(title, "i)Zoom (Meeting|Webinar)") != 0
+}
+ZoomControlArea(x, y, width, height) {
+    monitor := MonitorGetPrimary()
+    Loop MonitorGetCount() {
+        MonitorGet A_Index, &left, &top, &right, &bottom
+        if x + width / 2 >= left && x + width / 2 < right && y + height / 2 >= top && y + height / 2 < bottom {
+            monitor := A_Index
+            break
+        }
+    }
+    MonitorGetWorkArea monitor, &left, &top, &right, &bottom
+    return {Left: left + 24, Top: top + 24, Right: right - 24, Bottom: bottom - 24}
+}
+ZoomControlAnchor(position, start, available, size) {
+    return available <= size ? 0 : Max(0, Min(2, Round(2 * (position - start) / (available - size))))
+}
+ZoomControlBounds(area, x, y, width, height, command) {
+    availableWidth := Max(100, area.Right - area.Left)
+    availableHeight := Max(100, area.Bottom - area.Top)
+    horizontal := ZoomControlAnchor(x, area.Left, availableWidth, width)
+    vertical := ZoomControlAnchor(y, area.Top, availableHeight, height)
+    switch command {
+        case "left": horizontal := Max(0, horizontal - 1)
+        case "right": horizontal := Min(2, horizontal + 1)
+        case "up": vertical := Max(0, vertical - 1)
+        case "down": vertical := Min(2, vertical + 1)
+        case "1": width := 640, height := 480
+        case "2": width := 960, height := 720
+        case "3": width := 1280, height := 960
+        default: throw Error("Unknown Zoom window command.")
+    }
+    width := Min(width, availableWidth), height := Min(height, availableHeight)
+    return {X: area.Left + Round((availableWidth - width) * horizontal / 2),
+        Y: area.Top + Round((availableHeight - height) * vertical / 2),
+        Width: width, Height: height, Horizontal: horizontal, Vertical: vertical}
+}
+ZoomWindowCommand(command) {
+    static busy := false
+    if busy
+        return
+    hwnd := ActiveZoomMeeting()
+    if !hwnd
+        return
+    busy := true
+    try {
+        window := "ahk_id " hwnd
+        if command = "minimize" {
+            WinMinimize window
+            return
+        }
+        if command = "4" {
+            WinMaximize window
+            return
+        }
+        ; Restore before measuring the normal window rectangle, not fullscreen bounds.
+        if WinGetMinMax(window) != 0 {
+            WinRestore window
+            Sleep 100
+        }
+        WinGetPos &x, &y, &width, &height, window
+        area := ZoomControlArea(x, y, width, height)
+        bounds := ZoomControlBounds(area, x, y, width, height, command)
+        WinMove bounds.X, bounds.Y, bounds.Width, bounds.Height, window
+        Sleep 100
+        ; Respect Zoom's enforced minimum dimensions while retaining the chosen anchor.
+        WinGetPos , , &actualWidth, &actualHeight, window
+        WinMove area.Left + Round(Max(0, area.Right - area.Left - actualWidth) * bounds.Horizontal / 2),
+            area.Top + Round(Max(0, area.Bottom - area.Top - actualHeight) * bounds.Vertical / 2), , , window
+    } catch as problem {
+        TrayTip "Could not arrange Zoom. Exit Zoom fullscreen and try again.", "Trigger Search"
+    } finally {
+        busy := false
+    }
+}
+TestZoomWindowControls() {
+    area := {Left: -1896, Top: 24, Right: -24, Bottom: 1016}
+    b := ZoomControlBounds(area, -1280, 24, 640, 480, "left")
+    Assert b.X = -1896 && b.Y = 24 && b.Width = 640, "Zoom left preserves size and top anchor on a negative-coordinate monitor."
+    b := ZoomControlBounds(area, b.X, b.Y, b.Width, b.Height, "down")
+    Assert b.Vertical = 1 && b.Horizontal = 0, "Zoom arrows move independently through a three-by-three grid."
+    b := ZoomControlBounds(area, b.X, b.Y, b.Width, b.Height, "down")
+    Assert b.Y = 536, "A second down press reaches the bottom."
+    b := ZoomControlBounds(area, b.X, b.Y, b.Width, b.Height, "2")
+    Assert b.X = area.Left && b.Y = 296 && b.Width = 960 && b.Height = 720, "Zoom resizing preserves bottom-left anchor."
+    b := ZoomControlBounds({Left: 24, Top: 64, Right: 576, Bottom: 416}, 24, 64, 552, 352, "3")
+    Assert b.Width = 552 && b.Height = 352, "Zoom size presets fit small work areas."
+    Assert !ZoomControlCandidate("Zoom Workplace", "HomeWindow") && ZoomControlCandidate("Zoom Meeting", "MeetingWindow"),
+        "Zoom controls must not intercept shortcuts in the home window."
 }

@@ -53,7 +53,7 @@ try {
     HelperActions[A_Args[2]].Call()
 } catch as problem {
     ; Fixed error messages only; no window titles or clipboard contents are logged.
-    MsgBox problem.Message, "Trigger Search 0.16.14 — " A_Args[2]
+    MsgBox problem.Message, "Trigger Search 0.16.16 — " A_Args[2]
 } finally {
     DllCall("CloseHandle", "ptr", mutex)
 }
@@ -470,8 +470,11 @@ JoinZoom() {
     ; Do not terminate a live call just to resize it or start another meeting.
     meeting := FindZoomMeeting()
     if meeting {
-        PositionZoomMeeting meeting
-        TrayTip "Positioned the existing Zoom meeting. No new meeting was started.", "Trigger Search"
+        ; Focusing an existing call must preserve its geometry and maximized state.
+        window := "ahk_id " meeting
+        if WinGetMinMax(window) = -1
+            WinRestore window
+        WinActivate window
         return
     }
     url := LocalZoomMeetingUrl()

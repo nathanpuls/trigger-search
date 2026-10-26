@@ -294,8 +294,8 @@ a 24-pixel gap in the work area of the meeting's current monitor. Negative
 monitor coordinates and taskbars are respected. Zoom may enforce a larger
 minimum size. If Zoom is in fullscreen, exit fullscreen if it refuses to resize.
 
-If a meeting is already open, it only positions that existing meeting and
-reports that no new meeting was started. It does not close a live call. After
+If a meeting is already open, it restores it if minimized and focuses it,
+preserving its current size, position, and maximized state. It does not close a live call. After
 a new meeting is detected it closes only exactly named Zoom home windows, not
 arbitrary Zoom windows. English meeting titles / the Zoom meeting window class
 are used; actual Dell Zoom recognition and final size require a device check.
@@ -304,7 +304,7 @@ The optional Raycast wrapper is `integrations/raycast/join-zoom.ps1`. Replace
 the old Windows Raycast script contents with that wrapper if you want to keep
 Raycast's Join Zoom command. It calls the stable `Join-Zoom.cmd` in the managed
 installation, which invokes the same allowlisted local action. A custom install
-root needs the wrapper's `$root` adjusted. No global Zoom hotkey is added.
+root needs the wrapper's `$root` adjusted. Alt+Z is provided by Trigger Search as of 0.16.16.
 
 The original PowerShell error was `:MoveWindow(...)`; calling the supplied C#
 static method would require `[WinAPI]::MoveWindow(...)`. The wrapper eliminates
@@ -321,3 +321,47 @@ In **0.16.15**, **Refresh all scripts** is a searchable Automations command
 manual updater as the tray item, including validation, worker-running protection,
 restart, and rollback support. It refreshes code; Ctrl+R still refreshes Sheet
 data in place. Sheet rows cannot supply arbitrary update commands.
+
+
+## Zoom keyboard controls (0.16.16)
+
+Remove **Alt+Z** from the Dell Raycast Join Zoom command before using it here.
+This release cannot edit the Dell's Raycast settings remotely. Keep Raycast's
+other shortcuts and snippets. Its optional Join Zoom wrapper can remain without
+a hotkey, or you can remove that command if no longer needed.
+
+**Alt+Z** globally invokes the same `zoom.join` action as the searchable Join Zoom
+entry. An existing meeting is focused without repositioning or resizing it;
+a minimized meeting is restored. When no meeting exists, the saved link is
+opened and the new meeting starts compact and top-centered as before.
+
+With a Zoom meeting focused, hold Alt and use:
+
+| Keys | Action |
+|---|---|
+| Left / Right | One horizontal step: left, center, right |
+| Up / Down | One vertical step: top, middle, bottom |
+| 1 | Small: request 640 x 480 |
+| 2 | Medium: request 960 x 720 |
+| 3 | Large: request 1280 x 960 |
+| 4 | Maximize (not Zoom fullscreen) |
+| M | Minimize; Alt+Z brings it back |
+
+Movement retains size; resizing retains the nearest grid anchor. Repeated
+arrows stop at the edge of the current monitor's work area, with a 24-pixel
+margin. Zoom can enforce larger minimum sizes. From top center, Alt+Left goes
+top left; Alt+Right returns to center, then a second right goes top right.
+Ordinary arrows, numbers and typing are unaffected. These Alt combinations
+intentionally replace any native Zoom use of the same keys in a focused meeting,
+including while its chat field is focused. They do not apply to Zoom's home,
+settings, separate chat windows, browsers, or other apps. **Alt+4 retains the AMD
+plan-navigation action outside a meeting.** Alt+Z is a focus/open action, not a
+hide toggle. Exit Zoom's own fullscreen before arranging it if necessary.
+
+Dell check after refreshing: confirm tray version 0.16.16, remove Raycast's
+Alt+Z binding, open/focus with Alt+Z, test arrows and sizes 1–4, minimize with
+Alt+M, then restore with Alt+Z. Confirm ordinary chat typing and Alt+4 in AMD
+still work. Test on both monitors, including a monitor left of the primary.
+The Windows CI checks geometry and syntax; physical Dell/Zoom behavior still
+requires this check. Use **Rollback Trigger Search.cmd** to return to the previous
+release; restore Raycast's Alt+Z assignment if reverting ownership too.
