@@ -4192,7 +4192,11 @@ FindZoomAccessibilityButton(hwnd, pattern) {
     try {
         ; Initialize COM before the native accessibility call, not only when
         ; the returned interface is subsequently wrapped in ComValue.
-        DllCall("ole32\CoInitializeEx", "ptr", 0, "uint", 2)
+        static initialized := false
+        if !initialized {
+            DllCall("ole32\CoInitializeEx", "ptr", 0, "uint", 2)
+            initialized := true
+        }
         trace := A_Args.Length > 0 && A_Args[1] = "--self-test"
         if trace
             FileAppend "TEST acquiring accessibility root`n", "*"
@@ -4214,16 +4218,23 @@ FindZoomAccessibleNode(acc, child, pattern, depth, &budget) {
     if budget <= 0 || depth > 12
         return 0
     budget -= 1
+    trace := A_Args.Length > 0 && A_Args[1] = "--self-test"
+    if trace
+        FileAppend "TEST node " depth ":" child " role`n", "*"
     try {
         ; Match buttons only. Never invoke controls by approximate position.
         if acc.accRole(child) = 43 && !(acc.accState(child) & 0x8001)
             && RegExMatch(Trim(StrReplace(acc.accName(child), "&")), pattern)
             return {Acc: acc, Child: child}
     }
+    if trace
+        FileAppend "TEST node role returned`n", "*"
     if child != 0
         return 0
     try {
         count := Min(acc.accChildCount, budget)
+        if trace
+            FileAppend "TEST child count " count "`n", "*"
         if count <= 0
             return 0
         size := 8 + 2 * A_PtrSize
@@ -4232,6 +4243,8 @@ FindZoomAccessibleNode(acc, child, pattern, depth, &budget) {
         if DllCall("oleacc\AccessibleChildren", "ptr", ComObjValue(acc), "int", 0,
             "int", count, "ptr", children, "int*", &obtained, "int") < 0
             return 0
+        if trace
+            FileAppend "TEST children obtained " obtained "`n", "*"
         result := 0
         Loop obtained {
             offset := (A_Index - 1) * size

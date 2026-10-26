@@ -152,7 +152,7 @@
   [
     "Join Zoom",
     "zoom, join zoom",
-    "Join your saved Zoom meeting; compact 640 x 480 window at top center. Shortcut: Raycast Join Zoom or Trigger Search.",
+    "Focus/open Zoom. Alt+Z; views Alt+2\u20136; Alt+arrows to move (two arrows for corners).",
     "zoom.join"
   ],
   [
