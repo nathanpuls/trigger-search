@@ -3,7 +3,7 @@
 Persistent
 
 ; Trigger Search Windows client
-global AppVersion := "0.16.12"
+global AppVersion := "0.16.13"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -48,6 +48,7 @@ global AutomationRegistry := Map(
     "dell.copilot", {File: "dell/helpers.ahk", Action: "copilot"},
     "dell.espanso", {File: "dell/helpers.ahk", Action: "espanso"},
     "dell.copy-back", {File: "dell/helpers.ahk", Action: "copy-back"},
+    "zoom.join", {File: "dell/helpers.ahk", Action: "join-zoom"},
     "clipboard.store", {File: "", Action: "builtin:clipboard-store"},
     "clipboard.paste", {File: "", Action: "builtin:clipboard-paste"},
     "keyboard.remaps", {File: "", Action: "builtin:remaps"}

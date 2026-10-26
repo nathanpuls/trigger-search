@@ -9,7 +9,8 @@ param(
     [switch]$ValidateOnly,
     [switch]$NoStart,
     [switch]$InstallOriginalControls,
-    [ValidateSet('ON', 'OFF')][string]$OriginalScriptsMode = ''
+    [ValidateSet('ON', 'OFF')][string]$OriginalScriptsMode = '',
+    [ValidateSet('zoom.join')][string]$Automation = ''
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
@@ -437,6 +438,15 @@ try {
         Install-OriginalControls $InstallRoot $AutoHotkeyPath
         return
     }
+    if ($Automation) {
+        if (-not $current) { throw 'Install Trigger Search first.' }
+        $directory = Get-ReleasePath $current.commit
+        Test-Release $directory
+        # Fixed dispatch only; no Sheet value is ever an executable command.
+        $worker = Join-Path $directory 'automations/dell/helpers.ahk'
+        Start-Process -FilePath $AutoHotkeyPath -ArgumentList ('"' + $worker + '" 0 join-zoom') | Out-Null
+        return
+    }
     if ($StartOnly) {
         if (-not $current) { throw 'No installed release. Run Refresh-All.cmd first.' }
         Start-Release $current
@@ -495,6 +505,7 @@ try {
         $bootstrap = '@echo off' + "`r`n" + 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0refresh-all.ps1" -InstallRoot "%~dp0."'
         Set-Content -LiteralPath (Join-Path $InstallRoot 'Refresh-All.cmd') -Value ($bootstrap + "`r`npause") -Encoding ASCII
         Set-Content -LiteralPath (Join-Path $InstallRoot 'Start-Trigger-Search.cmd') -Value ($bootstrap + ' -StartOnly') -Encoding ASCII
+        Set-Content -LiteralPath (Join-Path $InstallRoot 'Join-Zoom.cmd') -Value ($bootstrap + ' -Automation zoom.join') -Encoding ASCII
         Set-Content -LiteralPath (Join-Path $InstallRoot 'Rollback.cmd') -Value ($bootstrap + " -Rollback`r`npause") -Encoding ASCII
         Copy-Item -LiteralPath (Join-Path $release 'windows/refresh-all.ps1') -Destination (Join-Path $InstallRoot 'refresh-all.ps1') -Force
         if (-not $NoStart) { Start-Release $next }

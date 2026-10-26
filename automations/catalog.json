@@ -148,5 +148,11 @@
     "remaps, keyboard",
     "Toggle the original copy/paste/navigation remaps. Shortcut: Multiple keys (see note).",
     "keyboard.remaps"
+  ],
+  [
+    "Join Zoom",
+    "zoom, join zoom",
+    "Join your saved Zoom meeting; compact 640 x 480 window at top center. Shortcut: Raycast Join Zoom or Trigger Search.",
+    "zoom.join"
   ]
 ]

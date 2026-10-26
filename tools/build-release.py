@@ -18,5 +18,5 @@ if '--check' in sys.argv:
     declared=re.findall(r'^    "([^"]+)", \{File:', registry, re.M)
     assert len(ids)==len(set(ids)) and set(ids)==set(declared), 'Catalog/dispatch mismatch'
     assert any('of' in [x.strip() for x in row[1].split(',')] and row[3]=='advancedmd.follow-up-office' for row in catalog[1:])
-    print('Manifest, compatibility bridge, and all 24 catalog dispatch entries verified')
+    print(f'Manifest, compatibility bridge, and all {len(ids)} catalog dispatch entries verified')
 else:path.write_text(content)

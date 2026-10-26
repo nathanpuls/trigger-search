@@ -15,6 +15,7 @@ try {
     Invoke-Refresh @()
     if ((Get-Content $statePath -Raw) -ne $initial) { throw 'Repeated refresh changed installation state.' }
     if (-not (Test-Path (Join-Path $root 'Refresh-All.cmd'))) { throw 'Refresh shortcut missing.' }
+    if (-not (Test-Path (Join-Path $root 'Join-Zoom.cmd'))) { throw 'Zoom action shortcut missing.' }
     if (Test-Path (Join-Path $root 'previous.json')) { throw 'Unchanged refresh created a rollback snapshot.' }
     # A local edit is detected and left untouched. Failed refresh keeps current.json unchanged.
     $script = Join-Path $root "releases/$($state.commit)/windows/autocomplete.ahk"

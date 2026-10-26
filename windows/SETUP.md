@@ -278,3 +278,36 @@ In 0.16.12, the typed automation hotstrings use executable blocks instead of
 AutoHotkey replacement text: `'fum` runs follow-up MSE, `'mse` runs full MSE,
 `;sid` runs SID, and `;cc` runs copy-back. Type them outside the launcher in the
 intended target field; no ending space is required. Existing focus checks apply.
+
+## Join Zoom (0.16.13)
+
+Search **Join Zoom** or **zoom** in Trigger Search. The trusted ID is `zoom.join`
+and the implementation is `JoinZoom()` in `automations/dell/helpers.ahk`. It
+uses the same existing six-file release bundle and exits after positioning.
+First use asks for your Zoom PMI link; it stays only in local settings under
+`[workflow-config] ZoomMeetingUrl`, never in GitHub or the public Sheet.
+
+With no meeting open, the action opens that URL in the default browser and waits
+up to 60 seconds for a Zoom meeting window; complete any Open Zoom or join prompt
+yourself. It restores the window and requests **640 x 480**, top-centered with
+a 24-pixel gap in the work area of the meeting's current monitor. Negative
+monitor coordinates and taskbars are respected. Zoom may enforce a larger
+minimum size. If Zoom is in fullscreen, exit fullscreen if it refuses to resize.
+
+If a meeting is already open, it only positions that existing meeting and
+reports that no new meeting was started. It does not close a live call. After
+a new meeting is detected it closes only exactly named Zoom home windows, not
+arbitrary Zoom windows. English meeting titles / the Zoom meeting window class
+are used; actual Dell Zoom recognition and final size require a device check.
+
+The optional Raycast wrapper is `integrations/raycast/join-zoom.ps1`. Replace
+the old Windows Raycast script contents with that wrapper if you want to keep
+Raycast's Join Zoom command. It calls the stable `Join-Zoom.cmd` in the managed
+installation, which invokes the same allowlisted local action. A custom install
+root needs the wrapper's `$root` adjusted. No global Zoom hotkey is added.
+
+The original PowerShell error was `:MoveWindow(...)`; calling the supplied C#
+static method would require `[WinAPI]::MoveWindow(...)`. The wrapper eliminates
+that duplicate implementation rather than storing a personal meeting URL in
+source. CI validates script syntax, bounds, safe URL validation, home/meeting
+classification, and dry runs without starting Zoom or joining a meeting.

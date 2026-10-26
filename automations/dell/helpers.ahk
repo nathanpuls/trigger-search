@@ -12,8 +12,9 @@ global HelperActions := Map(
     "sid", Sid, "plan-navigation", PlanNavigation, "mse-navigation", MseNavigation,
     "hpi", Hpi, "launch-advancedmd", LaunchAdvancedMD, "morning-startup", MorningStartup,
     "blueprint", Blueprint, "it-ticket", ItTicket, "schedule-email", ScheduleEmail,
-    "copilot", Copilot, "espanso", Espanso, "copy-back", CopyBack)
+    "copilot", Copilot, "espanso", Espanso, "copy-back", CopyBack, "join-zoom", JoinZoom)
 if DryRun {
+    TestZoomPlacement()
     if RequiresOriginWindow("launch-advancedmd") || !RequiresOriginWindow("mse")
         ExitApp 1
     left := LeftmostDisplay([{Left: 1920, Top: 0, Right: 3840, Bottom: 1080},
@@ -52,7 +53,7 @@ try {
     HelperActions[A_Args[2]].Call()
 } catch as problem {
     ; Fixed error messages only; no window titles or clipboard contents are logged.
-    MsgBox problem.Message, "Trigger Search 0.16.5 — " A_Args[2]
+    MsgBox problem.Message, "Trigger Search 0.16.13 — " A_Args[2]
 } finally {
     DllCall("CloseHandle", "ptr", mutex)
 }
@@ -457,5 +458,111 @@ RequireAMDWindowExists() {
 RequiresOriginWindow(action) {
     ; Opening AMD activates its own identified login window. The launcher may
     ; have started it from any application. Form-filling actions retain focus checks.
-    return action != "launch-advancedmd"
+    return action != "launch-advancedmd" && action != "join-zoom"
+}
+
+JoinZoom() {
+    global DryRun, Steps
+    if DryRun {
+        Steps.Push(["Zoom", "JoinAndPosition"])
+        return
+    }
+    ; Do not terminate a live call just to resize it or start another meeting.
+    meeting := FindZoomMeeting()
+    if meeting {
+        PositionZoomMeeting meeting
+        TrayTip "Positioned the existing Zoom meeting. No new meeting was started.", "Trigger Search"
+        return
+    }
+    url := LocalZoomMeetingUrl()
+    Run url
+    deadline := A_TickCount + 60000
+    while A_TickCount < deadline {
+        meeting := FindZoomMeeting()
+        if meeting {
+            PositionZoomMeeting meeting
+            ; Close only identified home windows after the meeting exists.
+            for hwnd in WinGetList("ahk_exe Zoom.exe") {
+                if hwnd != meeting && RegExMatch(WinGetTitle("ahk_id " hwnd), "i)^(Zoom Workplace|Zoom Cloud Meetings)$")
+                    try WinClose "ahk_id " hwnd
+            }
+            return
+        }
+        Sleep 300
+    }
+    throw Error("Zoom meeting window was not found within 60 seconds. Complete any browser Open Zoom or join prompt, then run Join Zoom again.")
+}
+LocalZoomMeetingUrl() {
+    path := A_AppData "\SheetAutocomplete\settings.ini"
+    value := Trim(IniRead(path, "workflow-config", "ZoomMeetingUrl", ""))
+    if ValidZoomMeetingUrl(value)
+        return value
+    result := InputBox("Paste your Zoom personal meeting link. It is saved only on this Dell, outside GitHub and the Sheet.",
+        "Join Zoom - one-time setup", "w600 h160", value)
+    if result.Result != "OK"
+        throw Error("Zoom setup cancelled. No meeting was opened.")
+    value := Trim(result.Value)
+    if !ValidZoomMeetingUrl(value)
+        throw Error("Use an HTTPS zoom.us /s/ or /j/ meeting link. Run Join Zoom again to correct it.")
+    IniWrite value, path, "workflow-config", "ZoomMeetingUrl"
+    return value
+}
+ValidZoomMeetingUrl(url) {
+    return RegExMatch(url, 'i)^https://(?:[a-z0-9-]+\.)?zoom\.us/[js]/[0-9]+(?:\?[^" <>\r\n]*)?$') != 0
+}
+ZoomMeetingCandidate(title, className) {
+    return className = "ZPContentViewWndClass" || RegExMatch(title, "i)Zoom (Meeting|Webinar)") != 0
+}
+FindZoomMeeting() {
+    for hwnd in WinGetList("ahk_exe Zoom.exe") {
+        try {
+            if ZoomMeetingCandidate(WinGetTitle("ahk_id " hwnd), WinGetClass("ahk_id " hwnd))
+                return hwnd
+        }
+    }
+    return 0
+}
+ZoomTopCenterBounds(area) {
+    width := Max(100, Min(640, area.Right - area.Left - 48))
+    height := Max(100, Min(480, area.Bottom - area.Top - 48))
+    return {X: area.Left + Floor((area.Right - area.Left - width) / 2),
+        Y: area.Top + 24, Width: width, Height: height}
+}
+PositionZoomMeeting(hwnd) {
+    window := "ahk_id " hwnd
+    if !WinExist(window) || WinGetProcessName(window) != "Zoom.exe"
+        throw Error("The Zoom meeting window is no longer available.")
+    WinGetPos &x, &y, &width, &height, window
+    monitor := MonitorGetPrimary()
+    Loop MonitorGetCount() {
+        MonitorGet A_Index, &left, &top, &right, &bottom
+        if x + width / 2 >= left && x + width / 2 < right && y + height / 2 >= top && y + height / 2 < bottom {
+            monitor := A_Index
+            break
+        }
+    }
+    MonitorGetWorkArea monitor, &left, &top, &right, &bottom
+    bounds := ZoomTopCenterBounds({Left: left, Top: top, Right: right, Bottom: bottom})
+    WinRestore window
+    Sleep 150
+    WinMove bounds.X, bounds.Y, bounds.Width, bounds.Height, window
+    Sleep 300
+    ; Zoom can enforce a minimum size. Center that actual width as well.
+    WinGetPos , , &actualWidth, , window
+    WinMove left + Floor((right - left - actualWidth) / 2), bounds.Y, , , window
+    WinActivate window
+}
+TestZoomPlacement() {
+    if RequiresOriginWindow("join-zoom")
+        throw Error("Join Zoom must not depend on the launcher's previous window.")
+    bounds := ZoomTopCenterBounds({Left: -1920, Top: 0, Right: 0, Bottom: 1040})
+    if bounds.X != -1280 || bounds.Y != 24 || bounds.Width != 640 || bounds.Height != 480
+        throw Error("Zoom must center near the top of its own monitor, including negative coordinates.")
+    bounds := ZoomTopCenterBounds({Left: 0, Top: 40, Right: 600, Bottom: 440})
+    if bounds.Width != 552 || bounds.Height != 352 || bounds.X != 24 || bounds.Y != 64
+        throw Error("Zoom placement must fit a small monitor work area.")
+    if ZoomMeetingCandidate("Zoom Workplace", "HomeWindow") || !ZoomMeetingCandidate("Zoom Meeting", "MeetingWindow")
+        throw Error("Zoom home must not be selected as the meeting window.")
+    if !ValidZoomMeetingUrl("https://example.zoom.us/j/1234567890") || ValidZoomMeetingUrl("https://example.com/j/123")
+        throw Error("Only Zoom meeting links may be launched.")
 }
