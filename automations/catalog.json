@@ -1,0 +1,152 @@
+[
+  [
+    "Name",
+    "Alias",
+    "Description",
+    "Script ID"
+  ],
+  [
+    "AdvancedMD office follow-up",
+    "office fu, of",
+    "Run the Dell office follow-up workflow.",
+    "advancedmd.follow-up-office"
+  ],
+  [
+    "AdvancedMD telehealth follow-up",
+    "tele fu, tf",
+    "Run the Dell telehealth follow-up workflow.",
+    "advancedmd.follow-up-tele"
+  ],
+  [
+    "AdvancedMD office intake",
+    "office intake, oi",
+    "Run the Dell office intake workflow.",
+    "advancedmd.intake-office"
+  ],
+  [
+    "Type initials",
+    "nat, initials",
+    "Type nat and press Enter.",
+    "dell.initials"
+  ],
+  [
+    "AdvancedMD charge slip",
+    "charge, cs",
+    "Run the Dell charge-slip helper.",
+    "dell.charge-slip"
+  ],
+  [
+    "Insert note date",
+    "date, stamp",
+    "Insert the Dell formatted note date.",
+    "dell.timestamp"
+  ],
+  [
+    "AdvancedMD full MSE",
+    "mse",
+    "Fill the full MSE with the original delays.",
+    "dell.mse"
+  ],
+  [
+    "AdvancedMD MSE fast",
+    "mse2, fast mse",
+    "Run the original Ctrl+Alt+M MSE sequence.",
+    "dell.mse-fast"
+  ],
+  [
+    "AdvancedMD follow-up MSE",
+    "fum",
+    "Fill the short follow-up MSE.",
+    "dell.follow-up-mse"
+  ],
+  [
+    "AdvancedMD SID helper",
+    "sid",
+    "Run the original SID form navigation.",
+    "dell.sid"
+  ],
+  [
+    "AdvancedMD plan navigation",
+    "plan, pagedown",
+    "Run the original Alt+4 navigation helper.",
+    "dell.plan-navigation"
+  ],
+  [
+    "AdvancedMD MSE navigation",
+    "window, mse nav",
+    "Run the original Alt+Q MSE navigation.",
+    "dell.mse-navigation"
+  ],
+  [
+    "AdvancedMD HPI click helper",
+    "hpi",
+    "Use the original fixed HPI click positions.",
+    "dell.hpi"
+  ],
+  [
+    "Open AdvancedMD",
+    "amd, login",
+    "Open AdvancedMD using a locally saved office key.",
+    "dell.launch-advancedmd"
+  ],
+  [
+    "AdvancedMD morning startup",
+    "morning, startup",
+    "Run the morning startup sequence.",
+    "dell.morning-startup"
+  ],
+  [
+    "Open Blueprint workflow",
+    "bp, blueprint",
+    "Open Blueprint and run the Dell clipboard workflow.",
+    "dell.blueprint"
+  ],
+  [
+    "Prepare IT ticket",
+    "it, ticket",
+    "Open and fill the Dell IT ticket template.",
+    "dell.it-ticket"
+  ],
+  [
+    "Prepare next-day schedule email",
+    "schedule email, f8",
+    "Compose the schedule email; does not send it.",
+    "dell.schedule-email"
+  ],
+  [
+    "Open Microsoft Copilot",
+    "copilot",
+    "Open Microsoft 365 Copilot.",
+    "dell.copilot"
+  ],
+  [
+    "Open Espanso",
+    "espanso",
+    "Send the original Ctrl+Space shortcut.",
+    "dell.espanso"
+  ],
+  [
+    "Copy to previous window",
+    "cc, copy back",
+    "Copy all text, switch windows, and paste.",
+    "dell.copy-back"
+  ],
+  [
+    "Remember special clipboard",
+    "remember, store clip",
+    "Keep the clipboard value in memory on this Dell.",
+    "clipboard.store"
+  ],
+  [
+    "Paste special clipboard",
+    "special, paste clip",
+    "Paste the remembered value.",
+    "clipboard.paste"
+  ],
+  [
+    "Toggle Dell keyboard remaps",
+    "remaps, keyboard",
+    "Toggle the original copy/paste/navigation remaps.",
+    "keyboard.remaps"
+  ]
+]

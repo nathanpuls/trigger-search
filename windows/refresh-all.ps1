@@ -16,7 +16,8 @@ $allowed = @(
     'windows/autocomplete.ahk', 'windows/refresh-all.ps1',
     'automations/advancedmd/follow-up-office.ahk',
     'automations/advancedmd/follow-up-tele.ahk',
-    'automations/advancedmd/intake-office.ahk'
+    'automations/advancedmd/intake-office.ahk',
+    'automations/dell/helpers.ahk'
 )
 function Read-State([string]$Path) {
     if (Test-Path -LiteralPath $Path) { return Get-Content -LiteralPath $Path -Raw | ConvertFrom-Json }
@@ -28,7 +29,7 @@ function Get-ReleasePath([string]$Commit) {
 }
 function Test-Release([string]$Directory) {
     $manifest = Get-Content -LiteralPath (Join-Path $Directory 'windows/release-manifest.json') -Raw | ConvertFrom-Json
-    if ($manifest.schema -ne 1 -or @($manifest.files).Count -ne $allowed.Count) { throw 'Unexpected release manifest.' }
+    if ($manifest.schema -ne 1 -or @($manifest.files).Count -lt 5 -or @($manifest.files).Count -gt $allowed.Count) { throw 'Unexpected release manifest.' }
     $seen = @{}
     foreach ($file in $manifest.files) {
         if ($file.path -cnotin $allowed -or $seen.ContainsKey($file.path) -or $file.sha256 -notmatch '^[0-9a-f]{64}$') {
@@ -40,9 +41,12 @@ function Test-Release([string]$Directory) {
             throw "Release hash mismatch: $($file.path). Local edits are preserved; no files were replaced."
         }
     }
+    foreach ($required in $allowed | Where-Object { $_ -ne 'automations/dell/helpers.ahk' }) {
+        if (-not $seen.ContainsKey($required)) { throw 'Required release file is missing.' }
+    }
 }
 function Invoke-AhkCheck([string]$Directory, [switch]$SelfTest) {
-    foreach ($relative in $allowed | Where-Object { $_ -like '*.ahk' }) {
+    foreach ($relative in $allowed | Where-Object { $_ -like '*.ahk' -and (Test-Path -LiteralPath (Join-Path $Directory $_)) }) {
         $path = Join-Path $Directory $relative
         $arguments = if ($SelfTest) { '"' + $path + '" --self-test' } else { '/ErrorStdOut=UTF-8 /validate "' + $path + '"' }
         $out = Join-Path $env:TEMP ([guid]::NewGuid().ToString() + '.txt')
@@ -62,12 +66,12 @@ function Invoke-AhkCheck([string]$Directory, [switch]$SelfTest) {
 function Get-ManagedProcesses {
     $prefix = [regex]::Escape((Join-Path $InstallRoot 'releases'))
     return @(Get-CimInstance Win32_Process -Filter "Name LIKE 'AutoHotkey%.exe'" | Where-Object {
-        $_.CommandLine -and $_.CommandLine -match ($prefix + '[\\/][0-9a-f]{40}[\\/](windows[\\/]autocomplete\.ahk|automations[\\/]advancedmd[\\/][a-z-]+\.ahk)(["\s]|$)')
+        $_.CommandLine -and $_.CommandLine -match ($prefix + '[\\/][0-9a-f]{40}[\\/](windows[\\/]autocomplete\.ahk|automations[\\/](advancedmd|dell)[\\/][a-z-]+\.ahk)(["\s]|$)')
     })
 }
 function Stop-ManagedLauncher {
     $processes = @(Get-ManagedProcesses)
-    if (@($processes | Where-Object { $_.CommandLine -match 'automations[\\/]advancedmd' }).Count) {
+    if (@($processes | Where-Object { $_.CommandLine -match 'automations[\\/](advancedmd|dell)' }).Count) {
         throw 'An AdvancedMD automation is running. Wait until it finishes, then refresh again.'
     }
     foreach ($item in $processes) { Stop-Process -Id $item.ProcessId -ErrorAction Stop }
@@ -136,7 +140,7 @@ try {
     Get-RemoteFile $commit 'windows/release-manifest.json' (Join-Path $stage 'windows/release-manifest.json')
     # Validate allowed paths before downloading anything named by a manifest.
     $manifest = Get-Content (Join-Path $stage 'windows/release-manifest.json') -Raw | ConvertFrom-Json
-    if ($manifest.schema -ne 1 -or @($manifest.files).Count -ne $allowed.Count) { throw 'Unexpected release manifest.' }
+    if ($manifest.schema -ne 1 -or @($manifest.files).Count -lt 5 -or @($manifest.files).Count -gt $allowed.Count) { throw 'Unexpected release manifest.' }
     foreach ($file in $manifest.files) {
         if ($file.path -cnotin $allowed) { throw 'Manifest requested an unapproved file.' }
         Get-RemoteFile $commit $file.path (Join-Path $stage $file.path)

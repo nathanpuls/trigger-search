@@ -2,8 +2,8 @@
 #SingleInstance Force
 Persistent
 
-; Sheet Autocomplete version 0.15.0
-global AppVersion := "0.15.0"
+; Sheet Autocomplete version 0.16.0
+global AppVersion := "0.16.0"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -27,10 +27,36 @@ global LauncherHotkey := ""
 global RightControlUsed := false
 global RightControlDown := 0
 global AutomationRegistry := Map(
-    "advancedmd.follow-up-office", "follow-up-office.ahk",
-    "advancedmd.follow-up-tele", "follow-up-tele.ahk",
-    "advancedmd.intake-office", "intake-office.ahk"
+    "advancedmd.follow-up-office", {File: "advancedmd/follow-up-office.ahk", Action: ""},
+    "advancedmd.follow-up-tele", {File: "advancedmd/follow-up-tele.ahk", Action: ""},
+    "advancedmd.intake-office", {File: "advancedmd/intake-office.ahk", Action: ""},
+    "dell.initials", {File: "dell/helpers.ahk", Action: "initials"},
+    "dell.charge-slip", {File: "dell/helpers.ahk", Action: "charge-slip"},
+    "dell.timestamp", {File: "dell/helpers.ahk", Action: "timestamp"},
+    "dell.mse", {File: "dell/helpers.ahk", Action: "mse"},
+    "dell.mse-fast", {File: "dell/helpers.ahk", Action: "mse-fast"},
+    "dell.follow-up-mse", {File: "dell/helpers.ahk", Action: "follow-up-mse"},
+    "dell.sid", {File: "dell/helpers.ahk", Action: "sid"},
+    "dell.plan-navigation", {File: "dell/helpers.ahk", Action: "plan-navigation"},
+    "dell.mse-navigation", {File: "dell/helpers.ahk", Action: "mse-navigation"},
+    "dell.hpi", {File: "dell/helpers.ahk", Action: "hpi"},
+    "dell.launch-advancedmd", {File: "dell/helpers.ahk", Action: "launch-advancedmd"},
+    "dell.morning-startup", {File: "dell/helpers.ahk", Action: "morning-startup"},
+    "dell.blueprint", {File: "dell/helpers.ahk", Action: "blueprint"},
+    "dell.it-ticket", {File: "dell/helpers.ahk", Action: "it-ticket"},
+    "dell.schedule-email", {File: "dell/helpers.ahk", Action: "schedule-email"},
+    "dell.copilot", {File: "dell/helpers.ahk", Action: "copilot"},
+    "dell.espanso", {File: "dell/helpers.ahk", Action: "espanso"},
+    "dell.copy-back", {File: "dell/helpers.ahk", Action: "copy-back"},
+    "clipboard.store", {File: "", Action: "builtin:clipboard-store"},
+    "clipboard.paste", {File: "", Action: "builtin:clipboard-paste"},
+    "keyboard.remaps", {File: "", Action: "builtin:remaps"}
 )
+global SpecialClipboard := ""
+global SpecialClipboardSet := false
+global RemapsEnabled := false
+global RightControlEventCount := 0
+
 
 global AiEngine := "ChatGPT"
 global InboxSheet := "Inbox"
@@ -76,14 +102,30 @@ OnError HandleUnexpectedError
 Initialize()
 
 ; Right Ctrl is a tap-only parallel launcher. Combinations retain Ctrl behavior.
-~*RControl::BeginRightControlTap()
-~*RControl Up::EndRightControlTap()
+~*SC11D::BeginRightControlTap()
+~*SC11D Up::EndRightControlTap()
+^!Space::ShowChooser()
 
 ; These shortcuts replace the corresponding Dell listeners only in managed installs.
 #HotIf ManagedAutomationsAvailable() && !IsTriggerSearchOpen()
 !o::RunAutomation("advancedmd.follow-up-office")
 !t::RunAutomation("advancedmd.follow-up-tele")
 !0::RunAutomation("advancedmd.intake-office")
+!a::RunAutomation("dell.launch-advancedmd")
+!b::RunAutomation("dell.blueprint")
+!q::RunAutomation("dell.mse-navigation")
+!4::RunAutomation("dell.plan-navigation")
+F2::RunAutomation("dell.initials")
+F3::RunAutomation("dell.charge-slip")
+F4::RunAutomation("dell.timestamp")
+F8::RunAutomation("dell.schedule-email")
+^!m::RunAutomation("dell.mse-fast")
+^!5::RunAutomation("clipboard.store")
+!5::RunAutomation("clipboard.paste")
+:*:'mse::RunAutomation("dell.mse")
+:*:'fum::RunAutomation("dell.follow-up-mse")
+:*:;sid::RunAutomation("dell.sid")
+:*:;cc::RunAutomation("dell.copy-back")
 #HotIf
 
 #HotIf IsTriggerSearchOpen()
@@ -158,6 +200,7 @@ Initialize() {
     A_TrayMenu.Add("Update script from GitHub", UpdateScriptFromGitHub)
     A_TrayMenu.Add("Refresh all scripts", UpdateScriptFromGitHub)
     A_TrayMenu.Add("Show last error report", ShowLastErrorReport)
+    A_TrayMenu.Add("Keyboard and installation status", ShowKeyboardStatus)
 
     SetTimer CheckActiveWindow, 400
     SetTimer RefreshData, RefreshIntervalMs
@@ -297,7 +340,7 @@ TrackNonTextKey(input, vk, sc) {
 
     global RightControlUsed
     keyName := GetKeyName(Format("vk{:x}sc{:x}", vk, sc))
-    if GetKeyState("RControl", "P") && keyName != "RControl"
+    if GetKeyState("RControl", "P") && vk != 0xA3 && sc != 0x11D
         RightControlUsed := true
     if ChooserOpen
         return
@@ -2155,7 +2198,14 @@ ConnectGoogleSheet(newSheetId, title := "Change Google Sheet") {
 UpdateScriptFromGitHub(*) {
     refreshScript := A_ScriptDir "\refresh-all.ps1"
     if !FileExist(refreshScript) {
-        MsgBox "Install the managed Trigger Search bundle first. See windows/SETUP.md on GitHub. Your current script and snippets have not changed.", "Trigger Search"
+        try {
+            refreshScript := CacheDir "\install-trigger-search.ps1"
+            Download "https://raw.githubusercontent.com/nathanpuls/trigger-search/codex/unified-windows-20261026/windows/refresh-all.ps1", refreshScript
+            Run 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "' refreshScript
+                . '" -Ref codex/unified-windows-20261026 -AutoHotkeyPath "' A_AhkPath '"'
+        } catch {
+            MsgBox "Could not download the installer. Your current installation is unchanged.", "Trigger Search"
+        }
         return
     }
     Run 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "' refreshScript
@@ -2474,6 +2524,11 @@ RunSelfTests() {
         . 'Telehealth,tf,Video follow up,advancedmd.follow-up-tele')
     automations := []
     ParseAutomations automationRows, {Name: "Automations", Gid: "987"}, automations
+    helperRows := []
+    ParseAutomations ParseCsv("Name,Alias,Description,Script ID`nFull MSE,mse,Exam,dell.mse"),
+        {Name: "Automations", Gid: "987"}, helperRows
+    Assert helperRows.Length = 1 && InStr(AutomationPath("dell.mse"), "dell/helpers.ahk"),
+        "All registered Dell helpers must be accepted as automation rows."
     Assert automations.Length = 2, "Unknown IDs and duplicate automation rows must be rejected."
     Assert automations[1].Label = "Office visit" && automations[1].Content = ""
         && !automations[1].HasSavedContent, "Automation metadata must never become snippet text."
@@ -2496,7 +2551,7 @@ RunSelfTests() {
     Assert FilterChoices("Video")[1].ScriptId = "advancedmd.follow-up-tele",
         "Descriptions must be searchable."
     Assert IsRightControlTap(100, false, "RControl"), "A short Right Ctrl tap should launch."
-    Assert !IsRightControlTap(500, false, "RControl"), "A held Right Ctrl should not launch."
+    Assert !IsRightControlTap(900, false, "RControl"), "A held Right Ctrl should not launch."
     Assert !IsRightControlTap(100, true, "RControl"), "A Ctrl combination should not launch."
     Assert !IsRightControlTap(100, false, "c"), "Ctrl+C must retain its normal behavior."
 
@@ -3273,7 +3328,8 @@ LoadCache() {
 
 
 BeginRightControlTap(*) {
-    global RightControlUsed, RightControlDown
+    global RightControlUsed, RightControlDown, RightControlEventCount
+    RightControlEventCount += 1
     if RightControlDown
         return
     RightControlUsed := GetKeyState("LControl", "P") || GetKeyState("Shift", "P")
@@ -3284,7 +3340,7 @@ BeginRightControlTap(*) {
 EndRightControlTap(*) {
     global RightControlUsed, RightControlDown
     tapped := RightControlDown && IsRightControlTap(A_TickCount - RightControlDown,
-        RightControlUsed, A_PriorKey)
+        RightControlUsed, "RControl")
     RightControlDown := 0
     if tapped && !IsTriggerSearchOpen()
         ShowChooser()
@@ -3303,7 +3359,8 @@ AutomationPath(scriptId) {
     ; A Sheet ID is never used as a filename, command, or argument.
     if !AutomationRegistry.Has(scriptId)
         throw Error("Unknown automation Script ID.")
-    return A_ScriptDir "\..\automations\advancedmd\" AutomationRegistry[scriptId]
+    entry := AutomationRegistry[scriptId]
+    return entry.File = "" ? "" : A_ScriptDir "\..\automations\" entry.File
 }
 
 ParseAutomations(rows, info, output) {
@@ -3345,10 +3402,11 @@ ParseAutomations(rows, info, output) {
 }
 
 RunAutomation(scriptId, choice := 0) {
-    global TargetWindow, ChooserGui, ChooserOpen, AtBoundary
+    global TargetWindow, ChooserGui, ChooserOpen, AtBoundary, AutomationRegistry
     try {
         path := AutomationPath(scriptId)
-        if !FileExist(path)
+        entry := AutomationRegistry[scriptId]
+        if path != "" && !FileExist(path)
             throw Error("Automation is not installed. Use Refresh all scripts.")
         target := ChooserOpen ? TargetWindow : WinExist("A")
         if !target || !WinExist("ahk_id " target)
@@ -3361,7 +3419,12 @@ RunAutomation(scriptId, choice := 0) {
         WinActivate "ahk_id " target
         if !WinWaitActive("ahk_id " target, , 1)
             throw Error("Could not return to the original window.")
-        Run '"' A_AhkPath '" "' path '" ' target
+        if entry.File = ""
+            RunBuiltinAutomation entry.Action
+        else {
+            arguments := entry.Action != "" ? ' "' entry.Action '"' : ""
+            Run '"' A_AhkPath '" "' path '" ' target arguments
+        }
         if choice
             RecordRecent choice
         AtBoundary := true
@@ -3393,5 +3456,45 @@ CopyLatestInboxNow(*) {
 }
 
 IsRightControlTap(duration, used, priorKey) {
-    return duration < 400 && !used && priorKey = "RControl"
+    return duration < 700 && !used && priorKey = "RControl"
+}
+
+ShowKeyboardStatus(*) {
+    global AppVersion, RightControlEventCount
+    MsgBox "Trigger Search " AppVersion "`nScript: " A_ScriptFullPath
+        . "`nRight Ctrl press events seen: " RightControlEventCount
+        . "`nTap the keyboard's Right Ctrl, then reopen this status."
+        . "`nNo typed text or clipboard content is recorded."
+        . "`nCtrl+Alt+Space also opens the launcher.", "Trigger Search status"
+}
+
+RunBuiltinAutomation(action) {
+    global SpecialClipboard, SpecialClipboardSet, RemapsEnabled
+    if action = "builtin:clipboard-store" {
+        SpecialClipboard := A_Clipboard
+        SpecialClipboardSet := true
+        TrayTip "Clipboard value remembered in memory.", "Trigger Search"
+    } else if action = "builtin:clipboard-paste" {
+        if !SpecialClipboardSet
+            throw Error("Remember a clipboard value first (Ctrl+Alt+5).")
+        A_Clipboard := SpecialClipboard
+        Send "^v"
+    } else if action = "builtin:remaps" {
+        RemapsEnabled := !RemapsEnabled
+        HotIf ShouldRemapKeys
+        mappings := Map("Insert", "^c", "Home", "^v", "Delete", "^x", "#End", "^s",
+            "PgUp", "^a", "PgDn", "^z", "NumpadEnd", "^w", "F10", "^f")
+        for key, value in mappings
+            Hotkey "$" key, SendRemappedKey.Bind(value), RemapsEnabled ? "On" : "Off"
+        HotIf
+        TrayTip RemapsEnabled ? "Dell remaps enabled." : "Dell remaps disabled.", "Trigger Search"
+    } else
+        throw Error("Unknown built-in automation.")
+}
+SendRemappedKey(value, *) {
+    Send value
+}
+
+ShouldRemapKeys(*) {
+    return !IsTriggerSearchOpen()
 }

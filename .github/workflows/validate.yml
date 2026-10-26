@@ -95,7 +95,7 @@ jobs:
           [System.Management.Automation.Language.Parser]::ParseFile("$PWD\windows\refresh-all.ps1", [ref]$tokens, [ref]$errors) | Out-Null
           if ($errors.Count) { throw ($errors | Out-String) }
           $exe = Get-ChildItem autohotkey -Recurse -Filter AutoHotkey64.exe | Select-Object -First 1
-          foreach ($file in Get-ChildItem automations/advancedmd -Filter *.ahk) {
+          foreach ($file in Get-ChildItem automations -Recurse -Filter *.ahk) {
             $p = Start-Process $exe.FullName -ArgumentList @('/ErrorStdOut=UTF-8', '/validate', ('"' + $file.FullName + '"')) -Wait -PassThru
             if ($p.ExitCode -ne 0) { throw "Worker validation failed: $file" }
             $p = Start-Process $exe.FullName -ArgumentList @(('"' + $file.FullName + '"'), '--self-test') -Wait -PassThru
