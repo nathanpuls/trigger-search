@@ -110,7 +110,7 @@ jobs:
           $exe = Get-ChildItem autohotkey -Recurse -Filter AutoHotkey64.exe | Select-Object -First 1
           ./tests/windows-refresh.ps1 -AutoHotkeyPath $exe.FullName -Ref $env:SOURCE_COMMIT
 
-      - name: Exercise Right Control keyboard hooks
+      - name: Replay Right Control handler events
         shell: pwsh
         run: |
           $exe = Get-ChildItem autohotkey -Recurse -Filter AutoHotkey64.exe | Select-Object -First 1
@@ -120,4 +120,4 @@ jobs:
           $null = $p.Handle
           if (-not $p.WaitForExit(15000)) { $p.Kill(); throw 'Keyboard hook test timed out.' }
           if (Test-Path $result) { Get-Content $result }
-          if ($p.ExitCode -ne 0 -or (Get-Content $result -Raw) -ne 'PASS') { throw 'Keyboard hooks failed.' }
+          if ($p.ExitCode -ne 0 -or (Get-Content $result -Raw) -ne 'PASS: handler replay; physical keyboard unverified') { throw 'Keyboard handler replay failed.' }
