@@ -81,3 +81,31 @@ jobs:
           if ($legacy -ne $current) {
             throw "The root compatibility script differs from the Windows source."
           }
+
+
+      - name: Validate release manifest
+        shell: pwsh
+        run: python tools/build-release.py --check
+
+      - name: Validate PowerShell and automation workers
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile("$PWD\windows\refresh-all.ps1", [ref]$tokens, [ref]$errors) | Out-Null
+          if ($errors.Count) { throw ($errors | Out-String) }
+          $exe = Get-ChildItem autohotkey -Recurse -Filter AutoHotkey64.exe | Select-Object -First 1
+          foreach ($file in Get-ChildItem automations/advancedmd -Filter *.ahk) {
+            $p = Start-Process $exe.FullName -ArgumentList @('/ErrorStdOut=UTF-8', '/validate', ('"' + $file.FullName + '"')) -Wait -PassThru
+            if ($p.ExitCode -ne 0) { throw "Worker validation failed: $file" }
+            $p = Start-Process $exe.FullName -ArgumentList @(('"' + $file.FullName + '"'), '--self-test') -Wait -PassThru
+            if ($p.ExitCode -ne 0) { throw "Worker dry run failed: $file" }
+          }
+
+      - name: Exercise manual install and rollback
+        shell: pwsh
+        env:
+          SOURCE_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          $exe = Get-ChildItem autohotkey -Recurse -Filter AutoHotkey64.exe | Select-Object -First 1
+          ./tests/windows-refresh.ps1 -AutoHotkeyPath $exe.FullName -Ref $env:SOURCE_COMMIT

@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "files": [
+    {
+      "path": "windows/autocomplete.ahk",
+      "sha256": "dcb82f40de82d9d8a19a8d13f66917466d6e3171250b1d36cd33aa60c441ee39"
+    },
+    {
+      "path": "windows/refresh-all.ps1",
+      "sha256": "42887ea97ae8edc201c6f72ae57fa1ef33ba8450d7fc86f5b2f65f16a65a2aac"
+    },
+    {
+      "path": "automations/advancedmd/follow-up-office.ahk",
+      "sha256": "6f8009fe733dac8fe62b6e0c982add79eacbfd45c006c7f68d70ee088dbb5e12"
+    },
+    {
+      "path": "automations/advancedmd/follow-up-tele.ahk",
+      "sha256": "b41c5d8f75257054da0e1b53325eef2140a9a8f83edbc65b04b9d6f63c334357"
+    },
+    {
+      "path": "automations/advancedmd/intake-office.ahk",
+      "sha256": "0acdaca809d2aa757f6b78d014a9f279620c97c71841d6c721a51f85bdd04abf"
+    }
+  ]
+}

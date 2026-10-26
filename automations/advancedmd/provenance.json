@@ -1,0 +1,17 @@
+[
+  {
+    "source": "follow-up-office.ahk",
+    "source_sha256": "e54325fd8f743b6ac1ec07a9c97c91b0e1a968142524a1b1d5448064f8a08908",
+    "destination": "automations/advancedmd/follow-up-office.ahk"
+  },
+  {
+    "source": "follow-up-tele.ahk",
+    "source_sha256": "b08d767425aae899c1a6757bf1ea8f4bd3e7ac1f1c4b4661e651bc90064e9af7",
+    "destination": "automations/advancedmd/follow-up-tele.ahk"
+  },
+  {
+    "source": "intake-office.ahk",
+    "source_sha256": "6df4c8fce96440f79a2dc95bbcedf4dc466c5f29691f3595f5c7a68df2adb884",
+    "destination": "automations/advancedmd/intake-office.ahk"
+  }
+]

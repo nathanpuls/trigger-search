@@ -3,6 +3,12 @@
 A rough AutoHotkey v2 version of the Mac Hammerspoon autocomplete. It reads the
 same public Google Sheet and does not use OAuth or a Google sign-in.
 
+## Managed installation
+
+Use [SETUP.md](SETUP.md) for the unified Windows preview. It preserves semicolon,
+adds tap Right Ctrl, and updates the launcher plus three AdvancedMD workflows
+through one manual command. The single-file setup below is legacy reference.
+
 ## Install on the Dell
 
 1. Open [`windows/autocomplete.ahk`](autocomplete.ahk) in this GitHub repository
@@ -210,10 +216,11 @@ placeholders remain unchanged.
 
 ## Get future script updates
 
-Right-click the green H tray icon and choose **Update script from GitHub**. The
-script downloads the current GitHub version, saves the previous file beside it
-as `autocomplete.ahk.backup`, replaces the working file, and reloads itself.
-If the script is already current, it leaves everything unchanged.
+In a managed install, **Update script from GitHub** and **Refresh all scripts**
+run the same bundle updater. It validates a complete pinned release before
+switching and retains previous releases for rollback. See [SETUP.md](SETUP.md).
+Single-file installs must first use the managed installer; downloading only the
+launcher cannot install its automation workers.
 
 ## Diagnostics
 
@@ -253,3 +260,4 @@ After the script works normally:
   information, or other private work data in it.
 - This is a prototype. Exit it from the green H tray icon if anything behaves
   unexpectedly.
+
