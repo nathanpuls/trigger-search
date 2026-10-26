@@ -159,3 +159,9 @@ Open AMD does not require the original pre-launch window to retain focus. It
 activates the identified login window before typing and uses explicit AMD window
 handles for placement after login, including redirects/popups. Other form-filling
 actions retain their strict focus checks.
+
+### Version 0.16.5 corrections
+
+Exact aliases rank first across snippets and automations. Matching alias prefixes then sort by shortest alias before name and description matches (T, TA, TAP). Display names such as AMD are independent of trusted Script IDs. Keep the canonical advancedmd.* IDs in the Sheet; the explicit AMD.* compatibility IDs remain supported.
+
+Open AMD reacquires and activates the identified Chrome login window before each login input, uses the original SendEvent for office key 136732, and moves the identified AMD window to the left display. It does not require the window from which the launcher was opened to stay focused. Error dialog titles include the worker version and action so an old running copy can be identified. Actual Dell login and monitor behavior still require a device check.

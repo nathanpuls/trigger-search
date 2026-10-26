@@ -28,6 +28,9 @@ if DryRun {
         fn.Call()
         if Steps.Length = 0
             ExitApp 1
+        if action = "launch-advancedmd" && (Steps[2][1] != "SendEvent"
+            || Steps[2][2] != "136732" || Steps[3][2] != "{Enter}")
+            ExitApp 1
     }
     ExitApp 0
 }
@@ -48,7 +51,7 @@ try {
     HelperActions[A_Args[2]].Call()
 } catch as problem {
     ; Fixed error messages only; no window titles or clipboard contents are logged.
-    MsgBox problem.Message, "Trigger Search automation"
+    MsgBox problem.Message, "Trigger Search 0.16.5 — " A_Args[2]
 } finally {
     DllCall("CloseHandle", "ptr", mutex)
 }
@@ -232,18 +235,34 @@ LaunchAdvancedMD() {
     } else
         OpenUrl "https://login.advancedmd.com/?sso=1", "Login | AdvancedMD", true
     PauseFor 1800
-    if !DryRun {
-        WinActivate "ahk_id " TargetHwnd
-        if !WinWaitActive("ahk_id " TargetHwnd, , 3)
-            throw Error("Could not activate the AdvancedMD login window.")
-    }
-    S key, "SendText"
+    SendAMDLogin key, "SendEvent"
     PauseFor 300
-    S "{Enter}"
+    SendAMDLogin "{Enter}"
     PauseFor 10000
     AdoptActiveAdvancedMDWindow()
     MoveToLeftDisplay()
 }
+SendAMDLogin(value, mode := "Send") {
+    global DryRun, TargetHwnd, Steps
+    if DryRun {
+        Steps.Push([mode, value])
+        return
+    }
+    ; Login is a self-opening action, not a macro bound to the launcher's old HWND.
+    ; Reacquire the exact login window before each input as Chrome settles.
+    login := WinExist("Login | AdvancedMD ahk_exe chrome.exe")
+    if !login
+        throw Error("Open AMD could not find its login window before input.")
+    TargetHwnd := login
+    WinActivate "ahk_id " login
+    if !WinWaitActive("ahk_id " login, , 5)
+        throw Error("Open AMD could not activate its login window before input.")
+    if mode = "SendEvent"
+        SendEvent value
+    else
+        Send value
+}
+
 MorningStartup() {
     key := "136732"
     OpenUrl "https://login.advancedmd.com/?sso=1", "AdvancedMD", true

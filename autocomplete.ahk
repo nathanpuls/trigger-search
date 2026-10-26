@@ -3,7 +3,7 @@
 Persistent
 
 ; Sheet Autocomplete version 0.16.4
-global AppVersion := "0.16.4"
+global AppVersion := "0.16.5"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -963,13 +963,16 @@ FilterChoices(query) {
         aliasExact := false
         aliasPrefix := false
         aliasContains := false
+        aliasLength := 2147483647
 
         if !DetailParent && needle != "" {
             for alias in item.Aliases {
                 if alias = needle
                     aliasExact := true
-                if SubStr(alias, 1, StrLen(needle)) = needle
+                if SubStr(alias, 1, StrLen(needle)) = needle {
                     aliasPrefix := true
+                    aliasLength := Min(aliasLength, StrLen(alias))
+                }
                 if InStr(alias, needle)
                     aliasContains := true
             }
@@ -980,9 +983,9 @@ FilterChoices(query) {
             rank := 0
         else if aliasExact
             rank := 0
-        else if label = needle
-            rank := 1
         else if aliasPrefix
+            rank := 1
+        else if label = needle
             rank := 2
         else if SubStr(label, 1, StrLen(needle)) = needle
             rank := 3
@@ -1000,7 +1003,7 @@ FilterChoices(query) {
             rank := 9
 
         if rank >= 0
-            ranked.Push({Item: item, Rank: rank})
+            ranked.Push({Item: item, Rank: rank, AliasLength: aliasLength})
     }
 
     if needle != ""
@@ -1009,8 +1012,22 @@ FilterChoices(query) {
     utility := !DetailParent && CategoryParent = "" ? BuildUtilityChoice(query) : 0
     if utility
         choices.Push(utility)
-    for entry in ranked
-        choices.Push(entry.Item)
+    ; Explicit aliases also precede calculated/search utility suggestions.
+    if utility && ranked.Length && ranked[1].Rank = 0 {
+        choices := []
+        for entry in ranked {
+            if entry.Rank = 0
+                choices.Push(entry.Item)
+        }
+        choices.Push(utility)
+        for entry in ranked {
+            if entry.Rank != 0
+                choices.Push(entry.Item)
+        }
+    } else {
+        for entry in ranked
+            choices.Push(entry.Item)
+    }
     return choices
 }
 
@@ -1123,6 +1140,8 @@ HomeChoices() {
 CompareRanked(a, b) {
     if a.Rank != b.Rank
         return a.Rank < b.Rank ? -1 : 1
+    if a.Rank = 1 && a.AliasLength != b.AliasLength
+        return a.AliasLength < b.AliasLength ? -1 : 1
     return 0
 }
 
@@ -2588,6 +2607,22 @@ RunSelfTests() {
         "Automation aliases must use the normal search ranking."
     Assert FilterChoices("Video")[1].ScriptId = "advancedmd.follow-up-tele",
         "Descriptions must be searchable."
+    rankingRows := []
+    ParseAutomations ParseCsv("Name,Alias,Description,Script ID`n"
+        . "AMD telehealth follow-up,t,Video,AMD.follow-up-tele`n"
+        . "Open AMD,l,Login,dell.launch-advancedmd"),
+        {Name: "Automations", Gid: "987"}, rankingRows
+    Snippets := [TestSnippet("Taper", "taper", ["tap"]),
+        TestSnippet("Long alias", "long", ["taper"]),
+        TestSnippet("Short alias", "short", ["ta"]), rankingRows[1], rankingRows[2]]
+    rankedAliases := FilterChoices("T")
+    Assert rankedAliases[1].ScriptId = "advancedmd.follow-up-tele",
+        "An exact T alias must beat TAP and names across snippets and AMD automations."
+    Assert rankedAliases[2].Label = "Short alias" && rankedAliases[3].Label = "Taper",
+        "Matching two-letter aliases must precede matching three-letter aliases."
+    Assert FilterChoices("L")[1].ScriptId = "dell.launch-advancedmd",
+        "An exact L alias must find Open AMD regardless of its display name."
+    Snippets := automations
     Assert !IsControlCombination(true, 0xA3, 0x11D),
         "The Right Ctrl key itself must not be treated as another key in a combination."
     Assert IsControlCombination(true, 0x43, 0x2E),
