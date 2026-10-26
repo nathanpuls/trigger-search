@@ -2,8 +2,8 @@
 #SingleInstance Force
 Persistent
 
-; Sheet Autocomplete version 0.16.0
-global AppVersion := "0.16.0"
+; Sheet Autocomplete version 0.16.1
+global AppVersion := "0.16.1"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -241,7 +241,7 @@ BuildChooser() {
     SearchBox.OnEvent("Change", SearchChanged)
     ResultsView.OnEvent("Click", ResultClicked)
     ChooserGui.OnEvent("Close", (*) => CancelChooser())
-    ChooserGui.OnEvent("Escape", (*) => CancelChooser())
+    ChooserGui.OnEvent("Escape", CloseLauncher)
 
     SetSearchPlaceholder("Search")
 }
@@ -467,7 +467,10 @@ InstallLauncherHotkey(modifierValue, keyValue) {
 }
 
 HandleLauncher(*) {
-    ShowChooser()
+    if IsTriggerSearchOpen()
+        CloseLauncher()
+    else
+        ShowChooser()
 }
 
 HandleTrigger(*) {
@@ -492,6 +495,19 @@ ShowChooser(*) {
     global ReturnParentKey, SearchBox, ChooserGui
     global Refreshing, RefreshPending, LastRefreshTick
     global LastRefreshError, SheetId, ActionsForChoice, FooterText
+    global PreviewOpen, PreviewGui
+
+    ; A second open request must not capture our own window as the target or
+    ; position relative to it. Keep the current search, selection, and location.
+    if IsTriggerSearchOpen() {
+        if PreviewOpen
+            PreviewGui.Show()
+        else {
+            ChooserGui.Show()
+            SearchBox.Focus()
+        }
+        return
+    }
 
     if SheetId = "" {
         PromptForGoogleSheet(true)
@@ -565,14 +581,18 @@ CancelChooser(*) {
     AtBoundary := true
 }
 
-HandleEscape(*) {
-    global PreviewOpen, ChooserOpen
+CloseLauncher(*) {
+    global ChooserGui, PreviewGui, TargetWindow
+    restoreTarget := (IsObject(ChooserGui) && WinActive("ahk_id " ChooserGui.Hwnd))
+        || (IsObject(PreviewGui) && WinActive("ahk_id " PreviewGui.Hwnd))
+    ClosePreview(false)
+    CancelChooser()
+    if restoreTarget && TargetWindow && WinExist("ahk_id " TargetWindow)
+        try WinActivate "ahk_id " TargetWindow
+}
 
-    HideModifierHud()
-    if PreviewOpen
-        ClosePreview()
-    else if ChooserOpen
-        CancelChooser()
+HandleEscape(*) {
+    CloseLauncher()
 }
 
 ; Some Windows controls consume Escape before AutoHotkey's conditional hotkey
@@ -1954,9 +1974,9 @@ PreviewChoice(choice) {
     PreviewGui.SetFont("s10 c222222 Norm", "Segoe UI")
     PreviewGui.Add("Edit", "xm y+16 w680 r24 ReadOnly BackgroundF0F0F2", expanded.Text)
     PreviewGui.SetFont("s9 c888888", "Segoe UI")
-    PreviewGui.Add("Text", "xm y+10 w680 Right", "P  Paste     C  Copy     Esc  Return")
+    PreviewGui.Add("Text", "xm y+10 w680 Right", "P  Paste     C  Copy     Esc  Close")
     PreviewGui.OnEvent("Close", ClosePreview)
-    PreviewGui.OnEvent("Escape", ClosePreview)
+    PreviewGui.OnEvent("Escape", CloseLauncher)
 
     ChooserGui.Hide()
     PreviewChoiceValue := choice
@@ -2848,6 +2868,7 @@ RunSelfTests() {
         "A raw spreadsheet ID should remain valid."
     Assert ExtractSheetId("https://example.com/not-a-sheet") = "",
         "A non-Google link should be rejected."
+    TestLauncherToggle()
 }
 
 TestSnippet(label, content, aliases) {
@@ -3543,4 +3564,48 @@ RunKeyboardIntegrationTest(*) {
 
 IsControlCombination(controlHeld, vk, sc) {
     return controlHeld && vk != 0xA3 && sc != 0x11D
+}
+
+TestLauncherToggle() {
+    global Snippets, SheetId, LastRefreshTick, ChooserOpen, PreviewOpen
+    global ChooserGui, PreviewGui, TargetWindow, RecentItems, CategoryParent
+    global DetailParent, SearchServiceParent, ActionsForChoice, AtBoundary
+    SheetId := "test-toggle-no-network"
+    Snippets := [TestSnippet("Toggle test", "sample", [])]
+    RecentItems := []
+    CategoryParent := ""
+    DetailParent := 0
+    SearchServiceParent := 0
+    ActionsForChoice := 0
+    ChooserOpen := false
+    PreviewOpen := false
+    LastRefreshTick := A_TickCount
+    BuildChooser()
+    HandleLauncher()
+    Assert ChooserOpen, "F6 must open a closed launcher."
+    originalTarget := TargetWindow
+    WinGetPos &x, &y, , , "ahk_id " ChooserGui.Hwnd
+    Loop 3 {
+        ShowChooser()
+        WinGetPos &nextX, &nextY, , , "ahk_id " ChooserGui.Hwnd
+        Assert TargetWindow = originalTarget && x = nextX && y = nextY,
+            "Repeated open requests must retain the target and window position."
+    }
+    HandleLauncher()
+    Assert !IsTriggerSearchOpen(), "A second F6 press must close the launcher."
+    HandleLauncher()
+    Assert ChooserOpen, "F6 must reopen after closing."
+    PreviewGui := Gui("+ToolWindow", "Toggle preview test")
+    PreviewGui.Show("w100 h100")
+    PreviewOpen := true
+    HandleLauncher()
+    Assert !IsTriggerSearchOpen(), "F6 must close both preview and chooser."
+    HandleLauncher()
+    PreviewGui := Gui("+ToolWindow", "Escape preview test")
+    PreviewGui.Show("w100 h100")
+    PreviewOpen := true
+    HandleEscape()
+    Assert !IsTriggerSearchOpen(), "Escape must close both preview and chooser."
+    ChooserGui.Destroy()
+    ChooserGui := 0
 }

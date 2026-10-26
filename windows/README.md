@@ -5,6 +5,10 @@ same public Google Sheet and does not use OAuth or a Google sign-in.
 
 ## Managed installation
 
+The configured launcher key (including F6) toggles open/closed. Repeated open
+requests retain the original window and position. Escape closes all launcher
+surfaces.
+
 Use [SETUP.md](SETUP.md) for the unified Windows preview. It preserves semicolon,
 adds tap Right Ctrl, and updates the launcher plus three AdvancedMD workflows
 through one manual command. The single-file setup below is legacy reference.
@@ -44,7 +48,7 @@ launcher should choose v2 even if another version is also installed.
 - `hello;` types a normal semicolon.
 - `;`, `hello ;`, and a semicolon after Enter or Tab open the chooser.
 - Escape closes the launcher from its search box, results, and Actions view;
-  Escape from Preview returns to the launcher, and a second Escape closes it.
+  Escape also closes Preview and the underlying launcher in one press.
 - Clicking a result performs the same action as Enter: content pastes, links
   open, search templates accept a query, and folders open for browsing.
 - The main chooser opens with up to nine recently used Sheet items. Typing
