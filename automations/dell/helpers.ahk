@@ -13,6 +13,14 @@ global HelperActions := Map(
     "blueprint", Blueprint, "it-ticket", ItTicket, "schedule-email", ScheduleEmail,
     "copilot", Copilot, "espanso", Espanso, "copy-back", CopyBack)
 if DryRun {
+    left := LeftmostDisplay([{Left: 1920, Top: 0, Right: 3840, Bottom: 1080},
+        {Left: 0, Top: 0, Right: 1920, Bottom: 1080}])
+    if left.Left != 0
+        ExitApp 1
+    left := LeftmostDisplay([{Left: 0, Top: 0, Right: 1920, Bottom: 1080},
+        {Left: -1920, Top: 0, Right: 0, Bottom: 1080}])
+    if left.Left != -1920
+        ExitApp 1
     for action, fn in HelperActions {
         Steps := []
         fn.Call()
@@ -212,16 +220,20 @@ Hpi() {
 }
 LaunchAdvancedMD() {
     key := "136732"
-    OpenUrl "https://login.advancedmd.com/?sso=1", "Login | AdvancedMD", true
+    global DryRun, TargetHwnd
+    if !DryRun && (login := WinExist("Login | AdvancedMD")) {
+        WinActivate "ahk_id " login
+        if !WinWaitActive("ahk_id " login, , 10)
+            throw Error("Could not activate the AdvancedMD login window.")
+        TargetHwnd := login
+    } else
+        OpenUrl "https://login.advancedmd.com/?sso=1", "Login | AdvancedMD", true
     PauseFor 1800
     S key, "SendText"
     PauseFor 300
     S "{Enter}"
     PauseFor 10000
-    S "#+{Left}"
-    global DryRun
-    if !DryRun
-        WinMaximize "A"
+    MoveToLeftDisplay()
 }
 MorningStartup() {
     key := "136732"
@@ -336,4 +348,40 @@ CopyBack() {
     S "{Backspace}"
     PauseFor 150
     S "^v"
+}
+
+LeftmostDisplay(areas) {
+    destination := areas[1]
+    for area in areas {
+        if area.Left < destination.Left
+            destination := area
+    }
+    return destination
+}
+
+MoveToLeftDisplay() {
+    global DryRun, Steps, TargetHwnd
+    if DryRun {
+        Steps.Push(["MoveToLeftDisplay"])
+        return
+    }
+    CheckTarget()
+    areas := []
+    Loop MonitorGetCount() {
+        MonitorGetWorkArea A_Index, &left, &top, &right, &bottom
+        areas.Push({Left: left, Top: top, Right: right, Bottom: bottom})
+    }
+    destination := LeftmostDisplay(areas)
+    window := "ahk_id " TargetHwnd
+    WinRestore window
+    PauseFor 150
+    CheckTarget()
+    ; Put the restored window fully inside the destination before maximizing.
+    ; This also works when the left display has negative coordinates.
+    width := Max(100, Min(1000, destination.Right - destination.Left - 40))
+    height := Max(100, Min(700, destination.Bottom - destination.Top - 40))
+    WinMove destination.Left + 20, destination.Top + 20, width, height, window
+    PauseFor 500
+    CheckTarget()
+    WinMaximize window
 }

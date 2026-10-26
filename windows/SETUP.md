@@ -150,3 +150,7 @@ labelled accordingly. Entries without a binding say so.
 
 0.16.3 also accepts the four specific AMD Script ID aliases already in the Sheet
 and tolerates additional reference columns if users add them later.
+
+Open AMD reuses the existing login window when available, uses office key
+136732, and moves that window directly to the leftmost display before maximizing.
+It no longer relies on the Windows+Shift+Left keyboard shortcut.
