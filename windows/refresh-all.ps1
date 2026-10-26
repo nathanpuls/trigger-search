@@ -108,9 +108,18 @@ function Get-LegacyScriptPaths([string]$Folder) {
         'intake-office.ahk', 'IT ticket-old.ahk', 'IT ticket.ahk', 'launch AMD.ahk',
         'Morning Start Up.ahk', 'MSE.ahk', 'MSE2.ahk', 'open_espanso.ahk', 'pageDwn.ahk',
         'sid.ahk', 'Start_All_My_Scripts.ahk', 'test-esc.ahk', 'window.ahk')
+    # WScript resolves short (8.3) directory names in shortcut targets. Include
+    # its canonical spelling as well as the supplied spelling for comparisons.
+    $shell = New-Object -ComObject WScript.Shell
+    $probe = $shell.CreateShortcut((Join-Path $env:TEMP ([guid]::NewGuid().ToString() + '.lnk')))
     foreach ($name in $names) {
         $path = Join-Path $Folder $name
-        if (Test-Path -LiteralPath $path -PathType Leaf) { [IO.Path]::GetFullPath($path) }
+        if (Test-Path -LiteralPath $path -PathType Leaf) {
+            $full = [IO.Path]::GetFullPath($path)
+            $full
+            $probe.TargetPath = $full
+            if ($probe.TargetPath -ne $full) { $probe.TargetPath }
+        }
     }
 }
 function Test-LegacyCommand([string]$Command, [string[]]$Paths) {

@@ -33,7 +33,7 @@ try {
     $paths = @(Get-LegacyScriptPaths $legacy)
     if (Test-LegacyCommand ('"' + (Join-Path ($legacy + '-other') 'launch AMD.ahk') + '"') $paths) { throw 'Another folder matched.' }
     Set-LauncherOnlyStartup $root $startup $legacy
-    if ((Test-Path (Join-Path $startup 'Start all.lnk')) -or (Test-Path (Join-Path $startup 'Login.lnk'))) { throw 'Legacy links were not backed up.' }
+    if ((Test-Path (Join-Path $startup 'Start all.lnk')) -or (Test-Path (Join-Path $startup 'Login.lnk'))) { throw ('Legacy links were not backed up: ' + ((Get-ChildItem $startup).Name -join ', ') + '; paths: ' + ($paths -join ', ') + '; targets: ' + (($shell.CreateShortcut((Join-Path $startup 'Start all.lnk'))).TargetPath)) }
     if (-not (Test-Path (Join-Path $legacy 'Start_All_My_Scripts.ahk'))) { throw 'Original script moved.' }
     if ((Get-FileHash (Join-Path $startup 'Unrelated.lnk')).Hash -ne $other) { throw 'Unrelated shortcut changed.' }
     $journal = Join-Path $root 'startup-backup/state.json'
