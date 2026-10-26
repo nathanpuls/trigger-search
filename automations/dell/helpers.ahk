@@ -233,6 +233,7 @@ LaunchAdvancedMD() {
     PauseFor 300
     S "{Enter}"
     PauseFor 10000
+    AdoptActiveAdvancedMDWindow()
     MoveToLeftDisplay()
 }
 MorningStartup() {
@@ -384,4 +385,18 @@ MoveToLeftDisplay() {
     PauseFor 500
     CheckTarget()
     WinMaximize window
+}
+
+AdoptActiveAdvancedMDWindow() {
+    global DryRun, TargetHwnd
+    if DryRun
+        return
+    ; Login can open an EHR popup. Adopt only the active, identified AMD Chrome
+    ; window, rather than moving whichever unrelated application has focus.
+    active := WinExist("A")
+    expected := IniRead(A_AppData "\SheetAutocomplete\settings.ini", "advancedmd", "WindowTitle", "AdvancedMD")
+    if !active || expected = "" || WinGetProcessName("ahk_id " active) != "chrome.exe"
+        || !InStr(WinGetTitle("ahk_id " active), expected)
+        throw Error("Activate the AdvancedMD window before completing the screen move.")
+    TargetHwnd := active
 }
