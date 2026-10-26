@@ -3519,20 +3519,19 @@ RunKeyboardIntegrationTest(*) {
     result := A_Temp "\trigger-search-keyboard-test.txt"
     try {
         StartKeyboardWatcher()
-        SendLevel 2
-        SendEvent "{RControl down}"
+        InjectTestKey(0xA3, 0x1D, 1)
         Sleep 80
-        SendEvent "{RControl up}"
+        InjectTestKey(0xA3, 0x1D, 3)
         Sleep 150
         Assert RightControlEventCount = 1, "Right Ctrl scan-code down hook did not fire."
         Assert KeyboardTestLaunchCount = 1, "Right Ctrl tap did not request the launcher."
-        SendEvent "{RControl down}"
+        InjectTestKey(0xA3, 0x1D, 1)
         Sleep 80
-        SendEvent "{F24 down}"
+        InjectTestKey(0x87, 0, 0)
         Sleep 80
-        SendEvent "{F24 up}"
+        InjectTestKey(0x87, 0, 2)
         Sleep 80
-        SendEvent "{RControl up}"
+        InjectTestKey(0xA3, 0x1D, 3)
         Sleep 150
         Assert KeyboardTestLaunchCount = 1, "A Ctrl combination incorrectly opened the launcher."
         WriteTextAtomic result, "PASS"
@@ -3545,4 +3544,9 @@ RunKeyboardIntegrationTest(*) {
 
 IsControlCombination(controlHeld, vk, sc) {
     return controlHeld && vk != 0xA3 && sc != 0x11D
+}
+
+InjectTestKey(vk, sc, flags) {
+    ; Win32 input injection avoids AutoHotkey filtering out its own SendEvent keys.
+    DllCall("keybd_event", "uchar", vk, "uchar", sc, "uint", flags, "uptr", 0)
 }

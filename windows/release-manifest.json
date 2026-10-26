@@ -3,7 +3,7 @@
   "files": [
     {
       "path": "windows/autocomplete.ahk",
-      "sha256": "ae37365e1300ee3cf2d36e5b53913a23297561976eb9123aeba266292fd3fe2d"
+      "sha256": "ae99a270a756986b48a1665da9f08ac1c32c00316939ab7d37123e9beb07e742"
     },
     {
       "path": "windows/refresh-all.ps1",
