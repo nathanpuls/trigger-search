@@ -4263,7 +4263,9 @@ try {
     }
 }
 if ($FixtureDiagnostic -and -not $found) {
-    [System.IO.File]::WriteAllText($ResultPath, "FIXTURE MISSING: " + ($buttons | ForEach-Object { $_.Current.Name + ":offscreen=" + $_.Current.IsOffscreen }) -join ";")
+    $all = $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)
+    $detail = ($all | Select-Object -First 10 | ForEach-Object { $_.Current.ControlType.ProgrammaticName + ":" + $_.Current.Name }) -join ";"
+    [System.IO.File]::WriteAllText($ResultPath, "FIXTURE MISSING: root=" + $root.Current.Name + " hwnd=" + $root.Current.NativeWindowHandle + " children=" + $all.Count + " " + $detail)
     exit 1
 }
 # Fixed status only: never serialize accessible names or exception details.
