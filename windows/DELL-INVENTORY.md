@@ -15,7 +15,7 @@ The three macros are wrapped with focus checks/cancellation while their active
 input commands and delays remain identical. Their existing resident scripts must
 be exited before enabling the new launcher's corresponding hotkeys.
 
-## Preserved locally; not yet migrated
+## Additional helpers now available in the launcher
 
 | Files | Triggers / behavior |
 |---|---|
@@ -46,6 +46,12 @@ closing braces; they require syntax review, not automatic reuse.
 `.ahk`. Its shortcut targets the Dell OneDrive AutoHotkey directory, but the ZIP
 does not prove the shortcut is currently in Startup. Multiple global Escape
 bindings and semicolon-prefixed hotstrings can compete with Trigger Search.
+
+All current useful actions above now have catalog entries, including clipboard
+store/paste and the remap toggle. The old copilot file had no active shortcut;
+its intended Microsoft 365 link is available as an explicit launcher action.
+The original files remain untouched for comparison. Old/debug copies and the
+wildcard startup script remain reference material, not launcher automations.
 
 Actual Dell process list, Startup/Task Scheduler entries, Wispr Flow bindings,
 and Raycast `.SR` configuration remain unverified. Do not treat this static file

@@ -7,9 +7,8 @@ AutoHotkey v2—without OAuth, sign-in, a browser extension, or a dedicated app.
 ## Unified Windows automations (preview)
 
 See [the Dell setup guide](windows/SETUP.md) for the unified snippet/automation
-launcher and manual Refresh-All command. This preview migrates the three core
-AdvancedMD form workflows from the Dell baseline. Other Dell helpers remain
-local pending review; [the inventory](windows/DELL-INVENTORY.md) records them.
+launcher and manual Refresh-All command. The preview includes the three core
+AdvancedMD form workflows and 21 additional workflow/helper actions from the Dell baseline; [the inventory](windows/DELL-INVENTORY.md) records them.
 
 ## Choose your platform
 

@@ -10,11 +10,11 @@ manifest={'schema':1,'files':[{'path':p,'sha256':hashlib.sha256((ROOT/p).read_by
 content=json.dumps(manifest,indent=2)+'\n'
 path=ROOT/'windows/release-manifest.json'
 if '--check' in sys.argv:
-    assert path.read_text()==content, 'Run python tools/build-release.py after changing bundle files.'
+    assert path.read_text(encoding="utf-8")==content, 'Run python tools/build-release.py after changing bundle files.'
     assert (ROOT/'autocomplete.ahk').read_bytes()==(ROOT/'windows/autocomplete.ahk').read_bytes(), 'Compatibility bridge differs'
-    catalog=json.loads((ROOT/'automations/catalog.json').read_text())
+    catalog=json.loads((ROOT/'automations/catalog.json').read_text(encoding="utf-8"))
     ids=[row[3] for row in catalog[1:]]
-    registry=(ROOT/'windows/autocomplete.ahk').read_text().split('global AutomationRegistry := Map(',1)[1].split('global AiEngine',1)[0]
+    registry=(ROOT/'windows/autocomplete.ahk').read_text(encoding="utf-8").split('global AutomationRegistry := Map(',1)[1].split('global AiEngine',1)[0]
     declared=re.findall(r'^    "([^"]+)", \{File:', registry, re.M)
     assert len(ids)==len(set(ids)) and set(ids)==set(declared), 'Catalog/dispatch mismatch'
     assert any('of' in [x.strip() for x in row[1].split(',')] and row[3]=='advancedmd.follow-up-office' for row in catalog[1:])
