@@ -14,13 +14,14 @@ Invoke-WebRequest 'https://raw.githubusercontent.com/nathanpuls/trigger-search/c
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File $triggerSetupPath -Ref 'codex/unified-windows-20261026'
 ```
 
-This installs the current **0.16.0 preview** and automatically restarts a managed
+This installs the current **0.16.1 preview** and automatically restarts a managed
 Trigger Search installation. It repairs the upgrade from 0.15.0; no separate
 `Start-Trigger-Search.cmd` step is needed after a successful managed upgrade.
 Your Google Sheet settings and original Dell script files are preserved.
+The configured F6 shortcut now toggles the launcher open and closed; Escape closes it too.
 
 Afterward, open Trigger Search, press **Ctrl+R**, and search **`of`** for office
-follow-up. The tray version should read **0.16.0**. Future managed updates use
+follow-up. The tray version should read **0.16.1**. Future managed updates use
 **Refresh all scripts** or **Update script from GitHub** in the tray.
 
 The preview includes the expanded 24-action automation catalog. It is on the
