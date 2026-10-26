@@ -346,7 +346,7 @@ TrackNonTextKey(input, vk, sc) {
 
     global RightControlUsed
     keyName := GetKeyName(Format("vk{:x}sc{:x}", vk, sc))
-    if GetKeyState("RControl", "P") || GetKeyState("RControl") && vk != 0xA3 && sc != 0x11D
+    if IsControlCombination(GetKeyState("RControl", "P") || GetKeyState("RControl"), vk, sc)
         RightControlUsed := true
     if ChooserOpen
         return
@@ -2556,6 +2556,10 @@ RunSelfTests() {
         "Automation aliases must use the normal search ranking."
     Assert FilterChoices("Video")[1].ScriptId = "advancedmd.follow-up-tele",
         "Descriptions must be searchable."
+    Assert !IsControlCombination(true, 0xA3, 0x11D),
+        "The Right Ctrl key itself must not be treated as another key in a combination."
+    Assert IsControlCombination(true, 0x43, 0x2E),
+        "A second key while Ctrl is held must suppress tap launch."
     Assert IsRightControlTap(100, false, "RControl"), "A short Right Ctrl tap should launch."
     Assert !IsRightControlTap(900, false, "RControl"), "A held Right Ctrl should not launch."
     Assert !IsRightControlTap(100, true, "RControl"), "A Ctrl combination should not launch."
@@ -3537,4 +3541,8 @@ RunKeyboardIntegrationTest(*) {
         WriteTextAtomic result, problem.Message
         ExitApp 1
     }
+}
+
+IsControlCombination(controlHeld, vk, sc) {
+    return controlHeld && vk != 0xA3 && sc != 0x11D
 }
