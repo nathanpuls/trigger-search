@@ -4236,10 +4236,10 @@ try {
     Add-Type -AssemblyName UIAutomationClient
     Add-Type -AssemblyName UIAutomationTypes
     $root = [System.Windows.Automation.AutomationElement]::FromHandle([IntPtr]::new([Int64]$Window))
-    $condition = [System.Windows.Automation.PropertyCondition]::new(
-        [System.Windows.Automation.AutomationElement]::ControlTypeProperty,
-        [System.Windows.Automation.ControlType]::Button)
-    $buttons = $root.FindAll([System.Windows.Automation.TreeScope]::Descendants, $condition)
+    # Some Win32 accessibility providers expose buttons as generic panes.
+    # Match only the fixed exact names; invoke only supported actions below.
+    $buttons = $root.FindAll([System.Windows.Automation.TreeScope]::Descendants,
+        [System.Windows.Automation.Condition]::TrueCondition)
     foreach ($button in $buttons) {
         $state = $button.Current
         if ($state.IsEnabled -and -not $state.IsOffscreen -and $state.Name -match $Pattern) {
@@ -4247,9 +4247,26 @@ try {
                 $action = $null
                 if ($button.TryGetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern, [ref]$action)) {
                     $action.Invoke()
-                } elseif ($button.TryGetCurrentPattern([System.Windows.Automation.LegacyIAccessiblePattern]::Pattern, [ref]$action)) {
-                    $action.DoDefaultAction()
-                } else { break }
+                } else {
+                    # Standard Win32 buttons can lack UIA InvokePattern. Use
+                    # BM_CLICK only on an exact-name matched native Button HWND.
+                    Add-Type @"
+using System;
+using System.Text;
+using System.Runtime.InteropServices;
+public static class TriggerZoomUiNative {
+    [DllImport("user32.dll", CharSet=CharSet.Unicode)]
+    public static extern int GetClassName(IntPtr hwnd, StringBuilder text, int count);
+    [DllImport("user32.dll")]
+    public static extern bool PostMessage(IntPtr hwnd, uint message, IntPtr w, IntPtr l);
+}
+"@
+                    $native = [IntPtr]::new($state.NativeWindowHandle)
+                    $class = [System.Text.StringBuilder]::new(256)
+                    [void][TriggerZoomUiNative]::GetClassName($native, $class, 256)
+                    if ($class.ToString() -ne "Button") { break }
+                    if (-not [TriggerZoomUiNative]::PostMessage($native, 0x00F5, [IntPtr]::Zero, [IntPtr]::Zero)) { break }
+                }
             }
             $found = $true
             break
