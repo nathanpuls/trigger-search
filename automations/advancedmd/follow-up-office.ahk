@@ -1,5 +1,6 @@
 #Requires AutoHotkey v2.0
 #SingleInstance Off
+#NoTrayIcon
 ; Dell baseline: AutoHotkey.zip, follow-up-office.ahk. No Sheet code is executed.
 ; The managed launcher passes only the original window handle.
 global TargetHwnd := 0

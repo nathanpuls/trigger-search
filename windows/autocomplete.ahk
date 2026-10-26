@@ -3,7 +3,7 @@
 Persistent
 
 ; Sheet Autocomplete version 0.16.4
-global AppVersion := "0.16.6"
+global AppVersion := "0.16.7"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -205,6 +205,7 @@ Initialize() {
     A_TrayMenu.Add()
     A_TrayMenu.Add("Update script from GitHub", UpdateScriptFromGitHub)
     A_TrayMenu.Add("Refresh all scripts", UpdateScriptFromGitHub)
+    A_TrayMenu.Add("Startup setup (Trigger Search only)...", ConfigureWindowsStartup)
     A_TrayMenu.Add("Show last error report", ShowLastErrorReport)
     A_TrayMenu.Add("Keyboard and installation status", ShowKeyboardStatus)
 
@@ -2240,6 +2241,16 @@ ConnectGoogleSheet(newSheetId, title := "Change Google Sheet") {
             title
         return false
     }
+}
+
+ConfigureWindowsStartup(*) {
+    updater := A_ScriptDir "\refresh-all.ps1"
+    if !FileExist(updater) {
+        MsgBox "Use Refresh all scripts to install the managed bundle first.", "Trigger Search"
+        return
+    }
+    Run 'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "' updater
+        . '" -InstallRoot "' A_ScriptDir '\..\..\.." -AutoHotkeyPath "' A_AhkPath '" -ConfigureStartup'
 }
 
 UpdateScriptFromGitHub(*) {

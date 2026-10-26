@@ -3,27 +3,27 @@
   "files": [
     {
       "path": "windows/autocomplete.ahk",
-      "sha256": "fa7cb2b964e43f0a2bbf93dc71969c215a427d4529ece6e6341ec58d2e4f9fa0"
+      "sha256": "0169f92d42d6a96ce8f798436252ee4b620802d44077ac70ecd0de3fad1d4e09"
     },
     {
       "path": "windows/refresh-all.ps1",
-      "sha256": "c256a6dcd0ad7208e3971e2baff8d788ef57636ce9cd3ead00d0431effda34f3"
+      "sha256": "0dbc2ce20e9be58c7ce038b5c6395f97a85206fc56e172bea61c6e73212141ea"
     },
     {
       "path": "automations/advancedmd/follow-up-office.ahk",
-      "sha256": "6f8009fe733dac8fe62b6e0c982add79eacbfd45c006c7f68d70ee088dbb5e12"
+      "sha256": "b4ef1830d23977a7d6fb0d85831a718c9f6e760fd30783c9d476ed49931129b0"
     },
     {
       "path": "automations/advancedmd/follow-up-tele.ahk",
-      "sha256": "b41c5d8f75257054da0e1b53325eef2140a9a8f83edbc65b04b9d6f63c334357"
+      "sha256": "52c74ca576b9d9e21b2b2402de6afb840d86de58ee2acce6383872de1155708e"
     },
     {
       "path": "automations/advancedmd/intake-office.ahk",
-      "sha256": "0acdaca809d2aa757f6b78d014a9f279620c97c71841d6c721a51f85bdd04abf"
+      "sha256": "e96e58186ade61ec1f0dd7a05a598a94bd8ac42f41ff457e5896a3f74eff38b6"
     },
     {
       "path": "automations/dell/helpers.ahk",
-      "sha256": "ad290ca742f6fc37130856b759308bdb26b4ff064ee4c34f048985835cd28631"
+      "sha256": "1fe3f1b1c12047711cdd587148f083c15525926e77977e95c093de5adeb89d7b"
     }
   ]
 }

@@ -89,9 +89,24 @@ WindowTitle=AdvancedEHR
 
 ## Startup and rollback
 
-Once the tests pass, open `shell:startup`. Replace only the shortcut that starts
-**Start_All_My_Scripts.ahk** with a shortcut to **Start-Trigger-Search.cmd**.
-Do not delete the old launcher or its scripts. Do not reinstate the wildcard launcher. No startup entries are changed automatically.
+Use the tray menu **Startup setup (Trigger Search only)...** after updating to
+0.16.7. Select the original Dell AutoHotkey folder, then review the matching
+Startup shortcuts and running process count. The setup backs up matching user
+Startup `.lnk` files under `Trigger Search/startup-backup`, adds one stable
+Trigger Search shortcut, and closes recognized original scripts in that folder.
+Original script files are never edited or moved. Managed workers have no tray
+icons and exit after the selected automation finishes.
+
+Use the same menu again to **restore previous Startup shortcuts**. Restoration
+applies at the next Windows sign-in; it does not start the original macros
+immediately. Restoration refuses to overwrite changed shortcuts. Keep the
+startup-backup folder until you no longer need to restore the original setup.
+
+This tool handles shortcuts in the current user's Startup folder. It reports
+matching all-users Startup shortcuts but does not alter them, Registry Run
+entries, or scheduled tasks. If old scripts return at sign-in, inspect those
+additional launch paths on the Dell. The actual Dell startup state has not been
+observed from the ZIP. No Google Sheet setting or background update is added.
 
 Rollback switches between previously installed managed releases. On the very
 first install there is no previous managed release: exit the new launcher and

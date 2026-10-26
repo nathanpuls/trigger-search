@@ -1,5 +1,6 @@
 #Requires AutoHotkey v2.0
 #SingleInstance Off
+#NoTrayIcon
 SendMode "Input"
 SetTitleMatchMode 2
 global DryRun := A_Args.Length = 1 && A_Args[1] = "--self-test"

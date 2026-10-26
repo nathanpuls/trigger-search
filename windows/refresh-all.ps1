@@ -7,7 +7,8 @@ param(
     [switch]$Rollback,
     [switch]$StartOnly,
     [switch]$ValidateOnly,
-    [switch]$NoStart
+    [switch]$NoStart,
+    [switch]$ConfigureStartup
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
@@ -97,6 +98,136 @@ function Get-RemoteFile([string]$Commit, [string]$Relative, [string]$Destination
     Invoke-WebRequest -Uri $url -OutFile $Destination -UseBasicParsing -TimeoutSec 25
     if ((Get-Item -LiteralPath $Destination).Length -gt 2097152) { throw 'Unexpectedly large code file.' }
 }
+# These helpers touch shortcuts only. Original scripts are never moved or edited.
+function Get-LegacyScriptPaths([string]$Folder) {
+    $names = @('autocomplete.ahk', 'blueprint.ahk', 'clipboard-special.ahk', 'copilot.ahk',
+        'copy back.ahk', 'copy paste cut etc.ahk', 'F2-nat-enter.ahk', 'F3-charge slip.ahk',
+        'F4-timestamp for note.ahk', 'F8-send-schedule-for-next-day.ahk', 'Follow Up MSE.ahk',
+        'follow up tele debug.ahk', 'follow-up-office-old.ahk', 'follow-up-office.ahk',
+        'follow-up-tele-old.ahk', 'follow-up-tele.ahk', 'fu-test - Copy.ahk', 'HPI.ahk',
+        'intake-office.ahk', 'IT ticket-old.ahk', 'IT ticket.ahk', 'launch AMD.ahk',
+        'Morning Start Up.ahk', 'MSE.ahk', 'MSE2.ahk', 'open_espanso.ahk', 'pageDwn.ahk',
+        'sid.ahk', 'Start_All_My_Scripts.ahk', 'test-esc.ahk', 'window.ahk')
+    foreach ($name in $names) {
+        $path = Join-Path $Folder $name
+        if (Test-Path -LiteralPath $path -PathType Leaf) { [IO.Path]::GetFullPath($path) }
+    }
+}
+function Test-LegacyCommand([string]$Command, [string[]]$Paths) {
+    foreach ($path in $Paths) {
+        # Match a complete path argument, never another folder or a filename substring.
+        if ($Command -match ('(?i)(?:^|[\s"])' + [regex]::Escape($path) + '(?:"|\s*$)')) { return $true }
+    }
+    return $false
+}
+function Get-LegacyStartupLinks([string]$StartupFolder, [string[]]$Paths) {
+    $shell = New-Object -ComObject WScript.Shell
+    foreach ($file in Get-ChildItem -LiteralPath $StartupFolder -Filter '*.lnk' -File) {
+        $link = $shell.CreateShortcut($file.FullName)
+        if ($link.TargetPath -in $Paths -or (Test-LegacyCommand $link.Arguments $Paths)) { $file.FullName }
+    }
+}
+function Set-LauncherOnlyStartup([string]$Root, [string]$StartupFolder, [string]$LegacyFolder) {
+    $journal = Join-Path $Root 'startup-backup/state.json'
+    if (Test-Path -LiteralPath $journal) { return } # Never overwrite the original snapshot.
+    $start = Join-Path $Root 'Start-Trigger-Search.cmd'
+    if (-not (Test-Path -LiteralPath $start)) { throw 'Install Trigger Search before configuring Startup.' }
+    $paths = @(Get-LegacyScriptPaths $LegacyFolder)
+    if (-not $paths.Count) { throw 'No recognized Dell scripts were found in that folder.' }
+    if ([IO.Path]::GetFullPath($LegacyFolder).TrimEnd('\').StartsWith([IO.Path]::GetFullPath($Root).TrimEnd('\') + '\', [StringComparison]::OrdinalIgnoreCase) -or
+        [IO.Path]::GetFullPath($LegacyFolder).TrimEnd('\') -eq [IO.Path]::GetFullPath($Root).TrimEnd('\')) {
+        throw 'Select the original Dell scripts folder, not the managed Trigger Search installation.'
+    }
+    $managed = Join-Path $StartupFolder 'Trigger Search (managed).lnk'
+    if (Test-Path -LiteralPath $managed) { throw 'A managed-named shortcut already exists. It was left unchanged.' }
+    $backup = Join-Path $Root ('startup-backup/' + [guid]::NewGuid().ToString())
+    New-Item -ItemType Directory -Path $backup -Force | Out-Null
+    $entries = @(Get-LegacyStartupLinks $StartupFolder $paths | ForEach-Object {
+        @{ original = $_; backup = (Join-Path $backup (Split-Path $_ -Leaf)); hash = (Get-FileHash -LiteralPath $_).Hash }
+    })
+    $staged = Join-Path $backup 'managed.lnk'
+    $shell = New-Object -ComObject WScript.Shell
+    $link = $shell.CreateShortcut($staged)
+    $link.TargetPath = $start
+    $link.WorkingDirectory = $Root
+    $link.WindowStyle = 7
+    $link.Save()
+    $state = @{ legacyFolder = $LegacyFolder; entries = $entries; managed = $managed; managedHash = (Get-FileHash -LiteralPath $staged).Hash }
+    # Save the complete recovery plan before moving the first shortcut.
+    Write-State $state $journal
+    foreach ($entry in $entries) { Move-Item -LiteralPath $entry.original -Destination $entry.backup }
+    Move-Item -LiteralPath $staged -Destination $managed
+}
+function Restore-StandaloneStartup([string]$Root) {
+    $journal = Join-Path $Root 'startup-backup/state.json'
+    $state = Read-State $journal
+    if (-not $state) { throw 'There is no saved Startup configuration to restore.' }
+    # Preflight every collision/hash before changing anything.
+    if ((Test-Path -LiteralPath $state.managed) -and (Get-FileHash -LiteralPath $state.managed).Hash -ne $state.managedHash) {
+        throw 'The managed Startup shortcut was edited. It was left unchanged.'
+    }
+    foreach ($entry in @($state.entries)) {
+        if (Test-Path -LiteralPath $entry.backup) {
+            if ((Test-Path -LiteralPath $entry.original) -or (Get-FileHash -LiteralPath $entry.backup).Hash -ne $entry.hash) {
+                throw 'A saved Startup shortcut changed or its original location is occupied. Nothing was overwritten.'
+            }
+        } elseif (-not (Test-Path -LiteralPath $entry.original) -or (Get-FileHash -LiteralPath $entry.original).Hash -ne $entry.hash) {
+            throw 'A saved Startup shortcut is missing or changed. Nothing was overwritten.'
+        }
+    }
+    foreach ($entry in @($state.entries)) {
+        if (Test-Path -LiteralPath $entry.backup) { Move-Item -LiteralPath $entry.backup -Destination $entry.original }
+    }
+    if (Test-Path -LiteralPath $state.managed) { Remove-Item -LiteralPath $state.managed }
+    Move-Item -LiteralPath $journal -Destination ($journal + '.restored-' + [guid]::NewGuid().ToString())
+}
+function Show-StartupSetup([string]$Root) {
+    Add-Type -AssemblyName System.Windows.Forms
+    $journal = Join-Path $Root 'startup-backup/state.json'
+    if (Test-Path -LiteralPath $journal) {
+        $answer = [Windows.Forms.MessageBox]::Show('Trigger Search-only Startup is configured. Restore the previous Startup shortcuts? The originals will return at the next Windows sign-in.', 'Trigger Search Startup', 'YesNo', 'Question')
+        if ($answer -eq 'Yes') {
+            Restore-StandaloneStartup $Root
+            [Windows.Forms.MessageBox]::Show('Previous Startup shortcuts restored. Trigger Search is still running now. No original scripts were started in this session.', 'Trigger Search Startup') | Out-Null
+        }
+        return
+    }
+    $picker = New-Object Windows.Forms.FolderBrowserDialog
+    $picker.Description = 'Select the ORIGINAL Dell AutoHotkey folder (the one containing Start_All_My_Scripts.ahk).'
+    $picker.ShowNewFolderButton = $false
+    if ($picker.ShowDialog() -ne 'OK') { $picker.Dispose(); return }
+    $folder = $picker.SelectedPath
+    $picker.Dispose()
+    $paths = @(Get-LegacyScriptPaths $folder)
+    if (-not $paths.Count) { throw 'No recognized Dell scripts were found in that folder.' }
+    $startup = [Environment]::GetFolderPath('Startup')
+    $links = @(Get-LegacyStartupLinks $startup $paths)
+    $processes = @(Get-CimInstance Win32_Process -Filter "Name LIKE 'AutoHotkey%.exe'" | Where-Object {
+        $_.CommandLine -and (Test-LegacyCommand $_.CommandLine $paths)
+    })
+    $message = "Keep Trigger Search at Windows sign-in?`n`nBack up these Startup shortcuts:`n" + (($links | ForEach-Object { Split-Path $_ -Leaf }) -join "`n") +
+        "`n`nClose $($processes.Count) running original scripts from the selected folder. Finish any automation before continuing.`n`nYour scripts stay in their original folder. Use this menu again to restore the Startup shortcuts."
+    if ([Windows.Forms.MessageBox]::Show($message, 'Trigger Search Startup', 'OKCancel', 'Question') -ne 'OK') { return }
+    Set-LauncherOnlyStartup $Root $startup $folder
+    # Stop the wildcard spawner first, then re-read so it cannot leave new children behind.
+    foreach ($process in $processes | Where-Object { $_.CommandLine -match 'Start_All_My_Scripts\.ahk' }) {
+        Stop-Process -Id $process.ProcessId -ErrorAction SilentlyContinue
+    }
+    $failures = 0
+    foreach ($process in @(Get-CimInstance Win32_Process -Filter "Name LIKE 'AutoHotkey%.exe'")) {
+        if ($process.CommandLine -and (Test-LegacyCommand $process.CommandLine $paths)) {
+            try { Stop-Process -Id $process.ProcessId -ErrorAction Stop } catch { $failures++ }
+        }
+    }
+    $common = [Environment]::GetFolderPath('CommonStartup')
+    $other = if (Test-Path -LiteralPath $common) { @(Get-LegacyStartupLinks $common $paths).Count } else { 0 }
+    $notice = "Trigger Search Startup shortcut added. Old user Startup shortcuts are backed up.`nOriginal scripts were left untouched."
+    if ($failures) { $notice += "`n$failures original processes could not be closed. Exit their tray icons manually." }
+    if ($other) { $notice += "`n$other matching all-users Startup shortcuts need administrator attention." }
+    $notice += "`n`nRegistry Run entries and scheduled tasks were not changed. If originals return after sign-in, those need inspection; this setup only manages your Startup folder."
+    [Windows.Forms.MessageBox]::Show($notice, 'Trigger Search Startup') | Out-Null
+}
+
 $InstallRoot = [IO.Path]::GetFullPath($InstallRoot)
 if ($InstallRoot.Contains('"') -or $InstallRoot.Contains("`n") -or $InstallRoot.Contains('%')) { throw 'Unsupported install path.' }
 New-Item -ItemType Directory -Path $InstallRoot -Force | Out-Null
@@ -114,6 +245,10 @@ try {
     }
     if (-not $AutoHotkeyPath -or -not (Test-Path -LiteralPath $AutoHotkeyPath -PathType Leaf) -or $AutoHotkeyPath.Contains('"')) {
         throw 'AutoHotkey v2 was not found. Pass -AutoHotkeyPath with the full path to AutoHotkey64.exe.'
+    }
+    if ($ConfigureStartup) {
+        Show-StartupSetup $InstallRoot
+        return
     }
     if ($StartOnly) {
         if (-not $current) { throw 'No installed release. Run Refresh-All.cmd first.' }
@@ -186,6 +321,10 @@ try {
     Write-Host "Trigger Search ready: $commit"
     Write-Host 'Snippets/configuration are unchanged. Code updates run only when you request them.'
 } catch {
+    if ($ConfigureStartup) {
+        Add-Type -AssemblyName System.Windows.Forms
+        [Windows.Forms.MessageBox]::Show($_.Exception.Message, 'Trigger Search Startup') | Out-Null
+    }
     Write-Error $_
     exit 1
 } finally {
