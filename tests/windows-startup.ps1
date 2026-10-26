@@ -32,6 +32,10 @@ try {
     $other = (Get-FileHash (Join-Path $startup 'Unrelated.lnk')).Hash
     $paths = @(Get-LegacyScriptPaths $legacy)
     if (Test-LegacyCommand ('"' + (Join-Path ($legacy + '-other') 'launch AMD.ahk') + '"') $paths) { throw 'Another folder matched.' }
+    $loginLink = $shell.CreateShortcut((Join-Path $startup 'Login.lnk'))
+    Write-Host ('Fixture Login arguments: [' + $loginLink.Arguments + ']')
+    Write-Host ('Fixture direct match: ' + (Test-LegacyCommand ('"' + (Join-Path $legacy 'launch AMD.ahk') + '"') $paths))
+    Write-Host ('Fixture shortcut match: ' + (Test-LegacyCommand $loginLink.Arguments $paths))
     Set-LauncherOnlyStartup $root $startup $legacy
     if ((Test-Path (Join-Path $startup 'Start all.lnk')) -or (Test-Path (Join-Path $startup 'Login.lnk'))) { throw ('Legacy links were not backed up: ' + ((Get-ChildItem $startup).Name -join ', ') + '; paths: ' + ($paths -join ', ') + '; targets: ' + (($shell.CreateShortcut((Join-Path $startup 'Start all.lnk'))).TargetPath)) }
     if (-not (Test-Path (Join-Path $legacy 'Start_All_My_Scripts.ahk'))) { throw 'Original script moved.' }
