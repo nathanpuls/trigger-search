@@ -4229,7 +4229,7 @@ ZoomUiAutomation(hwnd, pattern, invoke) {
         OnExit CleanupZoomUiScript.Bind(script)
         source := '
 (
-param([UInt64]$Window, [string]$Pattern, [string]$ResultPath, [switch]$Invoke)
+param([UInt64]$Window, [string]$Pattern, [string]$ResultPath, [switch]$Invoke, [switch]$FixtureDiagnostic)
 $ErrorActionPreference = "Stop"
 $found = $false
 try {
@@ -4255,7 +4255,17 @@ try {
             break
         }
     }
-} catch { $found = $false }
+} catch {
+    $found = $false
+    if ($FixtureDiagnostic) {
+        [System.IO.File]::WriteAllText($ResultPath, "FIXTURE ERROR: " + $_.Exception.Message)
+        exit 1
+    }
+}
+if ($FixtureDiagnostic -and -not $found) {
+    [System.IO.File]::WriteAllText($ResultPath, "FIXTURE MISSING: " + ($buttons | ForEach-Object { $_.Current.Name + ":offscreen=" + $_.Current.IsOffscreen }) -join ";")
+    exit 1
+}
 # Fixed status only: never serialize accessible names or exception details.
 [System.IO.File]::WriteAllText($ResultPath, $(if ($found) { "FOUND" } else { "MISSING" }))
 )'
@@ -4272,13 +4282,19 @@ try {
         powershell := A_WinDir "\System32\WindowsPowerShell\v1.0\powershell.exe"
         command := '"' powershell '" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' script
             . '" -Window ' Integer(hwnd) ' -Pattern "' expression '" -ResultPath "' response '"' (invoke ? " -Invoke" : "")
+        fixtureDiagnostic := A_Args.Length > 0 && A_Args[1] = "--self-test" && WinGetTitle(hwnd) = "Trigger Search accessibility fixture"
+        if fixtureDiagnostic
+            command .= " -FixtureDiagnostic"
         Run command, , "Hide", &pid
         ProcessWaitClose pid, 5
         if ProcessExist(pid) {
             ProcessClose pid
             throw Error("Zoom's window controls did not respond within five seconds. Trigger Search is still running.")
         }
-        return FileExist(response) && Trim(FileRead(response, "UTF-8")) = "FOUND"
+        status := FileExist(response) ? Trim(FileRead(response, "UTF-8")) : "NO RESULT"
+        if fixtureDiagnostic && status != "FOUND"
+            FileAppend status "`n", "*"
+        return status = "FOUND"
     } finally {
         if FileExist(response)
             FileDelete response
