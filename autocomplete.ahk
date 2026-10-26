@@ -101,10 +101,9 @@ global PreviewChoiceValue := 0
 global PreviewExpanded := 0
 global ModifierHud := 0
 
-if A_Args.Length > 0 && A_Args[1] = "--self-test"
-    RunSelfTestsAndExit()
-
-if KeyboardTestMode {
+if A_Args.Length > 0 && A_Args[1] = "--self-test" {
+    SetTimer RunSelfTestsAndExit, -50
+} else if KeyboardTestMode {
     SetTimer RunKeyboardIntegrationTest, -50
 } else {
     OnError HandleUnexpectedError
@@ -4191,12 +4190,20 @@ RestoreZoomThumbnail(hwnd, button) {
 }
 FindZoomAccessibilityButton(hwnd, pattern) {
     try {
+        ; Initialize COM before the native accessibility call, not only when
+        ; the returned interface is subsequently wrapped in ComValue.
+        DllCall("ole32\CoInitializeEx", "ptr", 0, "uint", 2)
+        trace := A_Args.Length > 0 && A_Args[1] = "--self-test"
+        if trace
+            FileAppend "TEST acquiring accessibility root`n", "*"
         iid := Buffer(16)
         DllCall("ole32\CLSIDFromString", "wstr", "{618736E0-3C3D-11CF-810C-00AA00389B71}", "ptr", iid)
         pointer := 0
         if DllCall("oleacc\AccessibleObjectFromWindow", "ptr", hwnd, "uint", 0xFFFFFFFC,
             "ptr", iid, "ptr*", &pointer, "int") != 0 || !pointer
             return 0
+        if trace
+            FileAppend "TEST root acquired`n", "*"
         root := ComValue(9, pointer, 1)
         budget := 600
         return FindZoomAccessibleNode(root, 0, pattern, 0, &budget)
