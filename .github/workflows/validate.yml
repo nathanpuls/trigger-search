@@ -104,7 +104,9 @@ jobs:
 
       - name: Exercise reversible Startup setup in an isolated folder
         shell: pwsh
-        run: ./tests/windows-startup.ps1
+        run: |
+          $exe = Get-ChildItem autohotkey -Recurse -Filter AutoHotkey64.exe | Select-Object -First 1
+          ./tests/windows-startup.ps1 -AutoHotkeyPath $exe.FullName
 
       - name: Exercise manual install and rollback
         shell: pwsh

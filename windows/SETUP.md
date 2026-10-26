@@ -89,24 +89,62 @@ WindowTitle=AdvancedEHR
 
 ## Startup and rollback
 
-Use the tray menu **Startup setup (Trigger Search only)...** after updating to
-0.16.7. Select the original Dell AutoHotkey folder, then review the matching
-Startup shortcuts and running process count. The setup backs up matching user
-Startup `.lnk` files under `Trigger Search/startup-backup`, adds one stable
-Trigger Search shortcut, and closes recognized original scripts in that folder.
-Original script files are never edited or moved. Managed workers have no tray
-icons and exit after the selected automation finishes.
+Update to **0.16.8**, then use the tray menu **Install Original Scripts ON/OFF...**
+once. Select the ORIGINAL Dell AutoHotkey folder and review the live process and
+Startup audit. This creates exactly two shortcuts in that folder:
+**Original Scripts ON.lnk** and **Original Scripts OFF.lnk** (Windows normally
+hides `.lnk`). The support code and startup backups live in the managed install
+folder, not in the original scripts folder. Neither button depends on Trigger
+Search running or contacts GitHub/the Sheet. No additional resident script exists.
 
-Use the same menu again to **restore previous Startup shortcuts**. Restoration
-applies at the next Windows sign-in; it does not start the original macros
-immediately. Restoration refuses to overwrite changed shortcuts. Keep the
-startup-backup folder until you no longer need to restore the original setup.
+- **OFF** backs up matching original Startup shortcuts, disables them, and stops
+  only known original AutoHotkey processes from that exact folder. It rechecks
+  process identity before stopping. Unknown scripts, other folders, every
+  `autocomplete.ahk` launcher, and Trigger Search's own startup stay untouched.
+- **ON** warns about duplicate hotkeys, validates syntax without executing scripts,
+  restores backed-up production shortcuts, adds individual production shortcuts
+  where the old wildcard launcher used to supply startup, and starts missing
+  production scripts now. Running copies are not started again.
+- Both modes keep old/debug/test, the wildcard launcher, and startup-only helpers
+  disabled. No original `.ahk` file is edited, moved, or deleted.
 
-This tool handles shortcuts in the current user's Startup folder. It reports
-matching all-users Startup shortcuts but does not alter them, Registry Run
-entries, or scheduled tasks. If old scripts return at sign-in, inspect those
-additional launch paths on the Dell. The actual Dell startup state has not been
-observed from the ZIP. No Google Sheet setting or background update is added.
+ON's explicit production list (only files present in the selected folder run):
+`blueprint.ahk`, `clipboard-special.ahk`, `copy back.ahk`,
+`copy paste cut etc.ahk`, `F2-nat-enter.ahk`, `F3-charge slip.ahk`,
+`F4-timestamp for note.ahk`, `F8-send-schedule-for-next-day.ahk`,
+`Follow Up MSE.ahk`, `follow-up-office.ahk`, `follow-up-tele.ahk`,
+`intake-office.ahk`, `launch AMD.ahk`, `MSE.ahk`, `MSE2.ahk`,
+`open_espanso.ahk`, `pageDwn.ahk`, `sid.ahk`, and `window.ahk`.
+
+ON excludes `autocomplete.ahk` (Trigger Search), `Start_All_My_Scripts.ahk`, all
+known old/debug/test copies, `copilot.ahk` (commented-out listener), and
+`HPI.ahk`, `Morning Start Up.ahk`, and `IT ticket.ahk` (run-on-open helpers).
+Those helpers remain available on demand through Trigger Search.
+
+The former 0.16.7 startup menu is replaced by this install action. Existing
+`startup-backup/state.json` snapshots are imported by copying only recognized
+legacy shortcuts. The former journal, backup files, and managed Trigger Search
+startup link stay unchanged. Never delete `original-scripts/` while relying on
+these controls. It contains `state.json` and byte-for-byte shortcut backups.
+Unsafe wildcard/debug shortcuts stay backed up; ON deliberately restores only
+production startup rather than reinstating the wildcard launcher.
+
+The controls inspect actual processes and user/all-users Startup, Run/RunOnce
+registry entries and scheduled tasks on the Dell. Confirmed additional legacy
+launch paths block both buttons and are named in the error; they require local
+inspection/approval. Those paths are never modified by these buttons. No Sheet
+toggle, cloud polling, service, or change to Trigger Search startup is added.
+If a process or startup entry uses a relative script path or another wrapper,
+it may require manual inspection; the controls never guess which process to stop.
+
+Test on Dell after finishing any original automation: double-click OFF twice;
+verify originals stay absent, Trigger Search still opens with F6, and its startup
+link is unchanged. Sign out/in to check persistent startup. Double-click ON,
+accept the hotkey warning, check original shortcuts, then ON again to check that
+no duplicate processes appear. Finish with OFF for normal Trigger Search use.
+These live Dell checks are pending; Windows CI tests use isolated directories
+and dummy AutoHotkey scripts, never live EHR forms. Original local files are not
+available to validate on CI; ON validates them on the Dell before launching any.
 
 Rollback switches between previously installed managed releases. On the very
 first install there is no previous managed release: exit the new launcher and
