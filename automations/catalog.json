@@ -154,5 +154,11 @@
     "zoom, join zoom",
     "Join your saved Zoom meeting; compact 640 x 480 window at top center. Shortcut: Raycast Join Zoom or Trigger Search.",
     "zoom.join"
+  ],
+  [
+    "Refresh all scripts",
+    "refresh, update scripts, refresh all scripts",
+    "Update approved GitHub code, validate, and restart Trigger Search. Shortcut: tray Refresh all scripts.",
+    "trigger-search.refresh-all"
   ]
 ]

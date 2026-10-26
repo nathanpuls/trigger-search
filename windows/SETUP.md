@@ -315,3 +315,9 @@ classification, and dry runs without starting Zoom or joining a meeting.
 Version 0.16.14 also accepts Zoom personal links using `/my/<name>` (with an
 optional trailing slash and query), alongside numeric `/j/` and `/s/` links.
 The configured meeting URL still stays only in local Dell settings.
+
+In **0.16.15**, **Refresh all scripts** is a searchable Automations command
+(alias **refresh**, trusted ID `trigger-search.refresh-all`). It calls the same
+manual updater as the tray item, including validation, worker-running protection,
+restart, and rollback support. It refreshes code; Ctrl+R still refreshes Sheet
+data in place. Sheet rows cannot supply arbitrary update commands.

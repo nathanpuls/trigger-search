@@ -3,7 +3,7 @@
 Persistent
 
 ; Trigger Search Windows client
-global AppVersion := "0.16.14"
+global AppVersion := "0.16.15"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -51,7 +51,8 @@ global AutomationRegistry := Map(
     "zoom.join", {File: "dell/helpers.ahk", Action: "join-zoom"},
     "clipboard.store", {File: "", Action: "builtin:clipboard-store"},
     "clipboard.paste", {File: "", Action: "builtin:clipboard-paste"},
-    "keyboard.remaps", {File: "", Action: "builtin:remaps"}
+    "keyboard.remaps", {File: "", Action: "builtin:remaps"},
+    "trigger-search.refresh-all", {File: "", Action: "builtin:refresh-all"}
 )
 global SpecialClipboard := ""
 global SpecialClipboardSet := false
@@ -3591,6 +3592,8 @@ RunBuiltinAutomation(action) {
             throw Error("Remember a clipboard value first (Ctrl+Alt+5).")
         A_Clipboard := SpecialClipboard
         Send "^v"
+    } else if action = "builtin:refresh-all" {
+        UpdateScriptFromGitHub()
     } else if action = "builtin:remaps" {
         SetKeyboardRemaps !RemapsEnabled
         TrayTip RemapsEnabled ? "Dell remaps enabled." : "Dell remaps disabled.", "Trigger Search"
