@@ -2609,10 +2609,15 @@ RunSelfTests() {
     global Snippets, DetailParent, SearchServiceParent, RecentItems, InboxSheet
     global ChooserOpen, PreviewOpen, CategoryParent
 
+    FileAppend "TEST inbox`n", "*"
     TestInboxWriter()
+    FileAppend "TEST remaps`n", "*"
     TestKeyboardRemaps()
+    FileAppend "TEST geometry`n", "*"
     TestZoomWindowControls()
+    FileAppend "TEST accessibility`n", "*"
     TestZoomAccessibility()
+    FileAppend "TEST chooser`n", "*"
     automationRows := ParseCsv('Name,Alias,Description,Script ID`n'
         . 'Office visit,of,Office follow up,advancedmd.follow-up-office`n'
         . 'Renamed duplicate,other,Duplicate,advancedmd.follow-up-office`n'
@@ -4262,9 +4267,13 @@ TestZoomAccessibility() {
         Run '"' A_AhkPath '" /ErrorStdOut=UTF-8 "' script '"', , , &fixturePid
         hwnd := WinWait("Trigger Search accessibility fixture ahk_pid " fixturePid, , 5)
         Assert hwnd != 0, "The isolated accessibility fixture must open."
+        FileAppend "TEST fixture ready`n", "*"
         button := FindZoomAccessibilityButton(hwnd, "i)^Show full meeting window$")
+        FileAppend "TEST button lookup returned`n", "*"
         Assert IsObject(button), "Find the exact thumbnail expansion button using real Windows accessibility."
+        FileAppend "TEST invoking button`n", "*"
         button.Acc.accDoDefaultAction(button.Child)
+        FileAppend "TEST button invoked`n", "*"
         deadline := A_TickCount + 2000
         while !FileExist(result) && A_TickCount < deadline
             Sleep 50
