@@ -347,8 +347,9 @@ With the Zoom meeting or its floating video focused, hold Alt and use:
 | 5 | Large: request 1280 x 960 |
 | 6 | Maximize (not Zoom fullscreen) |
 
-Alt+2 sends Zoom the native title-bar minimize system command, allowing Zoom
-to enter its own thumbnail mode. It positively identifies the resulting
+Alt+2 invokes Zoom's own accessible Minimize button. If that exact button is
+not exposed, it sends the native title-bar minimize system command, allowing
+Zoom to handle its thumbnail mode. It positively identifies the resulting
 thumbnail by its **Show full meeting window** button (also accepts Exit minimized
 video / Exit mini window / Restore full meeting window). Windows UI Automation checks that button through an on-demand PowerShell
 bridge with a five-second timeout. If no supported thumbnail is confirmed,

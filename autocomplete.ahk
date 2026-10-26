@@ -4158,10 +4158,12 @@ EnterZoomThumbnail(hwnd) {
     area := ZoomControlArea(x, y, width, height)
     horizontal := ZoomControlAnchor(x, area.Left, area.Right - area.Left, width)
     vertical := ZoomControlAnchor(y, area.Top, area.Bottom - area.Top, height)
-    ; Ask Zoom to handle its native minimize action, not WinMinimize/resize.
-    PostMessage 0x0112, 0xF020, 0, , hwnd
-    Sleep 250
     try {
+        ; Invoke Zoom's own accessible Minimize button. The native title-bar
+        ; system command is used only if that exact button is not exposed.
+        if !ZoomUiAutomation(hwnd, "i)^(Minimi[sz]e|Minimi[sz]e meeting|Minimi[sz]e window)$", true)
+            PostMessage 0x0112, 0xF020, 0, , hwnd
+        Sleep 250
         for candidate in WinGetList("ahk_exe Zoom.exe ahk_pid " pid) {
             if WinGetMinMax(candidate) = -1
                 continue
@@ -4271,7 +4273,8 @@ try {
         command := '"' powershell '" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' script
             . '" -Window ' Integer(hwnd) ' -Pattern "' expression '" -ResultPath "' response '"' (invoke ? " -Invoke" : "")
         Run command, , "Hide", &pid
-        if !ProcessWaitClose(pid, 5) {
+        ProcessWaitClose pid, 5
+        if ProcessExist(pid) {
             ProcessClose pid
             throw Error("Zoom's window controls did not respond within five seconds. Trigger Search is still running.")
         }
