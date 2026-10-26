@@ -360,10 +360,14 @@ function Install-OriginalControls([string]$Root, [string]$Ahk) {
     $statePath = Join-Path $Root 'original-scripts/state.json'
     $config = Read-State $statePath
     if (-not $config) {
-        $picker = New-Object Windows.Forms.FolderBrowserDialog
-        $picker.Description = 'Select the ORIGINAL Dell AutoHotkey folder.'; $picker.ShowNewFolderButton = $false
-        if ($picker.ShowDialog() -ne 'OK') { $picker.Dispose(); return }
-        $folder = $picker.SelectedPath; $picker.Dispose()
+        $folder = 'C:\Users\NathanPuls\OneDrive - LifeStance Health\Documents\AutoHotkey'
+        if (-not (Test-Path -LiteralPath $folder -PathType Container)) {
+            $picker = New-Object Windows.Forms.FolderBrowserDialog
+            $picker.Description = 'The saved Dell AutoHotkey folder was not found. Select its current location.'
+            $picker.ShowNewFolderButton = $false
+            if ($picker.ShowDialog() -ne 'OK') { $picker.Dispose(); return }
+            $folder = $picker.SelectedPath; $picker.Dispose()
+        }
         $config = New-OriginalConfig $Root $folder ([Environment]::GetFolderPath('Startup')) $Ahk
         New-Item -ItemType Directory -Path (Split-Path $statePath) -Force | Out-Null
         Import-OriginalStartupBackup $config $Root

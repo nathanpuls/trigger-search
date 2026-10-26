@@ -89,9 +89,10 @@ WindowTitle=AdvancedEHR
 
 ## Startup and rollback
 
-Update to **0.16.8**, then use the tray menu **Install Original Scripts ON/OFF...**
-once. Select the ORIGINAL Dell AutoHotkey folder and review the live process and
-Startup audit. This creates exactly two shortcuts in that folder:
+Update to **0.16.9**, then use the tray menu **Install Original Scripts ON/OFF...**
+once. Setup automatically uses `C:\Users\NathanPuls\OneDrive - LifeStance Health\Documents\AutoHotkey`
+when it exists; otherwise it asks for the current folder. An existing saved
+folder is retained. Review the live process and Startup audit. This creates exactly two shortcuts in that folder:
 **Original Scripts ON.lnk** and **Original Scripts OFF.lnk** (Windows normally
 hides `.lnk`). The support code and startup backups live in the managed install
 folder, not in the original scripts folder. Neither button depends on Trigger

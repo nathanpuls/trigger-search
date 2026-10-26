@@ -3,11 +3,11 @@
   "files": [
     {
       "path": "windows/autocomplete.ahk",
-      "sha256": "fe9189f503cd67837b1f33f6b9be6cebf1c126a7b413c220a51de35d9a64578c"
+      "sha256": "4ae80bad879e5539c474ecb57cb459f58f85e40f38541273b7d64d1482ec8398"
     },
     {
       "path": "windows/refresh-all.ps1",
-      "sha256": "afbf5d79ca6a3060051819294523d1a3782cf8cd214f89578b83f77cb120ce82"
+      "sha256": "dbab2ba82465585034e72db9b6c906dbee26b57d07f95de8ae7c8098eaeb759b"
     },
     {
       "path": "automations/advancedmd/follow-up-office.ahk",

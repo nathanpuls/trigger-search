@@ -3,7 +3,7 @@
 Persistent
 
 ; Sheet Autocomplete version 0.16.4
-global AppVersion := "0.16.8"
+global AppVersion := "0.16.9"
 
 SendMode "Input"
 SetTitleMatchMode 2
