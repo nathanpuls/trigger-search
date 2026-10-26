@@ -3544,4 +3544,3 @@ RunKeyboardIntegrationTest(*) {
 IsControlCombination(controlHeld, vk, sc) {
     return controlHeld && vk != 0xA3 && sc != 0x11D
 }
-
