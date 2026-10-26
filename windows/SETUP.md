@@ -1,6 +1,6 @@
 # Try the unified Windows launcher
 
-Version **0.16.1** includes Trigger Search and all 24 current workflow/helper
+Version **0.16.2** includes Trigger Search and all 24 current workflow/helper
 actions in the Automations catalog. Old/debug copies stay excluded from startup. Nothing installs or runs on the Mac.
 
 ## Install on the Dell
@@ -63,7 +63,7 @@ column. Their existing snippets keep working.
    word, Escape, snippet paste, nested choices, URLs, and Ctrl+R.
 2. Tap Right Ctrl. Then test Right-Ctrl+C/V and Ctrl-click; those combinations
    must not open the launcher. In the tray, **Keyboard and installation status**
-   must show **0.16.1** and its Right Ctrl event count should increase. This status
+   must show **0.16.2** and its Right Ctrl event count should increase. This status
    records a count only, never typed text.
 3. Copy a non-sensitive Inbox test value from the phone; use Ctrl+Shift+I and
    paste in the text editor. No clipboard contents are logged.
@@ -103,7 +103,7 @@ those files. A running managed clinical macro also blocks refresh.
 For this upgrade, run the installer command above once, even if 0.15.0 was
 already installed: the earlier updater knows only the initial five bundle files.
 Future Refresh-All invocations use the expanded bundle. The tray updater on
-0.16.1 also offers bundle installation from a standalone script.
+0.16.2 also offers bundle installation from a standalone script.
 
 The initial install deliberately follows the feature branch for testing. After
 it is merged, switch the source once with:
@@ -139,3 +139,18 @@ All web helpers stop if their expected window cannot be activated.
 
 The configured launcher key (F6 when selected in Settings & Help) toggles the
 launcher open and closed. Escape closes it from the search, Actions, or Preview.
+
+## Dell Shortcut reference column
+
+Automations may include a fifth `Dell Shortcut` column (and additional reference
+columns). It documents the existing shortcut; editing that text does not rebind
+keys. `None` means the original action has no enabled standalone shortcut.
+Apostrophe/semicolon sequences marked `(type)` are hotstrings. Right Shift is
+Espanso's original standalone binding, not a managed launcher binding.
+The remaps cell has a note listing each key's action. Semicolon-prefixed hotstrings
+still compete with the boundary-sensitive launcher trigger; their search aliases
+remain available. The four original data headers are still required.
+
+0.16.2 also accepts the four specific AMD Script ID aliases already in the Sheet.
+Display names remain editable independently of dispatch IDs. Use Refresh all
+scripts to install 0.16.2 before relying on the expanded five-column layout.

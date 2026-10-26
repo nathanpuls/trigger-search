@@ -2,8 +2,8 @@
 #SingleInstance Force
 Persistent
 
-; Sheet Autocomplete version 0.16.1
-global AppVersion := "0.16.1"
+; Sheet Autocomplete version 0.16.2
+global AppVersion := "0.16.2"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -2550,6 +2550,18 @@ RunSelfTests() {
         . 'Telehealth,tf,Video follow up,advancedmd.follow-up-tele')
     automations := []
     ParseAutomations automationRows, {Name: "Automations", Gid: "987"}, automations
+    shortcutRows := []
+    ParseAutomations ParseCsv("Name,Alias,Description,Script ID,Dell Shortcut`n"
+        . "AMD follow-up,of,Office visit,AMD.follow-up-office,Alt + O`n"
+        . "Duplicate,dup,Same action,advancedmd.follow-up-office,Alt + O`n"
+        . "Unknown,bad,No execution,AMD.arbitrary,cmd.exe /c calc"),
+        {Name: "Automations", Gid: "987"}, shortcutRows
+    Assert shortcutRows.Length = 1 && shortcutRows[1].ScriptId = "advancedmd.follow-up-office",
+        "Reference columns and explicit AMD aliases must preserve safe automation dispatch."
+    Assert shortcutRows[1].Content = "" && !shortcutRows[1].HasSavedContent,
+        "Shortcut reference text must never become executable or pasteable content."
+    Assert CanonicalAutomationId("dell.launch-AMD") = "dell.launch-advancedmd",
+        "The existing AMD login alias must resolve to its trusted local action."
     helperRows := []
     ParseAutomations ParseCsv("Name,Alias,Description,Script ID`nFull MSE,mse,Exam,dell.mse"),
         {Name: "Automations", Gid: "987"}, helperRows
@@ -3401,7 +3413,7 @@ AutomationPath(scriptId) {
 
 ParseAutomations(rows, info, output) {
     global AutomationRegistry
-    if rows[1].Length != 4
+    if rows[1].Length < 4
         return
     columns := HeaderMap(rows[1])
     for name in ["name", "alias", "description", "script id"] {
@@ -3416,7 +3428,7 @@ ParseAutomations(rows, info, output) {
     Loop rows.Length - 1 {
         rowNumber := A_Index + 1
         row := rows[rowNumber]
-        id := Trim(Cell(row, columns["script id"]))
+        id := CanonicalAutomationId(Trim(Cell(row, columns["script id"])))
         name := Trim(Cell(row, columns["name"]))
         if name = "" || !AutomationRegistry.Has(id) || seen.Has(id)
             continue
@@ -3608,4 +3620,13 @@ TestLauncherToggle() {
     Assert !IsTriggerSearchOpen(), "Escape must close both preview and chooser."
     ChooserGui.Destroy()
     ChooserGui := 0
+}
+
+CanonicalAutomationId(scriptId) {
+    ; Explicit trusted aliases for the names already present in Nathan's Sheet.
+    aliases := Map("AMD.follow-up-office", "advancedmd.follow-up-office",
+        "AMD.follow-up-tele", "advancedmd.follow-up-tele",
+        "AMD.intake-office", "advancedmd.intake-office",
+        "dell.launch-AMD", "dell.launch-advancedmd")
+    return aliases.Has(scriptId) ? aliases[scriptId] : scriptId
 }
