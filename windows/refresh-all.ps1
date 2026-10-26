@@ -137,9 +137,13 @@ try {
     }
     if (-not $Ref) { $Ref = if ($current) { $current.ref } else { 'main' } }
     if ($current) { Test-Release (Get-ReleasePath $current.commit) }
-    $encodedRef = [uri]::EscapeDataString($Ref)
-    $metadata = Invoke-RestMethod -Uri "https://api.github.com/repos/nathanpuls/trigger-search/commits/$encodedRef" -Headers @{ 'User-Agent' = 'Trigger-Search-Manual-Refresh' } -TimeoutSec 25
-    $commit = [string]$metadata.sha
+    if ($Ref -match '^[0-9a-f]{40}$') {
+        $commit = $Ref
+    } else {
+        $encodedRef = [uri]::EscapeDataString($Ref)
+        $metadata = Invoke-RestMethod -Uri "https://api.github.com/repos/nathanpuls/trigger-search/commits/$encodedRef" -Headers @{ 'User-Agent' = 'Trigger-Search-Manual-Refresh' } -TimeoutSec 25
+        $commit = [string]$metadata.sha
+    }
     $release = Get-ReleasePath $commit
     $stage = Join-Path $InstallRoot ('staging-' + [guid]::NewGuid().ToString())
     Get-RemoteFile $commit 'windows/release-manifest.json' (Join-Path $stage 'windows/release-manifest.json')
