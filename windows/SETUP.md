@@ -273,3 +273,8 @@ and the tray toggle both save an explicit ON/OFF preference locally.
 No additional resident AutoHotkey process is needed. Physical key delivery on
 the Dell remains a device check; Windows tests cover default enablement, the
 saved toggle, and keeping remaps inactive inside the launcher.
+
+In 0.16.12, the typed automation hotstrings use executable blocks instead of
+AutoHotkey replacement text: `'fum` runs follow-up MSE, `'mse` runs full MSE,
+`;sid` runs SID, and `;cc` runs copy-back. Type them outside the launcher in the
+intended target field; no ending space is required. Existing focus checks apply.

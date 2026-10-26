@@ -3,7 +3,7 @@
 Persistent
 
 ; Trigger Search Windows client
-global AppVersion := "0.16.11"
+global AppVersion := "0.16.12"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -129,10 +129,18 @@ F8::RunAutomation("dell.schedule-email")
 ^!m::RunAutomation("dell.mse-fast")
 ^!5::RunAutomation("clipboard.store")
 !5::RunAutomation("clipboard.paste")
-:*:'mse::RunAutomation("dell.mse")
-:*:'fum::RunAutomation("dell.follow-up-mse")
-:*:;sid::RunAutomation("dell.sid")
-:*:;cc::RunAutomation("dell.copy-back")
+:*:'mse:: {
+    RunAutomation("dell.mse")
+}
+:*:'fum:: {
+    RunAutomation("dell.follow-up-mse")
+}
+:*:;sid:: {
+    RunAutomation("dell.sid")
+}
+:*:;cc:: {
+    RunAutomation("dell.copy-back")
+}
 #HotIf
 
 #HotIf IsTriggerSearchOpen()
