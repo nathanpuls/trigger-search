@@ -4223,7 +4223,10 @@ FindZoomAccessibleNode(acc, child, pattern, depth, &budget) {
         size := 8 + 2 * A_PtrSize
         children := Buffer(count * size, 0)
         obtained := 0
-        if DllCall("oleacc\AccessibleChildren", "ptr", ComObjValue(acc), "int", 0,
+        ; Child objects are returned as IDispatch. Query the IAccessible
+        ; interface explicitly before passing it to the native enumeration API.
+        container := ComObjQuery(acc, "{618736E0-3C3D-11CF-810C-00AA00389B71}")
+        if DllCall("oleacc\AccessibleChildren", "ptr", container.Ptr, "int", 0,
             "int", count, "ptr", children, "int*", &obtained, "int") < 0
             return 0
         result := 0
