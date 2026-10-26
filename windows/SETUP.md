@@ -363,5 +363,5 @@ Alt+Z binding, open/focus with Alt+Z, test arrows and sizes 1–4, minimize with
 Alt+M, then restore with Alt+Z. Confirm ordinary chat typing and Alt+4 in AMD
 still work. Test on both monitors, including a monitor left of the primary.
 The Windows CI checks geometry and syntax; physical Dell/Zoom behavior still
-requires this check. Use **Rollback Trigger Search.cmd** to return to the previous
+requires this check. Use **Rollback.cmd** to return to the previous
 release; restore Raycast's Alt+Z assignment if reverting ownership too.
