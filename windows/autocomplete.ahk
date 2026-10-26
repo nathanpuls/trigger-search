@@ -608,28 +608,17 @@ HandleGuiKeyDown(wParam, lParam, msg, hwnd) {
 }
 
 RefreshAndReopen(*) {
-    global Refreshing, ChooserOpen, FooterText, SearchBox, LastRefreshError
+    global Refreshing, ChooserOpen
     if !ChooserOpen
         return
     if Refreshing {
         TrayTip "A Sheet refresh is already running.", "Trigger Search"
         return
     }
-
-    ; RefreshData updates the visible results through RefreshOpenChooser.
-    ; Keep the original target window, query, selection, and GUI position.
-    HideModifierHud()
-    FooterText.Text := "Refreshing the Sheet…"
-    try {
-        RefreshData(true)
-    } finally {
-        if ChooserOpen {
-            FooterText.Text := LastRefreshError != ""
-                ? "Refresh failed — Ctrl+R to retry"
-                : "Ctrl+R  Refresh now"
-            SearchBox.Focus()
-        }
-    }
+    CancelChooser()
+    TrayTip "Refreshing the Sheet…", "Trigger Search"
+    RefreshData(true)
+    ShowChooser()
 }
 
 ManualRefresh(*) {

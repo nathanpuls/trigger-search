@@ -13,6 +13,8 @@ global HelperActions := Map(
     "blueprint", Blueprint, "it-ticket", ItTicket, "schedule-email", ScheduleEmail,
     "copilot", Copilot, "espanso", Espanso, "copy-back", CopyBack)
 if DryRun {
+    if RequiresOriginWindow("launch-advancedmd") || !RequiresOriginWindow("mse")
+        ExitApp 1
     left := LeftmostDisplay([{Left: 1920, Top: 0, Right: 3840, Bottom: 1080},
         {Left: 0, Top: 0, Right: 1920, Bottom: 1080}])
     if left.Left != 0
@@ -41,7 +43,8 @@ if !mutex || A_LastError = 183 {
     ExitApp 3
 }
 try {
-    CheckTarget()
+    if RequiresOriginWindow(A_Args[2])
+        CheckTarget()
     HelperActions[A_Args[2]].Call()
 } catch as problem {
     ; Fixed error messages only; no window titles or clipboard contents are logged.
@@ -229,6 +232,11 @@ LaunchAdvancedMD() {
     } else
         OpenUrl "https://login.advancedmd.com/?sso=1", "Login | AdvancedMD", true
     PauseFor 1800
+    if !DryRun {
+        WinActivate "ahk_id " TargetHwnd
+        if !WinWaitActive("ahk_id " TargetHwnd, , 3)
+            throw Error("Could not activate the AdvancedMD login window.")
+    }
     S key, "SendText"
     PauseFor 300
     S "{Enter}"
@@ -366,7 +374,7 @@ MoveToLeftDisplay() {
         Steps.Push(["MoveToLeftDisplay"])
         return
     }
-    CheckTarget()
+    RequireAMDWindowExists()
     areas := []
     Loop MonitorGetCount() {
         MonitorGetWorkArea A_Index, &left, &top, &right, &bottom
@@ -376,14 +384,14 @@ MoveToLeftDisplay() {
     window := "ahk_id " TargetHwnd
     WinRestore window
     PauseFor 150
-    CheckTarget()
+    RequireAMDWindowExists()
     ; Put the restored window fully inside the destination before maximizing.
     ; This also works when the left display has negative coordinates.
     width := Max(100, Min(1000, destination.Right - destination.Left - 40))
     height := Max(100, Min(700, destination.Bottom - destination.Top - 40))
     WinMove destination.Left + 20, destination.Top + 20, width, height, window
     PauseFor 500
-    CheckTarget()
+    RequireAMDWindowExists()
     WinMaximize window
 }
 
@@ -391,12 +399,43 @@ AdoptActiveAdvancedMDWindow() {
     global DryRun, TargetHwnd
     if DryRun
         return
-    ; Login can open an EHR popup. Adopt only the active, identified AMD Chrome
-    ; window, rather than moving whichever unrelated application has focus.
+    ; Login can redirect or open a popup. Prefer an identified active AMD window,
+    ; then the original window, then an identified AMD Chrome window in Z-order.
+    ; The screen move targets its HWND and does not need to steal keyboard focus.
     active := WinExist("A")
+    if IsAdvancedMDWindow(active) {
+        TargetHwnd := active
+        return
+    }
+    if IsAdvancedMDWindow(TargetHwnd)
+        return
+    for hwnd in WinGetList("ahk_exe chrome.exe") {
+        if IsAdvancedMDWindow(hwnd) {
+            TargetHwnd := hwnd
+            return
+        }
+    }
+    throw Error("The AdvancedMD window could not be found after login.")
+}
+
+IsAdvancedMDWindow(hwnd) {
+    if !hwnd || !WinExist("ahk_id " hwnd)
+        return false
     expected := IniRead(A_AppData "\SheetAutocomplete\settings.ini", "advancedmd", "WindowTitle", "AdvancedMD")
-    if !active || expected = "" || WinGetProcessName("ahk_id " active) != "chrome.exe"
-        || !InStr(WinGetTitle("ahk_id " active), expected)
-        throw Error("Activate the AdvancedMD window before completing the screen move.")
-    TargetHwnd := active
+    try return expected != "" && WinGetProcessName("ahk_id " hwnd) = "chrome.exe"
+        && InStr(WinGetTitle("ahk_id " hwnd), expected)
+    catch
+        return false
+}
+
+RequireAMDWindowExists() {
+    global TargetHwnd
+    if !IsAdvancedMDWindow(TargetHwnd)
+        throw Error("The AdvancedMD window is no longer available for the screen move.")
+}
+
+RequiresOriginWindow(action) {
+    ; Opening AMD activates its own identified login window. The launcher may
+    ; have started it from any application. Form-filling actions retain focus checks.
+    return action != "launch-advancedmd"
 }
