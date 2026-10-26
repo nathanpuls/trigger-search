@@ -7,7 +7,7 @@
     },
     {
       "path": "windows/refresh-all.ps1",
-      "sha256": "fe34c3d726c6fa1f0e5589f2523e55278d345985d7cd1d7805bff1bfa9c12b84"
+      "sha256": "b0f03999203c6a395c8c3ee2322dee7302e1768b01d429fbd2ec9e36e1a8d1b0"
     },
     {
       "path": "automations/advancedmd/follow-up-office.ahk",

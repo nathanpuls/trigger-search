@@ -49,18 +49,23 @@ function Invoke-AhkCheck([string]$Directory, [switch]$SelfTest) {
     foreach ($relative in $allowed | Where-Object { $_ -like '*.ahk' -and (Test-Path -LiteralPath (Join-Path $Directory $_)) }) {
         $path = Join-Path $Directory $relative
         $arguments = if ($SelfTest) { '"' + $path + '" --self-test' } else { '/ErrorStdOut=UTF-8 /validate "' + $path + '"' }
-        $out = Join-Path $env:TEMP ([guid]::NewGuid().ToString() + '.txt')
-        $err = $out + '.err'
+        $proc = New-Object System.Diagnostics.Process
+        $proc.StartInfo.FileName = $AutoHotkeyPath
+        $proc.StartInfo.Arguments = $arguments
+        $proc.StartInfo.UseShellExecute = $false
+        $proc.StartInfo.RedirectStandardOutput = $true
+        $proc.StartInfo.RedirectStandardError = $true
         try {
-            $proc = Start-Process -FilePath $AutoHotkeyPath -ArgumentList $arguments -PassThru -RedirectStandardOutput $out -RedirectStandardError $err
-            # Cache the native handle before exit (Windows PowerShell 5.1 otherwise loses ExitCode).
-            $null = $proc.Handle
+            # Start directly so the OS process handle is retained even for a very fast validator.
+            if (-not $proc.Start()) { throw "Could not start validation: $relative" }
+            $outputTask = $proc.StandardOutput.ReadToEndAsync()
+            $errorTask = $proc.StandardError.ReadToEndAsync()
             if (-not $proc.WaitForExit(30000)) { $proc.Kill(); throw "Validation timed out: $relative" }
             if ($proc.ExitCode -ne 0) {
-                $detail = (Get-Content $out, $err -Raw -ErrorAction SilentlyContinue) -join "`n"
+                $detail = $outputTask.Result + $errorTask.Result
                 throw "Validation failed: $relative (exit $($proc.ExitCode))`n$detail"
             }
-        } finally { Remove-Item $out, $err -Force -ErrorAction SilentlyContinue }
+        } finally { $proc.Dispose() }
     }
 }
 function Get-ManagedProcesses {
