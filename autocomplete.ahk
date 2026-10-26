@@ -2,8 +2,8 @@
 #SingleInstance Force
 Persistent
 
-; Sheet Autocomplete version 0.16.4
-global AppVersion := "0.16.9"
+; Trigger Search Windows client
+global AppVersion := "0.16.10"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -111,6 +111,7 @@ if KeyboardTestMode {
 ~*SC11D::BeginRightControlTap()
 ~*SC11D Up::EndRightControlTap()
 ^!Space::ShowChooser()
+^!i::SendClipboardToInbox()
 
 ; These shortcuts replace the corresponding Dell listeners only in managed installs.
 #HotIf ManagedAutomationsAvailable() && !IsTriggerSearchOpen()
@@ -200,6 +201,7 @@ Initialize() {
     A_TrayMenu.Add("Open autocomplete", (*) => ShowChooser())
     A_TrayMenu.Add("Refresh snippets", ManualRefresh)
     A_TrayMenu.Add("Copy latest Inbox now", CopyLatestInboxNow)
+    A_TrayMenu.Add("Send clipboard to Inbox (Ctrl+Alt+I)", SendClipboardToInbox)
     A_TrayMenu.Add("Open Google Sheet", (*) => OpenWorkbook())
     A_TrayMenu.Add("Change Google Sheet...", (*) => PromptForGoogleSheet(false))
     A_TrayMenu.Add()
@@ -2574,6 +2576,7 @@ RunSelfTests() {
     global Snippets, DetailParent, SearchServiceParent, RecentItems, InboxSheet
     global ChooserOpen, PreviewOpen, CategoryParent
 
+    TestInboxWriter()
     automationRows := ParseCsv('Name,Alias,Description,Script ID`n'
         . 'Office visit,of,Office follow up,advancedmd.follow-up-office`n'
         . 'Renamed duplicate,other,Duplicate,advancedmd.follow-up-office`n'
@@ -3693,4 +3696,155 @@ CanonicalAutomationId(scriptId) {
         "AMD.intake-office", "advancedmd.intake-office",
         "dell.launch-AMD", "dell.launch-advancedmd")
     return aliases.Has(scriptId) ? aliases[scriptId] : scriptId
+}
+
+SendClipboardToInbox(*) {
+    global SheetId
+    static sending := false
+    if sending
+        return
+    ; Capture once, before setup or a network request. Never write the clipboard.
+    content := A_Clipboard
+    if Trim(content, " `t`r`n") = "" {
+        TrayTip "Copy some text first.", "Trigger Search Inbox"
+        return
+    }
+    if StrLen(content) > 45000 {
+        TrayTip "Clipboard text is too long for one Inbox cell (45,000 character limit).", "Trigger Search Inbox"
+        return
+    }
+    sending := true
+    try {
+        config := LoadInboxWriter()
+        if !config
+            return
+        label := "Dell · " FormatTime(A_Now, "yyyy-MM-dd HH:mm:ss")
+        SubmitInboxText config, content, label
+        ; One live Inbox read also makes the newly written row the local pin.
+        RefreshInboxLive()
+        RefreshOpenChooser()
+        TrayTip "Saved to the top of Inbox.", "Trigger Search"
+    } catch {
+        ; Do not log request bodies, clipboard data, tokens, or server errors.
+        ; A timeout can occur after a committed write; never retry automatically.
+        TrayTip "Could not confirm delivery. Clipboard unchanged. Check Inbox before retrying; check Inbox setup if nothing arrived.", "Trigger Search Inbox"
+    } finally {
+        sending := false
+    }
+}
+
+LoadInboxWriter() {
+    global CacheDir, SheetId
+    path := CacheDir "\inbox-api.ini"
+    if !FileExist(path) {
+        downloaded := EnvGet("USERPROFILE") "\Downloads\Trigger-Search-Inbox-Setup.ini"
+        if !FileExist(downloaded)
+            downloaded := FileSelect(1, , "Select your downloaded Trigger Search Inbox setup file", "Inbox setup (*.ini)")
+        if downloaded = ""
+            return 0
+        candidate := ReadInboxWriter(downloaded)
+        ValidateInboxWriter candidate, SheetId
+        DirCreate CacheDir
+        ; Only the three configuration values are imported. No Sheet code runs.
+        IniWrite candidate.Url, path, "inbox-api", "url"
+        IniWrite candidate.Token, path, "inbox-api", "token"
+        IniWrite candidate.SheetId, path, "inbox-api", "sheetId"
+    }
+    config := ReadInboxWriter(path)
+    ValidateInboxWriter config, SheetId
+    return config
+}
+ReadInboxWriter(path) {
+    return {Url: Trim(IniRead(path, "inbox-api", "url", "")),
+        Token: Trim(IniRead(path, "inbox-api", "token", "")),
+        SheetId: Trim(IniRead(path, "inbox-api", "sheetId", ""))}
+}
+ValidateInboxWriter(config, sheetId) {
+    if !RegExMatch(config.Url, "^https://script\.google\.com/macros/s/[A-Za-z0-9_-]+/exec$")
+        throw Error("Inbox endpoint must be a Google Apps Script web app.")
+    if config.Token = "" || InStr(config.Token, "`n") || InStr(config.Token, "`r")
+        throw Error("Inbox setup has no valid token.")
+    if sheetId = "" || config.SheetId != sheetId
+        throw Error("Inbox setup belongs to a different Sheet.")
+}
+SubmitInboxText(config, content, label, transport := 0) {
+    global SheetId
+    ValidateInboxWriter config, SheetId
+    if Trim(content, " `t`r`n") = "" || StrLen(content) > 45000
+        throw Error("Clipboard must contain text that fits in one cell.")
+    body := '{"token":' InboxJsonString(config.Token) ',"content":'
+        . InboxJsonString(content) ',"label":' InboxJsonString(label) '}'
+    result := transport ? transport.Call(config.Url, body) : PostInboxJson(config.Url, body)
+    if result.Status != 200 || !InboxWriteSucceeded(result.Body)
+        throw Error("Inbox did not confirm a successful write.")
+}
+PostInboxJson(url, body) {
+    request := ComObject("WinHttp.WinHttpRequest.5.1")
+    request.SetTimeouts(5000, 5000, 10000, 15000)
+    request.Open("POST", url, false)
+    request.SetRequestHeader("Content-Type", "application/json; charset=utf-8")
+    request.SetRequestHeader("Accept", "application/json")
+    request.Send(body)
+    return {Status: request.Status, Body: request.ResponseText}
+}
+InboxWriteSucceeded(body) {
+    ; The existing endpoint returns {ok: true, message: ...} in this order.
+    ; Never mistake HTML, an error object, or a quoted message for confirmation.
+    return RegExMatch(body, '^\s*\{\s*"ok"\s*:\s*true\s*[,}]') != 0
+}
+InboxJsonString(value) {
+    escaped := '"'
+    Loop Parse value {
+        char := A_LoopField
+        if char = '"'
+            escaped .= '\"'
+        else if char = '\'
+            escaped .= '\\'
+        else if Ord(char) < 32
+            escaped .= Format("\u{:04x}", Ord(char))
+        else
+            escaped .= char
+    }
+    return escaped '"'
+}
+
+TestInboxWriter() {
+    global SheetId
+    oldSheet := SheetId
+    SheetId := "test-inbox-sheet"
+    config := {Url: "https://script.google.com/macros/s/TEST_ONLY/exec", Token: "fake-test-token", SheetId: SheetId}
+    sample := 'Line "one"\path' "`n`t" "café — 漢字"
+    Assert InboxJsonString(sample) = '"Line \"one\"\\path\u000a\u0009café — 漢字"',
+        "Clipboard JSON must preserve quotes, slashes, newlines, tabs, and Unicode in one cell."
+    Assert InboxWriteSucceeded('{"ok":true,"message":"Saved to Inbox."}'), "A saved response must be accepted."
+    Assert !InboxWriteSucceeded('{"ok":false,"message":"failed"}')
+        && !InboxWriteSucceeded('<html>ok:true</html>')
+        && !InboxWriteSucceeded('{"message":"ok:true"}'), "Only a successful endpoint response may confirm delivery."
+    preservedClipboard := A_Clipboard
+    SubmitInboxText config, sample, "Dell test", (url, body) => {Status: 200, Body: '{"ok":true}'}
+    Assert A_Clipboard = preservedClipboard, "Sending must never change the clipboard."
+    rejected := false
+    try SubmitInboxText config, "", "test", (url, body) => {Status: 200, Body: '{"ok":true}'}
+    catch
+        rejected := true
+    Assert rejected, "An empty clipboard must not be sent."
+    rejected := false
+    try SubmitInboxText config, "test", "test", (url, body) => {Status: 200, Body: '{"ok":false}'}
+    catch
+        rejected := true
+    Assert rejected && A_Clipboard = preservedClipboard, "An API rejection must retain the clipboard and never report success."
+    config.SheetId := "some-other-sheet"
+    rejected := false
+    try SubmitInboxText config, "test", "test", (url, body) => {Status: 200, Body: '{"ok":true}'}
+    catch
+        rejected := true
+    Assert rejected, "A setup file for a different Sheet must not send anything."
+    config.SheetId := SheetId
+    config.Url := "https://example.com/collect"
+    rejected := false
+    try ValidateInboxWriter config, SheetId
+    catch
+        rejected := true
+    Assert rejected, "Inbox setup must not transmit clipboard data to another host."
+    SheetId := oldSheet
 }

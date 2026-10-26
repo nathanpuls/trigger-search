@@ -219,3 +219,33 @@ actions retain their strict focus checks.
 Exact aliases rank first across snippets and automations. Matching alias prefixes then sort by shortest alias before name and description matches (T, TA, TAP). Display names such as AMD are independent of trusted Script IDs. Keep the canonical advancedmd.* IDs in the Sheet; the explicit AMD.* compatibility IDs remain supported.
 
 Open AMD reacquires and activates the identified Chrome login window before each login input, uses the original SendEvent for office key 136732, and moves the identified AMD window to the left display. It does not require the window from which the launcher was opened to stay focused. Error dialog titles include the worker version and action so an old running copy can be identified. Actual Dell login and monitor behavior still require a device check.
+
+## Send Dell clipboard to Inbox
+
+In 0.16.10, **Ctrl+Alt+I** works globally, including when the launcher is closed.
+It sends the current plain-text clipboard to the existing Google Apps Script
+Inbox API. That endpoint inserts the entry at row 2, immediately below the header,
+with a Dell timestamp label. It never appends at the bottom. Clipboard contents
+are not changed or written to request/error logs. No browser opens during use.
+
+Download your private **Trigger-Search-Inbox-Setup.ini** to the Dell Downloads
+folder, run **Refresh all scripts**, then copy some text and press Ctrl+Alt+I.
+The first press imports the setup file automatically from Downloads (or asks
+you to select it if missing). Configuration stays in
+`%APPDATA%\SheetAutocomplete\inbox-api.ini`, outside GitHub and the public Sheet.
+The file must match the active Sheet ID and use an HTTPS script.google.com
+Apps Script endpoint. Keep its token private. No API token belongs in this repo.
+
+The shortcut reports success only after the API confirms the write, then fetches
+the latest Inbox directly to update the launcher's pin. A timeout never retries
+automatically: check Inbox before pressing again, since the server may already
+have saved the row. Empty clipboards and text over 45,000 characters are rejected.
+Images/files are not uploaded. The existing API controls whitespace handling.
+
+Ctrl+Shift+I **inside the launcher** remains the reverse direction: copy the
+latest Inbox cell to the Windows clipboard. Ctrl+R refreshes Sheet data in place.
+
+Endpoint health was verified in the connected Google session. Windows CI covers
+JSON/Unicode, success/rejection handling, clipboard preservation, and destination
+validation with mock requests. Sending from the actual Dell still needs a device
+check. The existing server code/deployment was not changed.
