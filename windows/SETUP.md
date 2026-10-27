@@ -438,7 +438,8 @@ The last verified disabled state is cached for offline restarts. Network/export
 failure retains that state; before the first verified formatting read, managed
 automation shortcuts remain inactive. Snippets remain cache-first. Existing
 Original Scripts ON listeners and Raycast bindings are independent; this rule
-controls Trigger Search's own shortcuts and dispatch, not those backup files.
+controls Trigger Search's own shortcuts and dispatch, not those backup files. An already executing worker is allowed to finish;
+strikethrough prevents subsequent launches.
 
 For the struck Plan navigation row, Alt+4 no longer starts the AMD helper.
 Zoom's size-key context also recognizes its native tiny windows, preventing

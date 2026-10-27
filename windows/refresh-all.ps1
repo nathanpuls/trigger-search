@@ -427,7 +427,7 @@ function Read-AutomationFormatting([string]$Book, [string]$SheetIdentity, [strin
     if (-not $Book) {
         $download = Join-Path ([IO.Path]::GetTempPath()) ('trigger-format-' + [guid]::NewGuid().ToString('N') + '.xlsx')
         $Book = $download
-        try { Invoke-WebRequest -UseBasicParsing -TimeoutSec 15 -Uri ("https://docs.google.com/spreadsheets/d/$SheetIdentity/export?format=xlsx") -OutFile $Book }
+        try { Invoke-WebRequest -UseBasicParsing -TimeoutSec 15 -Uri ("https://docs.google.com/spreadsheets/d/$SheetIdentity/export?format=xlsx&cacheBust=$([DateTime]::UtcNow.Ticks)") -Headers @{"Cache-Control"="no-cache"} -OutFile $Book }
         catch {
             if (Test-Path -LiteralPath $download) { Remove-Item -LiteralPath $download -Force }
             throw

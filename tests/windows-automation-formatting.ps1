@@ -56,7 +56,7 @@ try {
         if ($ExpectedDisabledId -and (Get-Content $live -Raw) -notmatch ('(?m)^' + [regex]::Escape($ExpectedDisabledId) + '=1$')) {
             throw 'The requested live strikethrough regression was not detected.'
         }
-        Write-Output 'PASS: live public formatting export and requested disabled-state regression verified (no cell contents logged).' 
+        Write-Output 'PASS: live public formatting export and requested disabled-state regression verified (no cell contents logged).'
     }
     Write-Output 'PASS: full-cell and rich-text strike, explicit unstrike, duplicate precedence, ID cells, worksheet relationships, no install side effects.'
 } finally { Remove-Item $root -Recurse -Force }
