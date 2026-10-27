@@ -22,6 +22,26 @@ ChromeIsEhrTitle(title) {
     return InStr(StrLower(title), "advancedmd") != 0
 }
 
+ChromeIsBrowsingFrame(title, style, owner, extendedStyle := 0) {
+    if ChromeIsEhrTitle(title) || Trim(title) = ""
+        return false
+    ; The screen-capture notice is its own Chrome_WidgetWin_1 window. Its
+    ; "Hide" action minimizes it, so process/class checks alone can resurrect it.
+    if RegExMatch(title, "i)(?:is sharing (?:your |the )?(?:screen|window|tab|audio)|sharing your screen|screen sharing|screen capture notification|ScreenCaptureNotificationUIViews)")
+        return false
+    ; Normal browsing windows are unowned, resizable frames with a system menu.
+    ; Skip owned dialogs, WS_EX_TOOLWINDOW, and the non-resizable capture toolbar.
+    return !owner && !(extendedStyle & 0x80)
+        && (style & 0x00040000) && (style & 0x00080000)
+}
+ChromeIsBrowsingHwnd(hwnd) {
+    try return WinGetProcessName(hwnd) = "chrome.exe"
+        && ChromeIsBrowsingFrame(WinGetTitle(hwnd), WinGetStyle(hwnd),
+            DllCall("GetWindow", "ptr", hwnd, "uint", 4, "ptr"), WinGetExStyle(hwnd))
+    catch
+        return false
+}
+
 StartChromeFocusTracking() {
     state := ChromeFocusState()
     if state.Hook
@@ -75,7 +95,8 @@ GeneralChromeCandidates() {
                 continue
             }
             ; Keep a known EHR window excluded if its active tab/title changes.
-            if Trim(title) = "" || (state.Excluded.Has(hwnd) && state.Excluded[hwnd] = pid)
+            if !ChromeIsBrowsingHwnd(hwnd)
+                || (state.Excluded.Has(hwnd) && state.Excluded[hwnd] = pid)
                 continue
             candidates.Push({Hwnd: hwnd, Pid: pid})
         }
@@ -96,7 +117,7 @@ SelectGeneralChrome(candidates, used) {
 
 ActivateGeneralChrome(hwnd) {
     ; Recheck the live title immediately before activating this exact HWND.
-    if !WinExist(hwnd) || ChromeIsEhrTitle(WinGetTitle(hwnd))
+    if !WinExist(hwnd) || !ChromeIsBrowsingHwnd(hwnd)
         return false
     WinActivate hwnd ; Automatically restores a minimized window; keeps normal placement.
     return !!WinWaitActive(hwnd, , 2)
@@ -135,6 +156,17 @@ TestGeneralChromeSelection() {
         "Login | AdvancedMD", "AdvancedMD — EHR"]
         Assert ChromeIsEhrTitle(title), "All known AdvancedMD title variants must be excluded from general Chrome."
     Assert !ChromeIsEhrTitle("General browsing - Google Chrome"), "General browsing titles must remain eligible."
+    frameStyle := 0x00CF0000
+    Assert ChromeIsBrowsingFrame("General browsing - Google Chrome", frameStyle, 0),
+        "Normal resizable browsing frames must be eligible."
+    for notice in ["Clinician Blueprint AI is sharing your screen and audio",
+        "example.test is sharing your screen.", "Screen sharing", "ScreenCaptureNotificationUIViews"]
+        Assert !ChromeIsBrowsingFrame(notice, frameStyle, 0),
+            "Sharing notices must never be candidates even if they have ordinary window styles."
+    Assert !ChromeIsBrowsingFrame("Google Chrome", 0x80000000, 0)
+        && !ChromeIsBrowsingFrame("General browsing", frameStyle, 10)
+        && !ChromeIsBrowsingFrame("General browsing", frameStyle, 0, 0x80),
+        "Popup frames, owned dialogs and tool windows must never steal Alt+X."
     windows := [{Hwnd: 100, Pid: 1}, {Hwnd: 200, Pid: 2}]
     Assert SelectGeneralChrome(windows, Map()) = 100,
         "Initial selection must follow desktop Z-order when no usage history exists."

@@ -1,8 +1,12 @@
 # Dell workspace layout trial
 
 Recorded October 27, 2026. Nathan wants to try this arrangement for about a week
-before deciding whether to automate a start-of-day layout. This is a future idea,
-not a scheduled task, startup change or implemented window-placement command.
+before deciding whether to automate a start-of-day layout. The all-app morning
+command remains a future idea, not a scheduled task or startup change.
+
+Later on October 27, Nathan authorized the individual Alt+A and Alt+Z actions to
+apply the AMD and Zoom halves below (0.16.23). Copilot, general Chrome and Teams
+placement remain future work.
 
 | Display | Area | Application |
 | --- | --- | --- |
@@ -15,7 +19,8 @@ not a scheduled task, startup change or implemented window-placement command.
 Later, inspect the Dell's actual monitor work areas, scaling and window identities
 before choosing sizes or coordinates. A possible single manual start-of-day
 command would focus/open these applications and arrange them once. Keep current
-working shortcuts and wait for Nathan's trial feedback before changing placement.
+working shortcuts and wait for Nathan's trial feedback before building the
+all-app command or changing the other applications' placement.
 
 The patient action menu still needs separate, verified local workers for exact-MRN
 AdvancedMD result selection and patient-specific Blueprint recording. The current

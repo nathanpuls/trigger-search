@@ -3,7 +3,7 @@
   "files": [
     {
       "path": "windows/autocomplete.ahk",
-      "sha256": "aefcc8a883cbbeb35e2714fbde4fbb496a408e1ab265c01626a308ea7f529605"
+      "sha256": "0bf4068cc40e46b14c72098b59d24d3669a0d13c1ef124ac960bebea4a79afd4"
     },
     {
       "path": "windows/refresh-all.ps1",
@@ -23,7 +23,7 @@
     },
     {
       "path": "automations/dell/helpers.ahk",
-      "sha256": "00e2765674eda280bdab8496e4b04a360712e5193e1e126aa5ef558f12587989"
+      "sha256": "5d4474d148a03342fe25b9ce9d048177567373c9e6a3483b020acde0691def10"
     }
   ]
 }

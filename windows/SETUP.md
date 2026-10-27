@@ -218,7 +218,7 @@ actions retain their strict focus checks.
 
 Exact aliases rank first across snippets and automations. Matching alias prefixes then sort by shortest alias before name and description matches (T, TA, TAP). Display names such as AMD are independent of trusted Script IDs. Keep the canonical advancedmd.* IDs in the Sheet; the explicit AMD.* compatibility IDs remain supported.
 
-Open AMD reacquires and activates the identified Chrome login window before each login input, uses the original SendEvent for office key 136732, and moves the identified AMD window to the left display. It does not require the window from which the launcher was opened to stay focused. Error dialog titles include the worker version and action so an old running copy can be identified. Actual Dell login and monitor behavior still require a device check.
+Open AMD reacquires and activates the identified Chrome login window before each login input, uses the original SendEvent for office key 136732, and places the identified AMD window on the right display’s left half (as of 0.16.23). It does not require the window from which the launcher was opened to stay focused. Error dialog titles include the worker version and action so an old running copy can be identified. Actual Dell login and monitor behavior still require a device check.
 
 ## Send Dell clipboard to Inbox
 
@@ -294,13 +294,15 @@ First use asks for your Zoom PMI link; it stays only in local settings under
 
 With no meeting open, the action opens that URL in the default browser and waits
 up to 60 seconds for a Zoom meeting window; complete any Open Zoom or join prompt
-yourself. It restores the window and requests **640 x 480**, top-centered with
-a 24-pixel gap in the work area of the meeting's current monitor. Negative
-monitor coordinates and taskbars are respected. Zoom may enforce a larger
-minimum size. If Zoom is in fullscreen, exit fullscreen if it refuses to resize.
+yourself. As of 0.16.23, the regular meeting is restored and placed on the
+**leftmost display, right half, full work-area height**. Negative monitor
+coordinates and taskbars are respected. Zoom may enforce a larger minimum size.
+If Zoom is in fullscreen, exit fullscreen if it refuses to resize.
 
-If a meeting is already open, it restores it if minimized and focuses it,
-preserving its current size, position, and maximized state. It does not close a live call. After
+If a regular meeting is already open, Alt+Z reapplies this half-screen layout
+and focuses it. An existing tiny/floating view still uses the launcher's focus-only
+path; Alt+2 restores it, then Alt+Z reapplies the regular layout. It does not close
+a live call. After
 a new meeting is detected it closes only exactly named Zoom home windows, not
 arbitrary Zoom windows. English meeting titles / the Zoom meeting window class
 are used; actual Dell Zoom recognition and final size require a device check.
@@ -552,9 +554,10 @@ patient count, search a known name and press Enter to inspect the menu.
 - The same action is searchable as **General Chrome**, aliases `x, chrome, browser`,
   Script ID `chrome.general`. Strikethrough disables its managed Alt+X binding.
 - **Alt+A / Open AMD** first looks for a Chrome EHR window with either spelling
-  above and focuses it in its existing location. It does not repeat login, type
-  office key 136732, or move an already-open EHR. If no EHR window exists, the
-  existing login flow and post-login left-display move are preserved.
+  above. As of 0.16.23 it focuses and places the EHR on the right display's left
+  half. It does not repeat login or type office key 136732 into an open EHR.
+  If no EHR window exists, the existing login flow is preserved, followed by
+  the same half-screen placement.
 - Disable Raycast's **Alt+X** binding on the Dell before trying the new binding.
   This update cannot inspect or change that device's Raycast configuration.
 - The optional complete, standalone script is
@@ -567,3 +570,39 @@ patient count, search a known name and press Enter to inspect the menu.
 Patient search results already show the MRN in their details column; the patient
 action menu now also keeps it visible in its footer. Live Dell Chrome/Raycast,
 AMD login and actual monitor placement still require a device check.
+
+
+## Half-screen desk layout and Chrome sharing notice (0.16.23)
+
+Alt+A / Open AMD places a new or already-open EHR on the **rightmost monitor's
+left 50%**, at the full usable height. Alt+Z / Join Zoom places a new or existing
+regular meeting on the **leftmost monitor's right 50%**, at the full usable
+height. Monitor selection uses actual work-area coordinates, independent of
+which monitor is primary or the monitor number Windows assigned. On a single
+monitor the applications use opposite halves. Taskbars are excluded; odd widths
+are split without a missing pixel. The bounded second placement handles normal
+cross-monitor DPI resizing. No maximize-to-whole-monitor step follows placement.
+
+The Alt+X filter now rejects Chrome's screen-sharing notification window,
+non-resizable frames, owned dialogs and tool windows, in addition to AdvancedMD.
+Both candidate selection and activation apply the filter. A notification titled
+“Clinician Blueprint AI is sharing your screen and audio” can no longer become
+the browsing candidate. Hide on that notification minimizes it; Alt+X must not
+restore it as though it were a browser. The shortcut neither clicks Stop sharing
+nor changes the shared screen, microphone, permissions or recording state.
+The optional standalone Chrome script uses the same updated filter.
+
+The form workflows' existing focus guard is retained. They check the exact target
+HWND and its AdvancedMD title before sending each input. Switching applications,
+a missing window or a title mismatch can stop a partly completed workflow; review
+the form before retrying. The generic catch message does not identify the exact
+failed check, and other worker exceptions can also reach that message. No form
+inputs, titles or patient data are logged to diagnose it.
+
+Windows checks cover a real synthetic window's restore/resize behavior, monitor
+selection, negative coordinates, taskbars, odd widths and sharing-toolbar
+exclusion. Actual Dell DPI/window constraints and Chrome/Zoom versions still
+need a device check. After Refresh all scripts, test Alt+A, Alt+Z, then Alt+X
+followed by Ctrl+T. Keep Raycast Alt+X unbound. The proposed whole-morning command
+remains future work; this change only places applications when their action is
+invoked.

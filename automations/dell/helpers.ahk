@@ -16,6 +16,7 @@ global HelperActions := Map(
     "end-zoom", EndZoom, "teams-call-clipboard", TeamsCallClipboard)
 if DryRun {
     TestZoomPlacement()
+    TestWorkspaceBounds()
     TestClipboardPhoneNumber()
     if !IsAdvancedMDEhrTitle("AdvancedMD-EHR - Google Chrome")
         || !IsAdvancedMDEhrTitle("AdvancedMD - EHR")
@@ -61,7 +62,7 @@ try {
     HelperActions[A_Args[2]].Call()
 } catch as problem {
     ; Fixed error messages only; no window titles or clipboard contents are logged.
-    MsgBox problem.Message, "Trigger Search 0.16.22 — " A_Args[2]
+    MsgBox problem.Message, "Trigger Search 0.16.23 — " A_Args[2]
 } finally {
     DllCall("CloseHandle", "ptr", mutex)
 }
@@ -237,12 +238,13 @@ Hpi() {
 LaunchAdvancedMD() {
     key := "136732"
     global DryRun, TargetHwnd
-    ; Focusing an open EHR must not type an office key, repeat login, or move it.
+    ; Focus and place an open EHR without typing an office key or repeating login.
     if !DryRun && (ehr := ExistingAdvancedMDEhrWindow()) {
         WinActivate ehr
         if !WinWaitActive(ehr, , 5)
             throw Error("Could not activate the existing AdvancedMD EHR window.")
         TargetHwnd := ehr
+        PositionAdvancedMD()
         return
     }
     if !DryRun && (login := WinExist("Login | AdvancedMD ahk_exe chrome.exe")) {
@@ -258,7 +260,7 @@ LaunchAdvancedMD() {
     SendAMDLogin "{Enter}"
     PauseFor 10000
     AdoptActiveAdvancedMDWindow()
-    MoveToLeftDisplay()
+    PositionAdvancedMD()
 }
 IsAdvancedMDEhrTitle(title) {
     return !!RegExMatch(title, "i)AdvancedMD\s*[-–—]?\s*EHR\b")
@@ -418,31 +420,85 @@ LeftmostDisplay(areas) {
     return destination
 }
 
-MoveToLeftDisplay() {
-    global DryRun, Steps, TargetHwnd
-    if DryRun {
-        Steps.Push(["MoveToLeftDisplay"])
-        return
-    }
-    RequireAMDWindowExists()
+RightmostDisplay(areas) {
+    destination := areas[1]
+    for area in areas
+        if area.Left > destination.Left
+            destination := area
+    return destination
+}
+DisplayWorkAreas() {
     areas := []
     Loop MonitorGetCount() {
         MonitorGetWorkArea A_Index, &left, &top, &right, &bottom
         areas.Push({Left: left, Top: top, Right: right, Bottom: bottom})
     }
-    destination := LeftmostDisplay(areas)
-    window := "ahk_id " TargetHwnd
-    WinRestore window
-    PauseFor 150
+    return areas
+}
+HalfDisplayBounds(area, side) {
+    ; Use work areas, not monitor numbers or primary-display assumptions.
+    leftWidth := Floor((area.Right - area.Left) / 2)
+    x := side = "left" ? area.Left : area.Left + leftWidth
+    return {X: x, Y: area.Top,
+        Width: side = "left" ? leftWidth : area.Right - x,
+        Height: area.Bottom - area.Top}
+}
+PlaceWindowInBounds(hwnd, bounds) {
+    if !WinExist(hwnd)
+        throw Error("The application window is no longer available for placement.")
+    if !DllCall("IsWindowVisible", "ptr", hwnd)
+        WinShow hwnd
+    if WinGetMinMax(hwnd) != 0
+        WinRestore hwnd
+    Sleep 120
+    WinMove bounds.X, bounds.Y, bounds.Width, bounds.Height, hwnd
+    ; A cross-monitor DPI change may resize the window once during transfer.
+    ; Apply the same rectangle again after that change settles; no polling loop.
+    Sleep 150
+    WinMove bounds.X, bounds.Y, bounds.Width, bounds.Height, hwnd
+}
+PositionAdvancedMD() {
+    global DryRun, Steps, TargetHwnd
+    if DryRun {
+        Steps.Push(["PlaceAdvancedMD", "right display, left half"])
+        return
+    }
     RequireAMDWindowExists()
-    ; Put the restored window fully inside the destination before maximizing.
-    ; This also works when the left display has negative coordinates.
-    width := Max(100, Min(1000, destination.Right - destination.Left - 40))
-    height := Max(100, Min(700, destination.Bottom - destination.Top - 40))
-    WinMove destination.Left + 20, destination.Top + 20, width, height, window
-    PauseFor 500
-    RequireAMDWindowExists()
-    WinMaximize window
+    area := RightmostDisplay(DisplayWorkAreas())
+    PlaceWindowInBounds TargetHwnd, HalfDisplayBounds(area, "left")
+}
+TestWorkspaceBounds() {
+    areas := [{Left: 0, Top: 40, Right: 2560, Bottom: 1400},
+        {Left: -1920, Top: -100, Right: 0, Bottom: 940}]
+    amd := HalfDisplayBounds(RightmostDisplay(areas), "left")
+    zoom := HalfDisplayBounds(LeftmostDisplay(areas), "right")
+    if amd.X != 0 || amd.Y != 40 || amd.Width != 1280 || amd.Height != 1360
+        throw Error("AMD must occupy the left half of the rightmost work area.")
+    if zoom.X != -960 || zoom.Y != -100 || zoom.Width != 960 || zoom.Height != 1040
+        throw Error("Zoom must occupy the right half of the leftmost work area.")
+    odd := {Left: -1001, Top: 0, Right: 0, Bottom: 800}
+    left := HalfDisplayBounds(odd, "left"), right := HalfDisplayBounds(odd, "right")
+    if left.Width + right.Width != 1001 || left.X + left.Width != right.X
+        || right.X + right.Width != odd.Right
+        throw Error("Odd monitor widths must leave no gap or lost pixel.")
+    single := [{Left: 0, Top: 0, Right: 1920, Bottom: 1040}]
+    if LeftmostDisplay(single) != RightmostDisplay(single)
+        throw Error("A single display must safely provide both halves.")
+    ; A synthetic native window tests restore/placement without opening an app.
+    fixture := Gui("+Resize", "Workspace geometry fixture")
+    try {
+        fixture.Show("w300 h200 NoActivate")
+        MonitorGetWorkArea MonitorGetPrimary(), &l, &t, &r, &b
+        bounds := HalfDisplayBounds({Left: l, Top: t, Right: r, Bottom: b}, "left")
+        WinMaximize fixture.Hwnd
+        PlaceWindowInBounds fixture.Hwnd, bounds
+        WinGetPos &x, &y, &w, &h, fixture.Hwnd
+        if WinGetMinMax(fixture.Hwnd) != 0 || x != bounds.X || y != bounds.Y
+            || w != bounds.Width || h != bounds.Height
+            throw Error("Native half-window placement must restore maximized windows and apply exact bounds.")
+    } finally {
+        fixture.Destroy()
+    }
 }
 
 AdoptActiveAdvancedMDWindow() {
@@ -500,13 +556,8 @@ JoinZoom() {
     ; Do not terminate a live call just to resize it or start another meeting.
     meeting := FindZoomMeeting()
     if meeting {
-        ; Focusing an existing call must preserve its geometry and maximized state.
-        window := "ahk_id " meeting
-        if !DllCall("IsWindowVisible", "ptr", meeting)
-            WinShow meeting
-        if WinGetMinMax(meeting) = -1
-            WinRestore meeting
-        WinActivate meeting
+        ; Alt+Z reapplies the chosen desk layout to an existing regular meeting.
+        PositionZoomMeeting meeting
         return
     }
     url := LocalZoomMeetingUrl()
@@ -564,45 +615,16 @@ FindZoomMeeting() {
     }
     return 0
 }
-ZoomTopCenterBounds(area) {
-    width := Max(100, Min(640, area.Right - area.Left - 48))
-    height := Max(100, Min(480, area.Bottom - area.Top - 48))
-    return {X: area.Left + Floor((area.Right - area.Left - width) / 2),
-        Y: area.Top + 24, Width: width, Height: height}
-}
 PositionZoomMeeting(hwnd) {
-    window := "ahk_id " hwnd
-    if !WinExist(window) || WinGetProcessName(window) != "Zoom.exe"
+    if !WinExist(hwnd) || WinGetProcessName(hwnd) != "Zoom.exe"
         throw Error("The Zoom meeting window is no longer available.")
-    WinGetPos &x, &y, &width, &height, window
-    monitor := MonitorGetPrimary()
-    Loop MonitorGetCount() {
-        MonitorGet A_Index, &left, &top, &right, &bottom
-        if x + width / 2 >= left && x + width / 2 < right && y + height / 2 >= top && y + height / 2 < bottom {
-            monitor := A_Index
-            break
-        }
-    }
-    MonitorGetWorkArea monitor, &left, &top, &right, &bottom
-    bounds := ZoomTopCenterBounds({Left: left, Top: top, Right: right, Bottom: bottom})
-    WinRestore window
-    Sleep 150
-    WinMove bounds.X, bounds.Y, bounds.Width, bounds.Height, window
-    Sleep 300
-    ; Zoom can enforce a minimum size. Center that actual width as well.
-    WinGetPos , , &actualWidth, , window
-    WinMove left + Floor((right - left - actualWidth) / 2), bounds.Y, , , window
-    WinActivate window
+    area := LeftmostDisplay(DisplayWorkAreas())
+    PlaceWindowInBounds hwnd, HalfDisplayBounds(area, "right")
+    WinActivate hwnd
 }
 TestZoomPlacement() {
     if RequiresOriginWindow("join-zoom")
         throw Error("Join Zoom must not depend on the launcher's previous window.")
-    bounds := ZoomTopCenterBounds({Left: -1920, Top: 0, Right: 0, Bottom: 1040})
-    if bounds.X != -1280 || bounds.Y != 24 || bounds.Width != 640 || bounds.Height != 480
-        throw Error("Zoom must center near the top of its own monitor, including negative coordinates.")
-    bounds := ZoomTopCenterBounds({Left: 0, Top: 40, Right: 600, Bottom: 440})
-    if bounds.Width != 552 || bounds.Height != 352 || bounds.X != 24 || bounds.Y != 64
-        throw Error("Zoom placement must fit a small monitor work area.")
     if ZoomMeetingCandidate("Zoom Workplace", "HomeWindow") || !ZoomMeetingCandidate("Zoom Meeting", "MeetingWindow")
         throw Error("Zoom home must not be selected as the meeting window.")
     if !ValidZoomMeetingUrl("https://example.zoom.us/j/1234567890")
