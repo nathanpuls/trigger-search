@@ -3,7 +3,7 @@
 Persistent
 
 ; Trigger Search Windows client
-global AppVersion := "0.16.23"
+global AppVersion := "0.16.24"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -50,6 +50,8 @@ global AutomationRegistry := Map(
     "dell.copy-back", {File: "dell/helpers.ahk", Action: "copy-back"},
     "zoom.join", {File: "dell/helpers.ahk", Action: "join-zoom"},
     "zoom.end", {File: "dell/helpers.ahk", Action: "end-zoom"},
+    "workspace.start-day", {File: "dell/helpers.ahk", Action: "workspace-start"},
+    "teams.open", {File: "dell/helpers.ahk", Action: "open-teams"},
     "chrome.general", {File: "", Action: "builtin:chrome-general"},
     "teams.call-clipboard", {File: "dell/helpers.ahk", Action: "teams-call-clipboard"},
     "clipboard.store", {File: "", Action: "builtin:clipboard-store"},
@@ -156,6 +158,12 @@ if A_Args.Length > 0 && A_Args[1] = "--self-test" {
 !t::RunAutomation("advancedmd.follow-up-tele")
 #HotIf AutomationShortcutEnabled("advancedmd.intake-office")
 !0::RunAutomation("advancedmd.intake-office")
+#HotIf AutomationShortcutEnabled("workspace.start-day")
+!l::RunAutomation("workspace.start-day")
+#HotIf AutomationShortcutEnabled("dell.copilot")
+!c::RunAutomation("dell.copilot")
+#HotIf AutomationShortcutEnabled("teams.open")
+!s::RunAutomation("teams.open")
 #HotIf AutomationShortcutEnabled("chrome.general")
 !x::RunAutomation("chrome.general")
 #HotIf AutomationShortcutEnabled("dell.launch-advancedmd")
@@ -2719,6 +2727,7 @@ RunSelfTests() {
     TestKeyboardRemaps()
     TestLocalPatients()
     TestGeneralChromeSelection()
+    TestWorkspaceEnabledMask()
     TestZoomWindowControls()
     TestZoomAccessibility()
     automationRows := ParseCsv('Name,Alias,Description,Script ID`n'
@@ -3657,6 +3666,29 @@ ParseAutomations(rows, info, output) {
     }
 }
 
+WorkspaceEnabledMask() {
+    flags := Map("dell.launch-advancedmd", 1, "zoom.join", 2,
+        "dell.copilot", 4, "chrome.general", 8, "teams.open", 16)
+    mask := 0
+    for id, flag in flags
+        if AutomationEnabled(id)
+            mask |= flag
+    return mask
+}
+TestWorkspaceEnabledMask() {
+    global AutomationFormattingReady, DisabledAutomations
+    ready := AutomationFormattingReady, disabled := DisabledAutomations
+    try {
+        AutomationFormattingReady := false, DisabledAutomations := Map()
+        Assert WorkspaceEnabledMask() = 0, "Unverified automations must not enter the workspace job."
+        AutomationFormattingReady := true
+        Assert WorkspaceEnabledMask() = 31, "All five enabled workspace applications must be selected."
+        DisabledAutomations := Map("zoom.join", true, "dell.copilot", true)
+        Assert WorkspaceEnabledMask() = 25, "Struck application rows must be skipped by Start my day."
+    } finally {
+        AutomationFormattingReady := ready, DisabledAutomations := disabled
+    }
+}
 RunAutomation(scriptId, choice := 0) {
     global TargetWindow, ChooserGui, ChooserOpen, AtBoundary, AutomationRegistry, ZoomLaunchDeadline
     try {
@@ -3681,6 +3713,8 @@ RunAutomation(scriptId, choice := 0) {
             RunBuiltinAutomation entry.Action
         else {
             arguments := entry.Action != "" ? ' "' entry.Action '"' : ""
+            if scriptId = "workspace.start-day"
+                arguments .= " " WorkspaceEnabledMask()
             ; Alt+Z and the searchable action focus an existing thumbnail as-is.
             mini := scriptId = "zoom.join" ? FindZoomThumbnail() : 0
             if mini {
@@ -4082,7 +4116,9 @@ ChromeIsEhrTitle(title) {
 }
 
 ChromeIsBrowsingFrame(title, style, owner, extendedStyle := 0) {
-    if ChromeIsEhrTitle(title) || Trim(title) = ""
+    if ChromeIsEhrTitle(title) || Trim(title) = "" || RegExMatch(title, "i)\bCopilot\b")
+        return false
+    if RegExMatch(title, "i)^(?:Sign in(?: to your account)?|Microsoft account)(?:\s*[-|–—].*)?$")
         return false
     ; The screen-capture notice is its own Chrome_WidgetWin_1 window. Its
     ; "Hide" action minimizes it, so process/class checks alone can resurrect it.
@@ -4133,7 +4169,7 @@ ChromeForegroundChanged(hook, event, hwnd, objectId, childId, threadId, eventTim
             return
         state := ChromeFocusState()
         pid := WinGetPID(hwnd)
-        if ChromeIsEhrTitle(WinGetTitle(hwnd))
+        if ChromeIsEhrTitle(WinGetTitle(hwnd)) || RegExMatch(WinGetTitle(hwnd), "i)\bCopilot\b")
             state.Excluded[hwnd] := pid
         state.Sequence += 1
         state.Used[hwnd] := {Pid: pid, Order: state.Sequence}
@@ -4149,11 +4185,11 @@ GeneralChromeCandidates() {
         try {
             title := WinGetTitle(hwnd)
             pid := WinGetPID(hwnd)
-            if ChromeIsEhrTitle(title) {
+            if ChromeIsEhrTitle(title) || RegExMatch(title, "i)\bCopilot\b") {
                 state.Excluded[hwnd] := pid
                 continue
             }
-            ; Keep a known EHR window excluded if its active tab/title changes.
+            ; Keep known EHR/Copilot windows excluded if their active tab/title changes.
             if !ChromeIsBrowsingHwnd(hwnd)
                 || (state.Excluded.Has(hwnd) && state.Excluded[hwnd] = pid)
                 continue
@@ -4182,16 +4218,16 @@ ActivateGeneralChrome(hwnd) {
     return !!WinWaitActive(hwnd, , 2)
 }
 
-FocusGeneralChrome(*) {
+FocusGeneralChrome(quiet := false, *) {
     static busy := false
     if busy
-        return
+        return 0
     busy := true
     try {
         state := ChromeFocusState()
         hwnd := SelectGeneralChrome(GeneralChromeCandidates(), state.Used)
         if hwnd && ActivateGeneralChrome(hwnd)
-            return
+            return hwnd
         ; A separate blank window prevents Chrome from reusing the EHR window
         ; when it is the only Chrome window. No clinical URL or data is supplied.
         Run 'chrome.exe --new-window "about:blank"'
@@ -4200,14 +4236,17 @@ FocusGeneralChrome(*) {
             Sleep 100
             hwnd := SelectGeneralChrome(GeneralChromeCandidates(), state.Used)
             if hwnd && ActivateGeneralChrome(hwnd)
-                return
+                return hwnd
         }
-        TrayTip "Chrome was started, but its browsing window could not be focused yet.", "Trigger Search"
+        if !quiet
+            TrayTip "Chrome was started, but its browsing window could not be focused yet.", "Trigger Search"
     } catch {
-        TrayTip "Could not focus or open Chrome. Check that Google Chrome is installed.", "Trigger Search"
+        if !quiet
+            TrayTip "Could not focus or open Chrome. Check that Google Chrome is installed.", "Trigger Search"
     } finally {
         busy := false
     }
+    return 0
 }
 
 TestGeneralChromeSelection() {
@@ -4222,6 +4261,10 @@ TestGeneralChromeSelection() {
         "example.test is sharing your screen.", "Screen sharing", "ScreenCaptureNotificationUIViews"]
         Assert !ChromeIsBrowsingFrame(notice, frameStyle, 0),
             "Sharing notices must never be candidates even if they have ordinary window styles."
+    Assert !ChromeIsBrowsingFrame("Sign in to your account - Google Chrome", frameStyle, 0),
+        "A Microsoft sign-in prompt must not become the general browsing workspace window."
+    Assert !ChromeIsBrowsingFrame("Microsoft 365 Copilot", frameStyle, 0),
+        "The dedicated Copilot window must never become general browsing Chrome."
     Assert !ChromeIsBrowsingFrame("Google Chrome", 0x80000000, 0)
         && !ChromeIsBrowsingFrame("General browsing", frameStyle, 10)
         && !ChromeIsBrowsingFrame("General browsing", frameStyle, 0, 0x80),

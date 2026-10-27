@@ -6,6 +6,8 @@ SetTitleMatchMode 2
 global DryRun := A_Args.Length = 1 && A_Args[1] = "--self-test"
 global TargetHwnd := 0
 global Steps := []
+global WorkspaceMask := 31
+global WorkspaceTestCalls := []
 global HelperActions := Map(
     "initials", Initials, "charge-slip", ChargeSlip, "timestamp", Timestamp,
     "mse", Mse, "mse-fast", MseFast, "follow-up-mse", FollowUpMse,
@@ -13,10 +15,13 @@ global HelperActions := Map(
     "hpi", Hpi, "launch-advancedmd", LaunchAdvancedMD, "morning-startup", MorningStartup,
     "blueprint", Blueprint, "it-ticket", ItTicket, "schedule-email", ScheduleEmail,
     "copilot", Copilot, "espanso", Espanso, "copy-back", CopyBack, "join-zoom", JoinZoom,
-    "end-zoom", EndZoom, "teams-call-clipboard", TeamsCallClipboard)
+    "end-zoom", EndZoom, "teams-call-clipboard", TeamsCallClipboard,
+    "workspace-start", StartDayWorkspace, "open-teams", OpenTeams)
 if DryRun {
     TestZoomPlacement()
     TestWorkspaceBounds()
+    TestGeneralChromeSelection()
+    TestWorkspaceAutomation()
     TestClipboardPhoneNumber()
     if !IsAdvancedMDEhrTitle("AdvancedMD-EHR - Google Chrome")
         || !IsAdvancedMDEhrTitle("AdvancedMD - EHR")
@@ -45,15 +50,21 @@ if DryRun {
     }
     ExitApp 0
 }
-if A_Args.Length != 2 || !RegExMatch(A_Args[1], "^\d+$") || !HelperActions.Has(A_Args[2])
+if A_Args.Length < 2 || !RegExMatch(A_Args[1], "^\d+$") || !HelperActions.Has(A_Args[2])
+    ExitApp 2
+if A_Args[2] = "workspace-start" {
+    if A_Args.Length != 3 || !RegExMatch(A_Args[3], "^\d{1,2}$") || Integer(A_Args[3]) > 31
+        ExitApp 2
+    WorkspaceMask := Integer(A_Args[3])
+} else if A_Args.Length != 2
     ExitApp 2
 TargetHwnd := Integer(A_Args[1])
 mutex := DllCall("CreateMutexW", "ptr", 0, "int", 1,
-    "str", "Local\TriggerSearchAdvancedMD", "ptr")
+    "str", HelperMutexName(A_Args[2]), "ptr")
 if !mutex || A_LastError = 183 {
     if mutex
         DllCall("CloseHandle", "ptr", mutex)
-    TrayTip "Another automation is running.", "Trigger Search"
+    TrayTip A_Args[2] = "workspace-start" ? "Start my day is already running." : "Another automation is running.", "Trigger Search"
     ExitApp 3
 }
 try {
@@ -62,7 +73,7 @@ try {
     HelperActions[A_Args[2]].Call()
 } catch as problem {
     ; Fixed error messages only; no window titles or clipboard contents are logged.
-    MsgBox problem.Message, "Trigger Search 0.16.23 — " A_Args[2]
+    MsgBox problem.Message, "Trigger Search 0.16.24 — " A_Args[2]
 } finally {
     DllCall("CloseHandle", "ptr", mutex)
 }
@@ -385,9 +396,6 @@ ScheduleEmail() {
     S "^v"
     ; Compose only. The original script does not send the message.
 }
-Copilot() {
-    OpenUrl "https://m365.cloud.microsoft/chat"
-}
 Espanso() {
     S "^{Space}"
 }
@@ -544,10 +552,11 @@ RequiresOriginWindow(action) {
     ; Opening AMD activates its own identified login window. The launcher may
     ; have started it from any application. Form-filling actions retain focus checks.
     return action != "launch-advancedmd" && action != "join-zoom"
+        && action != "copilot" && action != "open-teams" && action != "workspace-start"
         && action != "end-zoom" && action != "teams-call-clipboard"
 }
 
-JoinZoom() {
+JoinZoom(allowSetup := true) {
     global DryRun, Steps
     if DryRun {
         Steps.Push(["Zoom", "JoinAndPosition"])
@@ -560,7 +569,7 @@ JoinZoom() {
         PositionZoomMeeting meeting
         return
     }
-    url := LocalZoomMeetingUrl()
+    url := LocalZoomMeetingUrl(allowSetup)
     Run url
     deadline := A_TickCount + 60000
     while A_TickCount < deadline {
@@ -578,11 +587,13 @@ JoinZoom() {
     }
     throw Error("Zoom meeting window was not found within 60 seconds. Complete any browser Open Zoom or join prompt, then run Join Zoom again.")
 }
-LocalZoomMeetingUrl() {
+LocalZoomMeetingUrl(allowSetup := true) {
     path := A_AppData "\SheetAutocomplete\settings.ini"
     value := Trim(IniRead(path, "workflow-config", "ZoomMeetingUrl", ""))
     if ValidZoomMeetingUrl(value)
         return value
+    if !allowSetup
+        throw Error("Configure the Zoom meeting link with Alt+Z before using Start my day.")
     result := InputBox("Paste your Zoom personal meeting link. It is saved only on this Dell, outside GitHub and the Sheet.",
         "Join Zoom - one-time setup", "w600 h160", value)
     if result.Result != "OK"
@@ -701,3 +712,405 @@ TestClipboardPhoneNumber() {
         || ClipboardPhoneNumber("2025550123 ext 42") != ""
         throw Error("Clipboard calling must accept a single formatted number and reject notes, extensions, or multiple numbers.")
 }
+
+; Start my day reuses the individual app actions in a single temporary worker.
+; The bitmask contains fixed local action flags, never executable Sheet content.
+WorkspaceSteps() {
+    return [
+        {Id: "dell.launch-advancedmd", Name: "AdvancedMD", Flag: 1, Run: LaunchAdvancedMD},
+        {Id: "dell.copilot", Name: "Copilot", Flag: 4, Run: Copilot.Bind(true)},
+        {Id: "teams.open", Name: "Teams", Flag: 16, Run: OpenTeams.Bind(true)},
+        {Id: "chrome.general", Name: "Chrome", Flag: 8, Run: WorkspaceChrome},
+        {Id: "zoom.join", Name: "Zoom", Flag: 2, Run: JoinZoom.Bind(false)}
+    ]
+}
+ExecuteWorkspaceSteps(mask, runner := 0) {
+    results := {Completed: [], Failed: [], Skipped: []}
+    for step in WorkspaceSteps() {
+        if !(mask & step.Flag) {
+            results.Skipped.Push(step.Name)
+            continue
+        }
+        try {
+            if runner
+                runner.Call(step)
+            else
+                RunWorkspaceStep(step)
+            results.Completed.Push(step.Name)
+        } catch {
+            ; Fixed application names only. Never log titles, URLs, credentials,
+            ; clipboard contents or an exception that could contain private data.
+            results.Failed.Push(step.Name)
+        }
+    }
+    return results
+}
+RunWorkspaceStep(step) {
+    global DryRun
+    guard := 0, owned := false
+    try {
+        ; Take the clinical lock only during the AMD stage, so morning setup
+        ; cannot overlap an active form macro and does not hold that lock for Zoom.
+        if !DryRun && step.Id = "dell.launch-advancedmd" {
+            guard := DllCall("CreateMutexW", "ptr", 0, "int", 1,
+                "str", "Local\TriggerSearchAdvancedMD", "ptr")
+            if !guard || A_LastError = 183
+                throw Error("AdvancedMD is busy.")
+            owned := true
+        }
+        step.Run.Call()
+    } finally {
+        if guard {
+            if owned
+                DllCall("ReleaseMutex", "ptr", guard)
+            DllCall("CloseHandle", "ptr", guard)
+        }
+    }
+}
+StartDayWorkspace() {
+    global WorkspaceMask, DryRun
+    results := ExecuteWorkspaceSteps(WorkspaceMask)
+    if DryRun
+        return
+    if !WorkspaceMask {
+        TrayTip "No workspace applications are enabled in Automations.", "Trigger Search"
+        return
+    }
+    message := "Workspace setup finished."
+    if results.Failed.Length {
+        names := ""
+        for name in results.Failed
+            names .= (names = "" ? "" : ", ") name
+        message .= " Needs attention: " names ". Complete sign-in/join prompts, then retry Alt+L."
+    } else
+        message .= " Check any sign-in or Zoom join prompts."
+    TrayTip message, "Trigger Search"
+}
+WorkspaceChrome() {
+    global DryRun, Steps
+    if DryRun {
+        Steps.Push(["PlaceChrome", "right monitor, top-right quarter"])
+        return
+    }
+    hwnd := FocusGeneralChrome(true)
+    if !hwnd || !ChromeIsBrowsingHwnd(hwnd)
+        throw Error("A general Chrome window was unavailable.")
+    area := RightmostDisplay(DisplayWorkAreas())
+    PlaceWindowInBounds hwnd, WorkspaceQuarterBounds(area, "top")
+    WinActivate hwnd
+}
+WorkspaceQuarterBounds(area, side) {
+    half := HalfDisplayBounds(area, "right")
+    topHeight := Floor(half.Height / 2)
+    y := side = "top" ? half.Y : half.Y + topHeight
+    return {X: half.X, Y: y, Width: half.Width,
+        Height: side = "top" ? topHeight : area.Bottom - y}
+}
+WorkspaceAppCandidate(application, process, title, style, owner, extendedStyle := 0) {
+    if owner || (extendedStyle & 0x80) || !(style & 0x00040000) || !(style & 0x00080000)
+        return false
+    process := StrLower(process)
+    if application = "copilot" {
+        allowed := Map("chrome.exe", true, "msedge.exe", true, "msedgewebview2.exe", true,
+            "copilot.exe", true, "m365copilot.exe", true, "microsoft.copilot.exe", true,
+            "applicationframehost.exe", true)
+        return allowed.Has(process) && !!RegExMatch(title, "i)\bCopilot\b")
+            && !ChromeIsEhrTitle(title)
+            && !RegExMatch(title, "i)(sharing (?:your |the )?(screen|window|tab|audio)|screen sharing)")
+    }
+    return application = "teams" && (process = "ms-teams.exe" || process = "teams.exe")
+        && !!RegExMatch(title, "i)\bMicrosoft Teams\b")
+        && !RegExMatch(title, "i)\b(?:meeting|call in progress|incoming call)\b")
+}
+FindWorkspaceApp(application) {
+    processes := application = "copilot"
+        ? ["M365Copilot.exe", "Microsoft.Copilot.exe", "Copilot.exe", "ApplicationFrameHost.exe",
+            "chrome.exe", "msedge.exe", "msedgewebview2.exe"]
+        : ["ms-teams.exe", "Teams.exe"]
+    for process in processes {
+        for hwnd in WinGetList("ahk_exe " process) {
+            try {
+                if WorkspaceAppCandidate(application, process, WinGetTitle(hwnd), WinGetStyle(hwnd),
+                    DllCall("GetWindow", "ptr", hwnd, "uint", 4, "ptr"), WinGetExStyle(hwnd))
+                    return hwnd
+            }
+        }
+    }
+    return 0
+}
+WaitWorkspaceApp(application, seconds := 15) {
+    deadline := A_TickCount + seconds * 1000
+    while A_TickCount < deadline {
+        if hwnd := FindWorkspaceApp(application)
+            return hwnd
+        Sleep 250
+    }
+    throw Error("The application needs sign-in or did not expose its main window in time.")
+}
+Copilot(arrange := false) {
+    global DryRun, Steps
+    if DryRun {
+        Steps.Push(["Copilot", arrange ? "left monitor, left half" : "focus or open"])
+        return
+    }
+    hwnd := FindWorkspaceApp("copilot")
+    if !hwnd {
+        ; Use the existing business Copilot URL, not a consumer account or a
+        ; new installation. App mode gives it a separate, reusable Chrome window.
+        Run 'chrome.exe --app="https://m365.cloud.microsoft/chat"'
+        hwnd := WaitWorkspaceApp("copilot")
+    }
+    if arrange
+        PlaceWindowInBounds hwnd, HalfDisplayBounds(LeftmostDisplay(DisplayWorkAreas()), "left")
+    WinActivate hwnd
+}
+OpenTeams(arrange := false) {
+    global DryRun, Steps
+    if DryRun {
+        Steps.Push(["Teams", arrange ? "right monitor, bottom-right quarter" : "focus or open"])
+        return
+    }
+    hwnd := FindWorkspaceApp("teams")
+    if !hwnd {
+        ; Windows resolves the installed Teams desktop app; do not hard-code a
+        ; versioned WindowsApps path or initiate a call/meeting.
+        Run "msteams:"
+        hwnd := WaitWorkspaceApp("teams")
+    }
+    if arrange
+        PlaceWindowInBounds hwnd, WorkspaceQuarterBounds(RightmostDisplay(DisplayWorkAreas()), "bottom")
+    WinActivate hwnd
+}
+HelperMutexName(action) {
+    if action = "workspace-start"
+        return "Local\TriggerSearchWorkspace"
+    if action = "copilot" || action = "open-teams" || action = "join-zoom"
+        return "Local\TriggerSearchApp-" action
+    return "Local\TriggerSearchAdvancedMD"
+}
+TestWorkspaceAutomation() {
+    global WorkspaceTestCalls
+    WorkspaceTestCalls := []
+    result := ExecuteWorkspaceSteps(31, WorkspaceFixtureStep)
+    Assert WorkspaceTestCalls.Length = 5 && WorkspaceTestCalls[1] = "AdvancedMD"
+        && WorkspaceTestCalls[5] = "Zoom" && result.Completed.Length = 4
+        && result.Failed.Length = 1 && result.Failed[1] = "Copilot",
+        "A failed stage must not prevent later applications from opening; Zoom runs last."
+    WorkspaceTestCalls := []
+    result := ExecuteWorkspaceSteps(1 | 8, WorkspaceFixtureStep)
+    Assert WorkspaceTestCalls.Length = 2 && WorkspaceTestCalls[1] = "AdvancedMD"
+        && WorkspaceTestCalls[2] = "Chrome" && result.Skipped.Length = 3,
+        "Disabled application flags must be skipped without running their code."
+    result := ExecuteWorkspaceSteps(0, WorkspaceFixtureStep)
+    Assert result.Completed.Length = 0 && result.Failed.Length = 0 && result.Skipped.Length = 5,
+        "A workspace with all applications disabled must launch nothing."
+    area := {Left: 0, Top: 40, Right: 2561, Bottom: 1401}
+    chrome := WorkspaceQuarterBounds(area, "top"), teams := WorkspaceQuarterBounds(area, "bottom")
+    Assert chrome.X = 1280 && chrome.Width = 1281 && chrome.Y = 40
+        && chrome.Height = 680 && teams.Y = 720 && teams.Height = 681,
+        "Chrome and Teams must partition the right half, including taskbars and odd dimensions."
+    style := 0x00CF0000
+    Assert WorkspaceAppCandidate("copilot", "chrome.exe", "Microsoft 365 Copilot", style, 0)
+        && WorkspaceAppCandidate("teams", "ms-teams.exe", "Chat | Microsoft Teams", style, 0),
+        "Recognized main Copilot/Teams windows must be reusable."
+    Assert !WorkspaceAppCandidate("copilot", "chrome.exe", "AdvancedMD - EHR", style, 0)
+        && !WorkspaceAppCandidate("copilot", "notepad.exe", "Copilot", style, 0)
+        && !WorkspaceAppCandidate("teams", "chrome.exe", "Microsoft Teams", style, 0)
+        && !WorkspaceAppCandidate("teams", "ms-teams.exe", "Incoming call | Microsoft Teams", style, 0)
+        && !WorkspaceAppCandidate("copilot", "chrome.exe", "Copilot is sharing your screen", style, 0),
+        "Other apps, EHR windows, sharing notices and call windows must not be reused as workspace apps."
+    Assert HelperMutexName("workspace-start") != HelperMutexName("launch-advancedmd")
+        && HelperMutexName("launch-advancedmd") = HelperMutexName("mse"),
+        "Workspace execution must be exclusive while preserving the clinical lock for AMD input."
+    WorkspaceTestCalls := []
+}
+WorkspaceFixtureStep(step) {
+    global WorkspaceTestCalls
+    WorkspaceTestCalls.Push(step.Name)
+    if step.Name = "Copilot"
+        throw Error("Invented fixture failure")
+}
+Assert(condition, message) {
+    if !condition
+        throw Error(message)
+}
+
+
+; BEGIN SHARED CHROME FOCUS
+; Only HWNDs, process IDs and usage order are remembered, never page titles.
+ChromeFocusState() {
+    static state := {Used: Map(), Excluded: Map(), Sequence: 0, Callback: 0, Hook: 0}
+    return state
+}
+
+ChromeIsEhrTitle(title) {
+    ; Exclude both AdvancedMD - EHR and AdvancedMD-EHR, plus AMD login pages.
+    return InStr(StrLower(title), "advancedmd") != 0
+}
+
+ChromeIsBrowsingFrame(title, style, owner, extendedStyle := 0) {
+    if ChromeIsEhrTitle(title) || Trim(title) = "" || RegExMatch(title, "i)\bCopilot\b")
+        return false
+    if RegExMatch(title, "i)^(?:Sign in(?: to your account)?|Microsoft account)(?:\s*[-|–—].*)?$")
+        return false
+    ; The screen-capture notice is its own Chrome_WidgetWin_1 window. Its
+    ; "Hide" action minimizes it, so process/class checks alone can resurrect it.
+    if RegExMatch(title, "i)(?:is sharing (?:your |the )?(?:screen|window|tab|audio)|sharing your screen|screen sharing|screen capture notification|ScreenCaptureNotificationUIViews)")
+        return false
+    ; Normal browsing windows are unowned, resizable frames with a system menu.
+    ; Skip owned dialogs, WS_EX_TOOLWINDOW, and the non-resizable capture toolbar.
+    return !owner && !(extendedStyle & 0x80)
+        && (style & 0x00040000) && (style & 0x00080000)
+}
+ChromeIsBrowsingHwnd(hwnd) {
+    try return WinGetProcessName(hwnd) = "chrome.exe"
+        && ChromeIsBrowsingFrame(WinGetTitle(hwnd), WinGetStyle(hwnd),
+            DllCall("GetWindow", "ptr", hwnd, "uint", 4, "ptr"), WinGetExStyle(hwnd))
+    catch
+        return false
+}
+
+StartChromeFocusTracking() {
+    state := ChromeFocusState()
+    if state.Hook
+        return
+    state.Callback := CallbackCreate(ChromeForegroundChanged, , 7)
+    ; EVENT_SYSTEM_FOREGROUND, out-of-context, skipping this AHK process.
+    state.Hook := DllCall("SetWinEventHook", "uint", 3, "uint", 3, "ptr", 0,
+        "ptr", state.Callback, "uint", 0, "uint", 0, "uint", 2, "ptr")
+    if !state.Hook {
+        CallbackFree state.Callback
+        state.Callback := 0
+        return ; Normal desktop Z-order is the fallback if tracking is unavailable.
+    }
+    OnExit StopChromeFocusTracking
+    ChromeForegroundChanged(0, 3, WinExist("A"), 0, 0, 0, 0)
+}
+
+StopChromeFocusTracking(*) {
+    state := ChromeFocusState()
+    if state.Hook
+        DllCall("UnhookWinEvent", "ptr", state.Hook)
+    if state.Callback
+        CallbackFree state.Callback
+    state.Hook := 0, state.Callback := 0
+}
+
+ChromeForegroundChanged(hook, event, hwnd, objectId, childId, threadId, eventTime) {
+    try {
+        if !hwnd || objectId || childId || WinGetProcessName(hwnd) != "chrome.exe"
+            return
+        state := ChromeFocusState()
+        pid := WinGetPID(hwnd)
+        if ChromeIsEhrTitle(WinGetTitle(hwnd)) || RegExMatch(WinGetTitle(hwnd), "i)\bCopilot\b")
+            state.Excluded[hwnd] := pid
+        state.Sequence += 1
+        state.Used[hwnd] := {Pid: pid, Order: state.Sequence}
+    }
+}
+
+GeneralChromeCandidates() {
+    state := ChromeFocusState()
+    candidates := []
+    ; Windows enumerates in desktop Z-order. This seeds selection before any
+    ; foreground history is observed; tracked use takes priority afterwards.
+    for hwnd in WinGetList("ahk_exe chrome.exe ahk_class Chrome_WidgetWin_1") {
+        try {
+            title := WinGetTitle(hwnd)
+            pid := WinGetPID(hwnd)
+            if ChromeIsEhrTitle(title) || RegExMatch(title, "i)\bCopilot\b") {
+                state.Excluded[hwnd] := pid
+                continue
+            }
+            ; Keep known EHR/Copilot windows excluded if their active tab/title changes.
+            if !ChromeIsBrowsingHwnd(hwnd)
+                || (state.Excluded.Has(hwnd) && state.Excluded[hwnd] = pid)
+                continue
+            candidates.Push({Hwnd: hwnd, Pid: pid})
+        }
+    }
+    return candidates
+}
+
+SelectGeneralChrome(candidates, used) {
+    selected := 0, bestOrder := -1
+    for window in candidates {
+        order := used.Has(window.Hwnd) && used[window.Hwnd].Pid = window.Pid
+            ? used[window.Hwnd].Order : 0
+        if order > bestOrder
+            selected := window.Hwnd, bestOrder := order
+    }
+    return selected
+}
+
+ActivateGeneralChrome(hwnd) {
+    ; Recheck the live title immediately before activating this exact HWND.
+    if !WinExist(hwnd) || !ChromeIsBrowsingHwnd(hwnd)
+        return false
+    WinActivate hwnd ; Automatically restores a minimized window; keeps normal placement.
+    return !!WinWaitActive(hwnd, , 2)
+}
+
+FocusGeneralChrome(quiet := false, *) {
+    static busy := false
+    if busy
+        return 0
+    busy := true
+    try {
+        state := ChromeFocusState()
+        hwnd := SelectGeneralChrome(GeneralChromeCandidates(), state.Used)
+        if hwnd && ActivateGeneralChrome(hwnd)
+            return hwnd
+        ; A separate blank window prevents Chrome from reusing the EHR window
+        ; when it is the only Chrome window. No clinical URL or data is supplied.
+        Run 'chrome.exe --new-window "about:blank"'
+        deadline := A_TickCount + 7000
+        while A_TickCount < deadline {
+            Sleep 100
+            hwnd := SelectGeneralChrome(GeneralChromeCandidates(), state.Used)
+            if hwnd && ActivateGeneralChrome(hwnd)
+                return hwnd
+        }
+        if !quiet
+            TrayTip "Chrome was started, but its browsing window could not be focused yet.", "Trigger Search"
+    } catch {
+        if !quiet
+            TrayTip "Could not focus or open Chrome. Check that Google Chrome is installed.", "Trigger Search"
+    } finally {
+        busy := false
+    }
+    return 0
+}
+
+TestGeneralChromeSelection() {
+    for title in ["AdvancedMD - EHR - Google Chrome", "AdvancedMD-EHR", "advancedmd – ehr",
+        "Login | AdvancedMD", "AdvancedMD — EHR"]
+        Assert ChromeIsEhrTitle(title), "All known AdvancedMD title variants must be excluded from general Chrome."
+    Assert !ChromeIsEhrTitle("General browsing - Google Chrome"), "General browsing titles must remain eligible."
+    frameStyle := 0x00CF0000
+    Assert ChromeIsBrowsingFrame("General browsing - Google Chrome", frameStyle, 0),
+        "Normal resizable browsing frames must be eligible."
+    for notice in ["Clinician Blueprint AI is sharing your screen and audio",
+        "example.test is sharing your screen.", "Screen sharing", "ScreenCaptureNotificationUIViews"]
+        Assert !ChromeIsBrowsingFrame(notice, frameStyle, 0),
+            "Sharing notices must never be candidates even if they have ordinary window styles."
+    Assert !ChromeIsBrowsingFrame("Sign in to your account - Google Chrome", frameStyle, 0),
+        "A Microsoft sign-in prompt must not become the general browsing workspace window."
+    Assert !ChromeIsBrowsingFrame("Microsoft 365 Copilot", frameStyle, 0),
+        "The dedicated Copilot window must never become general browsing Chrome."
+    Assert !ChromeIsBrowsingFrame("Google Chrome", 0x80000000, 0)
+        && !ChromeIsBrowsingFrame("General browsing", frameStyle, 10)
+        && !ChromeIsBrowsingFrame("General browsing", frameStyle, 0, 0x80),
+        "Popup frames, owned dialogs and tool windows must never steal Alt+X."
+    windows := [{Hwnd: 100, Pid: 1}, {Hwnd: 200, Pid: 2}]
+    Assert SelectGeneralChrome(windows, Map()) = 100,
+        "Initial selection must follow desktop Z-order when no usage history exists."
+    usage := Map(100, {Pid: 1, Order: 10}, 200, {Pid: 2, Order: 20})
+    Assert SelectGeneralChrome(windows, usage) = 200,
+        "Observed most-recent usage must override desktop Z-order."
+    usage[200].Pid := 99
+    Assert SelectGeneralChrome(windows, usage) = 100,
+        "Reused window handles must not inherit a different process's usage history."
+    Assert SelectGeneralChrome([], usage) = 0, "No eligible window must request a new Chrome window."
+}
+; END SHARED CHROME FOCUS

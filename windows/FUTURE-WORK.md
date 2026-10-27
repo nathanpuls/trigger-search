@@ -1,12 +1,13 @@
 # Dell workspace layout trial
 
 Recorded October 27, 2026. Nathan wants to try this arrangement for about a week
-before deciding whether to automate a start-of-day layout. The all-app morning
-command remains a future idea, not a scheduled task or startup change.
+before deciding whether to automate a start-of-day layout. Later on October 27,
+Nathan authorized the manual **Start my day / Alt+L** command, implemented in
+0.16.24. It is user-invoked; no scheduled task or automatic sign-in launch is added.
 
 Later on October 27, Nathan authorized the individual Alt+A and Alt+Z actions to
-apply the AMD and Zoom halves below (0.16.23). Copilot, general Chrome and Teams
-placement remain future work.
+apply the AMD and Zoom halves below (0.16.23). Version 0.16.24 adds the full
+Alt+L arrangement and individual Alt+C / Alt+S actions.
 
 | Display | Area | Application |
 | --- | --- | --- |
@@ -17,10 +18,10 @@ placement remain future work.
 | Larger display on the right | Bottom right | Microsoft Teams |
 
 Later, inspect the Dell's actual monitor work areas, scaling and window identities
-before choosing sizes or coordinates. A possible single manual start-of-day
-command would focus/open these applications and arrange them once. Keep current
-working shortcuts and wait for Nathan's trial feedback before building the
-all-app command or changing the other applications' placement.
+before changing the selected work-area halves/quarters. The current manual
+start-of-day command focuses/opens the five applications and arranges them once.
+Keep working shortcuts and use Nathan's trial feedback to adjust recognition,
+launch timing, or placement after it is exercised on the Dell.
 
 The patient action menu still needs separate, verified local workers for exact-MRN
 AdvancedMD result selection and patient-specific Blueprint recording. The current

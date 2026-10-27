@@ -23,5 +23,7 @@ if '--check' in sys.argv:
     launcher=(ROOT/'windows/autocomplete.ahk').read_text(encoding="utf-8")
     standalone=(ROOT/'windows/standalone/focus-general-chrome.ahk').read_text(encoding="utf-8")
     assert launcher.split(marker_start,1)[1].split(marker_end,1)[0] == standalone.split(marker_start,1)[1].split(marker_end,1)[0], 'Standalone Chrome implementation differs'
+    helper=(ROOT/'automations/dell/helpers.ahk').read_text(encoding="utf-8")
+    assert launcher.split(marker_start,1)[1].split(marker_end,1)[0] == helper.split(marker_start,1)[1].split(marker_end,1)[0], 'Workspace Chrome implementation differs'
     print(f'Manifest, compatibility bridge, and all {len(ids)} catalog dispatch entries verified')
 else:path.write_text(content)

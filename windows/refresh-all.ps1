@@ -55,7 +55,7 @@ function Test-Release([string]$Directory) {
 function Invoke-AhkCheck([string]$Directory, [switch]$SelfTest) {
     foreach ($relative in $allowed | Where-Object { $_ -like '*.ahk' -and (Test-Path -LiteralPath (Join-Path $Directory $_)) }) {
         $path = Join-Path $Directory $relative
-        $arguments = if ($SelfTest) { '"' + $path + '" --self-test' } else { '/ErrorStdOut=UTF-8 /validate "' + $path + '"' }
+        $arguments = if ($SelfTest) { '/ErrorStdOut=UTF-8 "' + $path + '" --self-test' } else { '/ErrorStdOut=UTF-8 /validate "' + $path + '"' }
         $proc = New-Object System.Diagnostics.Process
         $proc.StartInfo.FileName = $AutoHotkeyPath
         $proc.StartInfo.Arguments = $arguments

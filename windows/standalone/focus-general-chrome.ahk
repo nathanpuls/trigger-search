@@ -23,7 +23,9 @@ ChromeIsEhrTitle(title) {
 }
 
 ChromeIsBrowsingFrame(title, style, owner, extendedStyle := 0) {
-    if ChromeIsEhrTitle(title) || Trim(title) = ""
+    if ChromeIsEhrTitle(title) || Trim(title) = "" || RegExMatch(title, "i)\bCopilot\b")
+        return false
+    if RegExMatch(title, "i)^(?:Sign in(?: to your account)?|Microsoft account)(?:\s*[-|–—].*)?$")
         return false
     ; The screen-capture notice is its own Chrome_WidgetWin_1 window. Its
     ; "Hide" action minimizes it, so process/class checks alone can resurrect it.
@@ -74,7 +76,7 @@ ChromeForegroundChanged(hook, event, hwnd, objectId, childId, threadId, eventTim
             return
         state := ChromeFocusState()
         pid := WinGetPID(hwnd)
-        if ChromeIsEhrTitle(WinGetTitle(hwnd))
+        if ChromeIsEhrTitle(WinGetTitle(hwnd)) || RegExMatch(WinGetTitle(hwnd), "i)\bCopilot\b")
             state.Excluded[hwnd] := pid
         state.Sequence += 1
         state.Used[hwnd] := {Pid: pid, Order: state.Sequence}
@@ -90,11 +92,11 @@ GeneralChromeCandidates() {
         try {
             title := WinGetTitle(hwnd)
             pid := WinGetPID(hwnd)
-            if ChromeIsEhrTitle(title) {
+            if ChromeIsEhrTitle(title) || RegExMatch(title, "i)\bCopilot\b") {
                 state.Excluded[hwnd] := pid
                 continue
             }
-            ; Keep a known EHR window excluded if its active tab/title changes.
+            ; Keep known EHR/Copilot windows excluded if their active tab/title changes.
             if !ChromeIsBrowsingHwnd(hwnd)
                 || (state.Excluded.Has(hwnd) && state.Excluded[hwnd] = pid)
                 continue
@@ -123,16 +125,16 @@ ActivateGeneralChrome(hwnd) {
     return !!WinWaitActive(hwnd, , 2)
 }
 
-FocusGeneralChrome(*) {
+FocusGeneralChrome(quiet := false, *) {
     static busy := false
     if busy
-        return
+        return 0
     busy := true
     try {
         state := ChromeFocusState()
         hwnd := SelectGeneralChrome(GeneralChromeCandidates(), state.Used)
         if hwnd && ActivateGeneralChrome(hwnd)
-            return
+            return hwnd
         ; A separate blank window prevents Chrome from reusing the EHR window
         ; when it is the only Chrome window. No clinical URL or data is supplied.
         Run 'chrome.exe --new-window "about:blank"'
@@ -141,14 +143,17 @@ FocusGeneralChrome(*) {
             Sleep 100
             hwnd := SelectGeneralChrome(GeneralChromeCandidates(), state.Used)
             if hwnd && ActivateGeneralChrome(hwnd)
-                return
+                return hwnd
         }
-        TrayTip "Chrome was started, but its browsing window could not be focused yet.", "Trigger Search"
+        if !quiet
+            TrayTip "Chrome was started, but its browsing window could not be focused yet.", "Trigger Search"
     } catch {
-        TrayTip "Could not focus or open Chrome. Check that Google Chrome is installed.", "Trigger Search"
+        if !quiet
+            TrayTip "Could not focus or open Chrome. Check that Google Chrome is installed.", "Trigger Search"
     } finally {
         busy := false
     }
+    return 0
 }
 
 TestGeneralChromeSelection() {
@@ -163,6 +168,10 @@ TestGeneralChromeSelection() {
         "example.test is sharing your screen.", "Screen sharing", "ScreenCaptureNotificationUIViews"]
         Assert !ChromeIsBrowsingFrame(notice, frameStyle, 0),
             "Sharing notices must never be candidates even if they have ordinary window styles."
+    Assert !ChromeIsBrowsingFrame("Sign in to your account - Google Chrome", frameStyle, 0),
+        "A Microsoft sign-in prompt must not become the general browsing workspace window."
+    Assert !ChromeIsBrowsingFrame("Microsoft 365 Copilot", frameStyle, 0),
+        "The dedicated Copilot window must never become general browsing Chrome."
     Assert !ChromeIsBrowsingFrame("Google Chrome", 0x80000000, 0)
         && !ChromeIsBrowsingFrame("General browsing", frameStyle, 10)
         && !ChromeIsBrowsingFrame("General browsing", frameStyle, 0, 0x80),

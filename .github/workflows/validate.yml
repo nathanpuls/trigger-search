@@ -106,8 +106,15 @@ jobs:
           foreach ($file in Get-ChildItem automations -Recurse -Filter *.ahk) {
             $p = Start-Process $exe.FullName -ArgumentList @('/ErrorStdOut=UTF-8', '/validate', ('"' + $file.FullName + '"')) -Wait -PassThru
             if ($p.ExitCode -ne 0) { throw "Worker validation failed: $file" }
-            $p = Start-Process $exe.FullName -ArgumentList @(('"' + $file.FullName + '"'), '--self-test') -Wait -PassThru
-            if ($p.ExitCode -ne 0) { throw "Worker dry run failed: $file" }
+            $workerOut = Join-Path $env:TEMP ('trigger-worker-' + $file.BaseName + '-out.txt')
+            $workerErr = Join-Path $env:TEMP ('trigger-worker-' + $file.BaseName + '-err.txt')
+            $p = Start-Process $exe.FullName -ArgumentList @('/ErrorStdOut=UTF-8', ('"' + $file.FullName + '"'), '--self-test') -PassThru -RedirectStandardOutput $workerOut -RedirectStandardError $workerErr
+            $null = $p.Handle
+            if (-not $p.WaitForExit(30000)) { $p.Kill(); throw "Worker dry run timed out: $file" }
+            if ($p.ExitCode -ne 0) {
+              Get-Content $workerOut, $workerErr -ErrorAction SilentlyContinue
+              throw "Worker dry run failed: $file"
+            }
           }
 
       - name: Validate optional standalone Chrome shortcut

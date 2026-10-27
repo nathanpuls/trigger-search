@@ -606,3 +606,61 @@ need a device check. After Refresh all scripts, test Alt+A, Alt+Z, then Alt+X
 followed by Ctrl+T. Keep Raycast Alt+X unbound. The proposed whole-morning command
 remains future work; this change only places applications when their action is
 invoked.
+
+
+## Start my day — Alt+L (0.16.24)
+
+After Refresh all scripts, unbind **Alt+C** and **Alt+S** in Dell Raycast. Trigger
+Search now supplies those shortcuts as well as **Alt+L**, searchable as **Start
+my day** (`workspace.start-day`). No extra download, resident service or startup
+entry is required. A single temporary `#NoTrayIcon` worker runs the job and exits;
+the existing launcher remains responsive. A named workspace lock rejects repeat
+invocations while setup is already running.
+
+| Application | Individual shortcut | Alt+L placement |
+| --- | --- | --- |
+| AdvancedMD | Alt+A | Rightmost monitor, left half, full work-area height |
+| Copilot | Alt+C | Leftmost monitor, left half, full work-area height |
+| General Chrome | Alt+X | Rightmost monitor, top-right quarter |
+| Microsoft Teams | Alt+S | Rightmost monitor, bottom-right quarter |
+| Zoom | Alt+Z | Leftmost monitor, right half, full work-area height |
+
+Alt+L runs AMD, Copilot, Teams, Chrome, then Zoom. Each stage reuses an identified
+existing window, or opens the application. A stage failure is caught so the
+remaining applications can proceed. Zoom is last so its browser/join prompt
+does not hold up opening the other apps. One final notification lists any apps
+needing attention. Sign-in and browser Open Zoom prompts remain manual; complete
+them and rerun Alt+L if necessary. Escape cancels the temporary worker. Placement
+uses actual monitor work areas and excludes taskbars. App minimum sizes or
+fullscreen modes can prevent the requested rectangle on the real device.
+
+Copilot reuses an identified native/PWA/browser Copilot main window. Otherwise
+it opens the existing Microsoft 365 business URL, `https://m365.cloud.microsoft/chat`,
+in a dedicated Chrome app window. It does not send prompts or clipboard text.
+Teams reuses an identified Teams desktop main window or launches the installed
+`msteams:` handler; it does not initiate a call. These recognizers use an allowlist
+of process names, title markers and normal-frame checks, excluding toolbars,
+notifications and identified call windows. Exact recognition still needs a Dell
+check. Microsoft sign-in pages and identified Copilot windows are excluded from
+general Chrome selection, alongside AMD and sharing notices.
+
+Alt+C and Alt+S alone focus/open their applications without rearranging an
+already-open window. Alt+X keeps its existing focus-only behavior. Alt+A and
+regular-window Alt+Z retain their previously requested half-screen placement.
+Alt+L reapplies all five positions. It opens your saved Zoom meeting link;
+there is no Admit/Admit all action, no waiting-room change and no automatic host
+reclaim. Existing regular meeting windows are reused without starting a second
+call. If a floating/tiny view remains visible, restore it with Alt+2.
+
+The new Teams and workspace actions have fixed local registry mappings. Copilot
+reuses `dell.copilot`. The disabled legacy `dell.morning-startup` action is
+unchanged. A struck application row is omitted from the workspace's enabled
+mask when the job starts; an already-running job is allowed to finish with that
+snapshot. Strike **Start my day** itself to disable Alt+L. The existing Open AMD
+`l` search alias is preserved; the keyboard shortcut Alt+L is independent of it.
+
+Checks cover exact shared Chrome code, masks and strikethrough, fixed-stage
+ordering, failure continuation, quarter geometry, main-window recognition,
+clinical/workspace lock separation, worker dry runs and install/rollback. These
+checks use invented window data and synthetic windows. They do not sign into
+Microsoft/AdvancedMD, join Zoom, admit a patient or verify the actual Dell's apps.

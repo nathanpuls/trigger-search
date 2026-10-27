@@ -115,8 +115,8 @@
   ],
   [
     "Open Microsoft Copilot",
-    "copilot",
-    "Open Microsoft 365 Copilot. Shortcut: None.",
+    "c, copilot",
+    "Focus/open Microsoft 365 Copilot. Shortcut: Alt + C.",
     "dell.copilot"
   ],
   [
@@ -178,5 +178,17 @@
     "x, chrome, browser",
     "Focus the most recently used general Chrome window, excluding AdvancedMD; otherwise open a new window. Shortcut: Alt + X.",
     "chrome.general"
+  ],
+  [
+    "Start my day",
+    "start my day, workspace, morning",
+    "Open the five workspace apps and arrange both monitors. Shortcut: Alt + L.",
+    "workspace.start-day"
+  ],
+  [
+    "Open Microsoft Teams",
+    "s, teams, open teams",
+    "Focus/open the Teams desktop app. Shortcut: Alt + S.",
+    "teams.open"
   ]
 ]
