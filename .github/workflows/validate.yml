@@ -110,6 +110,16 @@ jobs:
             if ($p.ExitCode -ne 0) { throw "Worker dry run failed: $file" }
           }
 
+      - name: Validate optional standalone Chrome shortcut
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem autohotkey -Recurse -Filter AutoHotkey64.exe | Select-Object -First 1
+          $file = "$PWD\windows\standalone\focus-general-chrome.ahk"
+          $p = Start-Process $exe.FullName -ArgumentList @('/ErrorStdOut=UTF-8', '/validate', ('"' + $file + '"')) -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw 'Standalone Chrome syntax validation failed.' }
+          $p = Start-Process $exe.FullName -ArgumentList @(('"' + $file + '"'), '--self-test') -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw 'Standalone Chrome selection checks failed.' }
+
       - name: Verify automation strikethrough formatting
         shell: pwsh
         run: ./tests/windows-automation-formatting.ps1

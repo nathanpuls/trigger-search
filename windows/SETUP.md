@@ -465,17 +465,15 @@ clean up the background. Repeated floating-video confirmation notifications
 have been removed; an unsupported mini transition quietly restores the main
 window. Exact behavior still needs a Dell/Zoom test.
 
-After explicitly opening/focusing a regular meeting with Alt+Z, Trigger Search
-makes one rate-limited attempt to click an enabled **Reclaim Host** control.
-It never supplies a host key or password or answers a follow-up prompt. This is
-best-effort only and does not add background polling.
+As of 0.16.22, automatic **Reclaim Host** attempts are removed. Alt+Z focuses or
+opens Zoom without clicking host controls or triggering their follow-up prompts.
+Use Zoom's own host controls when needed.
 
 Dell check: update to 0.16.19, use Ctrl+R, confirm struck actions are absent and
 their shortcuts are released, then remove/reapply strikethrough and repeat.
 Restart offline to verify the cached state. In a test meeting, toggle Alt+2
 repeatedly, try Alt+3–6 from the tiny view, use diagonal arrows, and confirm the
-underlying room window stays out of the way. Check Reclaim Host only in your own
-test meeting. CI validates cache behavior, native OOXML formatting, control
+underlying room window stays out of the way. CI validates cache behavior, native OOXML formatting, control
 invocation, worker syntax, install, startup isolation, and rollback; it does not
 join or end a real meeting or change host privileges.
 
@@ -536,3 +534,36 @@ privacy guards, stale selections and the real chooser's patient-menu path.
 The actual Dell directory and live Chrome/AdvancedMD/Blueprint interactions
 remain unverified. On the Dell, refresh all scripts, open F6, check the local
 patient count, search a known name and press Enter to inspect the menu.
+
+
+## General Chrome and AdvancedMD focus (0.16.22)
+
+- **Alt+X** focuses the most recently used eligible Chrome browsing window.
+  AdvancedMD titles are excluded case-insensitively, including `AdvancedMD - EHR`,
+  `AdvancedMD-EHR` and AMD login pages. A window identified as AMD stays excluded
+  during this launcher session if its title later changes. If none is eligible,
+  open a separate blank Chrome window with `--new-window`, rather than reusing
+  the EHR window. Minimized browsing windows are restored by activation.
+- Windows foreground events track Chrome usage locally using HWNDs/process IDs
+  and a sequence number; no titles, URLs or patient values are saved. Before any
+  history has been observed (or if Windows denies the hook), desktop Z-order is
+  the fallback. This keeps ordinary, minimized and pinned windows usable without
+  another resident script. Only Chrome browser-class windows are candidates.
+- The same action is searchable as **General Chrome**, aliases `x, chrome, browser`,
+  Script ID `chrome.general`. Strikethrough disables its managed Alt+X binding.
+- **Alt+A / Open AMD** first looks for a Chrome EHR window with either spelling
+  above and focuses it in its existing location. It does not repeat login, type
+  office key 136732, or move an already-open EHR. If no EHR window exists, the
+  existing login flow and post-login left-display move are preserved.
+- Disable Raycast's **Alt+X** binding on the Dell before trying the new binding.
+  This update cannot inspect or change that device's Raycast configuration.
+- The optional complete, standalone script is
+  [focus-general-chrome.ahk](standalone/focus-general-chrome.ahk). It has no includes
+  or external dependencies and has the same tested focus code as the launcher.
+  It is a reference/alternative, is not installed by Refresh all scripts, and
+  must not run alongside the launcher's Alt+X binding. The normal setup keeps
+  Trigger Search as the only resident AutoHotkey script.
+
+Patient search results already show the MRN in their details column; the patient
+action menu now also keeps it visible in its footer. Live Dell Chrome/Raycast,
+AMD login and actual monitor placement still require a device check.

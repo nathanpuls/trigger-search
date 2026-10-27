@@ -17,6 +17,12 @@ global HelperActions := Map(
 if DryRun {
     TestZoomPlacement()
     TestClipboardPhoneNumber()
+    if !IsAdvancedMDEhrTitle("AdvancedMD-EHR - Google Chrome")
+        || !IsAdvancedMDEhrTitle("AdvancedMD - EHR")
+        || !IsAdvancedMDEhrTitle("advancedmd – ehr")
+        || IsAdvancedMDEhrTitle("Login | AdvancedMD")
+        || IsAdvancedMDEhrTitle("General Chrome")
+        ExitApp 1
     if RequiresOriginWindow("launch-advancedmd") || !RequiresOriginWindow("mse")
         ExitApp 1
     left := LeftmostDisplay([{Left: 1920, Top: 0, Right: 3840, Bottom: 1080},
@@ -55,7 +61,7 @@ try {
     HelperActions[A_Args[2]].Call()
 } catch as problem {
     ; Fixed error messages only; no window titles or clipboard contents are logged.
-    MsgBox problem.Message, "Trigger Search 0.16.19 — " A_Args[2]
+    MsgBox problem.Message, "Trigger Search 0.16.22 — " A_Args[2]
 } finally {
     DllCall("CloseHandle", "ptr", mutex)
 }
@@ -231,7 +237,15 @@ Hpi() {
 LaunchAdvancedMD() {
     key := "136732"
     global DryRun, TargetHwnd
-    if !DryRun && (login := WinExist("Login | AdvancedMD")) {
+    ; Focusing an open EHR must not type an office key, repeat login, or move it.
+    if !DryRun && (ehr := ExistingAdvancedMDEhrWindow()) {
+        WinActivate ehr
+        if !WinWaitActive(ehr, , 5)
+            throw Error("Could not activate the existing AdvancedMD EHR window.")
+        TargetHwnd := ehr
+        return
+    }
+    if !DryRun && (login := WinExist("Login | AdvancedMD ahk_exe chrome.exe")) {
         WinActivate "ahk_id " login
         if !WinWaitActive("ahk_id " login, , 10)
             throw Error("Could not activate the AdvancedMD login window.")
@@ -245,6 +259,19 @@ LaunchAdvancedMD() {
     PauseFor 10000
     AdoptActiveAdvancedMDWindow()
     MoveToLeftDisplay()
+}
+IsAdvancedMDEhrTitle(title) {
+    return !!RegExMatch(title, "i)AdvancedMD\s*[-–—]?\s*EHR\b")
+}
+ExistingAdvancedMDEhrWindow() {
+    ; Only an actual EHR title counts; a login page still needs the login flow.
+    for hwnd in WinGetList("ahk_exe chrome.exe") {
+        try {
+            if IsAdvancedMDEhrTitle(WinGetTitle(hwnd))
+                return hwnd
+        }
+    }
+    return 0
 }
 SendAMDLogin(value, mode := "Send") {
     global DryRun, TargetHwnd, Steps

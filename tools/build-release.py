@@ -18,5 +18,10 @@ if '--check' in sys.argv:
     declared=re.findall(r'^    "([^"]+)", \{File:', registry, re.M)
     assert len(ids)==len(set(ids)) and set(ids)==set(declared), 'Catalog/dispatch mismatch'
     assert any('of' in [x.strip() for x in row[1].split(',')] and row[3]=='advancedmd.follow-up-office' for row in catalog[1:])
+    marker_start='; BEGIN SHARED CHROME FOCUS'
+    marker_end='; END SHARED CHROME FOCUS'
+    launcher=(ROOT/'windows/autocomplete.ahk').read_text(encoding="utf-8")
+    standalone=(ROOT/'windows/standalone/focus-general-chrome.ahk').read_text(encoding="utf-8")
+    assert launcher.split(marker_start,1)[1].split(marker_end,1)[0] == standalone.split(marker_start,1)[1].split(marker_end,1)[0], 'Standalone Chrome implementation differs'
     print(f'Manifest, compatibility bridge, and all {len(ids)} catalog dispatch entries verified')
 else:path.write_text(content)

@@ -86,7 +86,7 @@
   [
     "Open AdvancedMD",
     "amd, login",
-    "Open AdvancedMD using office key 136732. Shortcut: Alt + A.",
+    "Focus an existing AdvancedMD EHR window; otherwise open the existing login workflow with office key 136732. Shortcut: Alt + A.",
     "dell.launch-advancedmd"
   ],
   [
@@ -172,5 +172,11 @@
     "phone, call, teams call",
     "Call one copied phone number through the Windows TEL handler (set it to Teams). Shortcut: Alt + P.",
     "teams.call-clipboard"
+  ],
+  [
+    "General Chrome",
+    "x, chrome, browser",
+    "Focus the most recently used general Chrome window, excluding AdvancedMD; otherwise open a new window. Shortcut: Alt + X.",
+    "chrome.general"
   ]
 ]

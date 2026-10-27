@@ -3,7 +3,7 @@
 Persistent
 
 ; Trigger Search Windows client
-global AppVersion := "0.16.21"
+global AppVersion := "0.16.22"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -50,6 +50,7 @@ global AutomationRegistry := Map(
     "dell.copy-back", {File: "dell/helpers.ahk", Action: "copy-back"},
     "zoom.join", {File: "dell/helpers.ahk", Action: "join-zoom"},
     "zoom.end", {File: "dell/helpers.ahk", Action: "end-zoom"},
+    "chrome.general", {File: "", Action: "builtin:chrome-general"},
     "teams.call-clipboard", {File: "dell/helpers.ahk", Action: "teams-call-clipboard"},
     "clipboard.store", {File: "", Action: "builtin:clipboard-store"},
     "clipboard.paste", {File: "", Action: "builtin:clipboard-paste"},
@@ -155,6 +156,8 @@ if A_Args.Length > 0 && A_Args[1] = "--self-test" {
 !t::RunAutomation("advancedmd.follow-up-tele")
 #HotIf AutomationShortcutEnabled("advancedmd.intake-office")
 !0::RunAutomation("advancedmd.intake-office")
+#HotIf AutomationShortcutEnabled("chrome.general")
+!x::RunAutomation("chrome.general")
 #HotIf AutomationShortcutEnabled("dell.launch-advancedmd")
 !a::RunAutomation("dell.launch-advancedmd")
 #HotIf AutomationShortcutEnabled("dell.blueprint")
@@ -255,6 +258,7 @@ Initialize() {
     InstallTrigger(Trigger)
     InstallLauncherHotkey(LauncherModifier, LauncherKey)
     StartKeyboardWatcher()
+    StartChromeFocusTracking()
     InitializeKeyboardRemaps()
 
     A_TrayMenu.Add()
@@ -2018,7 +2022,8 @@ ShowChoiceActions(choice) {
         ? choice.GroupLabel : choice.DisplayText
     SetSearchPlaceholder("←  Actions for " actionLabel)
     ChooserGui.Title := "Trigger Search — ← Actions"
-    FooterText.Text := "Left Arrow returns  •  Escape closes"
+    FooterText.Text := (IsPrivatePatient(choice) ? "MRN " choice.MRN "  •  " : "")
+        . "Left Arrow returns  •  Escape closes"
     FooterText.Visible := true
     VisibleChoices := actions
     ResultsView.Delete()
@@ -2713,6 +2718,7 @@ RunSelfTests() {
     TestInboxWriter()
     TestKeyboardRemaps()
     TestLocalPatients()
+    TestGeneralChromeSelection()
     TestZoomWindowControls()
     TestZoomAccessibility()
     automationRows := ParseCsv('Name,Alias,Description,Script ID`n'
@@ -3744,6 +3750,8 @@ RunBuiltinAutomation(action) {
             throw Error("Remember a clipboard value first (Ctrl+Alt+5).")
         A_Clipboard := SpecialClipboard
         Send "^v"
+    } else if action = "builtin:chrome-general" {
+        FocusGeneralChrome()
     } else if action = "builtin:refresh-all" {
         UpdateScriptFromGitHub()
     } else if action = "builtin:remaps" {
@@ -4019,7 +4027,7 @@ TestInboxWriter() {
 }
 
 TestLocalPatientChooserUI() {
-    global LocalPatients, LocalPatientPrivacy, LocalPatientStatus, SearchBox
+    global LocalPatients, LocalPatientPrivacy, LocalPatientStatus, SearchBox, FooterText
     global ActionsForChoice, VisibleChoices, ChooserOpen, RecentItems
     oldPatients := LocalPatients, oldPrivacy := LocalPatientPrivacy, oldStatus := LocalPatientStatus
     try {
@@ -4032,6 +4040,7 @@ TestLocalPatientChooserUI() {
         Assert ChooserOpen && IsPrivatePatient(ActionsForChoice) && VisibleChoices.Length = 4
             && !SearchBox.Enabled,
             "Enter on a patient must open the local action menu rather than paste a record."
+        Assert InStr(FooterText.Text, "MRN 00123"), "Patient actions must keep the selected MRN visible."
         originalPatient := ActionsForChoice
         ChooseVisibleByNumber(1)
         Assert ActionsForChoice = originalPatient && ChooserOpen,
@@ -4059,6 +4068,144 @@ TestLocalPatientChooserUI() {
         LocalPatients := oldPatients, LocalPatientPrivacy := oldPrivacy, LocalPatientStatus := oldStatus
     }
 }
+
+; BEGIN SHARED CHROME FOCUS
+; Only HWNDs, process IDs and usage order are remembered, never page titles.
+ChromeFocusState() {
+    static state := {Used: Map(), Excluded: Map(), Sequence: 0, Callback: 0, Hook: 0}
+    return state
+}
+
+ChromeIsEhrTitle(title) {
+    ; Exclude both AdvancedMD - EHR and AdvancedMD-EHR, plus AMD login pages.
+    return InStr(StrLower(title), "advancedmd") != 0
+}
+
+StartChromeFocusTracking() {
+    state := ChromeFocusState()
+    if state.Hook
+        return
+    state.Callback := CallbackCreate(ChromeForegroundChanged, , 7)
+    ; EVENT_SYSTEM_FOREGROUND, out-of-context, skipping this AHK process.
+    state.Hook := DllCall("SetWinEventHook", "uint", 3, "uint", 3, "ptr", 0,
+        "ptr", state.Callback, "uint", 0, "uint", 0, "uint", 2, "ptr")
+    if !state.Hook {
+        CallbackFree state.Callback
+        state.Callback := 0
+        return ; Normal desktop Z-order is the fallback if tracking is unavailable.
+    }
+    OnExit StopChromeFocusTracking
+    ChromeForegroundChanged(0, 3, WinExist("A"), 0, 0, 0, 0)
+}
+
+StopChromeFocusTracking(*) {
+    state := ChromeFocusState()
+    if state.Hook
+        DllCall("UnhookWinEvent", "ptr", state.Hook)
+    if state.Callback
+        CallbackFree state.Callback
+    state.Hook := 0, state.Callback := 0
+}
+
+ChromeForegroundChanged(hook, event, hwnd, objectId, childId, threadId, eventTime) {
+    try {
+        if !hwnd || objectId || childId || WinGetProcessName(hwnd) != "chrome.exe"
+            return
+        state := ChromeFocusState()
+        pid := WinGetPID(hwnd)
+        if ChromeIsEhrTitle(WinGetTitle(hwnd))
+            state.Excluded[hwnd] := pid
+        state.Sequence += 1
+        state.Used[hwnd] := {Pid: pid, Order: state.Sequence}
+    }
+}
+
+GeneralChromeCandidates() {
+    state := ChromeFocusState()
+    candidates := []
+    ; Windows enumerates in desktop Z-order. This seeds selection before any
+    ; foreground history is observed; tracked use takes priority afterwards.
+    for hwnd in WinGetList("ahk_exe chrome.exe ahk_class Chrome_WidgetWin_1") {
+        try {
+            title := WinGetTitle(hwnd)
+            pid := WinGetPID(hwnd)
+            if ChromeIsEhrTitle(title) {
+                state.Excluded[hwnd] := pid
+                continue
+            }
+            ; Keep a known EHR window excluded if its active tab/title changes.
+            if Trim(title) = "" || (state.Excluded.Has(hwnd) && state.Excluded[hwnd] = pid)
+                continue
+            candidates.Push({Hwnd: hwnd, Pid: pid})
+        }
+    }
+    return candidates
+}
+
+SelectGeneralChrome(candidates, used) {
+    selected := 0, bestOrder := -1
+    for window in candidates {
+        order := used.Has(window.Hwnd) && used[window.Hwnd].Pid = window.Pid
+            ? used[window.Hwnd].Order : 0
+        if order > bestOrder
+            selected := window.Hwnd, bestOrder := order
+    }
+    return selected
+}
+
+ActivateGeneralChrome(hwnd) {
+    ; Recheck the live title immediately before activating this exact HWND.
+    if !WinExist(hwnd) || ChromeIsEhrTitle(WinGetTitle(hwnd))
+        return false
+    WinActivate hwnd ; Automatically restores a minimized window; keeps normal placement.
+    return !!WinWaitActive(hwnd, , 2)
+}
+
+FocusGeneralChrome(*) {
+    static busy := false
+    if busy
+        return
+    busy := true
+    try {
+        state := ChromeFocusState()
+        hwnd := SelectGeneralChrome(GeneralChromeCandidates(), state.Used)
+        if hwnd && ActivateGeneralChrome(hwnd)
+            return
+        ; A separate blank window prevents Chrome from reusing the EHR window
+        ; when it is the only Chrome window. No clinical URL or data is supplied.
+        Run 'chrome.exe --new-window "about:blank"'
+        deadline := A_TickCount + 7000
+        while A_TickCount < deadline {
+            Sleep 100
+            hwnd := SelectGeneralChrome(GeneralChromeCandidates(), state.Used)
+            if hwnd && ActivateGeneralChrome(hwnd)
+                return
+        }
+        TrayTip "Chrome was started, but its browsing window could not be focused yet.", "Trigger Search"
+    } catch {
+        TrayTip "Could not focus or open Chrome. Check that Google Chrome is installed.", "Trigger Search"
+    } finally {
+        busy := false
+    }
+}
+
+TestGeneralChromeSelection() {
+    for title in ["AdvancedMD - EHR - Google Chrome", "AdvancedMD-EHR", "advancedmd – ehr",
+        "Login | AdvancedMD", "AdvancedMD — EHR"]
+        Assert ChromeIsEhrTitle(title), "All known AdvancedMD title variants must be excluded from general Chrome."
+    Assert !ChromeIsEhrTitle("General browsing - Google Chrome"), "General browsing titles must remain eligible."
+    windows := [{Hwnd: 100, Pid: 1}, {Hwnd: 200, Pid: 2}]
+    Assert SelectGeneralChrome(windows, Map()) = 100,
+        "Initial selection must follow desktop Z-order when no usage history exists."
+    usage := Map(100, {Pid: 1, Order: 10}, 200, {Pid: 2, Order: 20})
+    Assert SelectGeneralChrome(windows, usage) = 200,
+        "Observed most-recent usage must override desktop Z-order."
+    usage[200].Pid := 99
+    Assert SelectGeneralChrome(windows, usage) = 100,
+        "Reused window handles must not inherit a different process's usage history."
+    Assert SelectGeneralChrome([], usage) = 0, "No eligible window must request a new Chrome window."
+}
+; END SHARED CHROME FOCUS
 
 ; Local-only patient directory. Never append these records to Snippets, Sheet
 ; exports, recents, updater files, error details, or cloud configuration.
@@ -4758,23 +4905,10 @@ RestoreZoomThumbnail(hwnd) {
     ZoomMainHwnd := main
     return main
 }
-TryReclaimZoomHost(hwnd) {
-    static lastAttempt := 0
-    if A_TickCount - lastAttempt < 30000 || !WinActive("ahk_id " hwnd)
-        return
-    try {
-        if WinGetProcessName(hwnd) != "Zoom.exe"
-            return
-        lastAttempt := A_TickCount
-        ; A host-key/sign-in prompt, if required, is left to the user.
-        ZoomUiAutomation hwnd, "i)^Reclaim Host$", true
-    }
-}
 TrackZoomMeeting(*) {
     global ZoomLaunchDeadline, ZoomMainHwnd
     if main := FindZoomMainWindow() {
         ZoomMainHwnd := main
-        SetTimer () => TryReclaimZoomHost(main), -100
         return
     }
     if A_TickCount < ZoomLaunchDeadline
