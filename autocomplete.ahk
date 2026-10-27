@@ -3,7 +3,7 @@
 Persistent
 
 ; Trigger Search Windows client
-global AppVersion := "0.16.25"
+global AppVersion := "0.16.26"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -116,6 +116,7 @@ global PreviewChoiceValue := 0
 global PreviewExpanded := 0
 global ModifierHud := 0
 global ManagedWorkerHandles := []
+global AMDPlacementDeadline := 0
 global SelfTesting := A_Args.Length > 0 && (A_Args[1] = "--self-test" || A_Args[1] = "--integration-test")
 global IntegrationTest := A_Args.Length > 0 && A_Args[1] = "--integration-test"
 
@@ -3691,6 +3692,42 @@ ParseAutomations(rows, info, output) {
     }
 }
 
+; The login iframe/SSO redirect can finish after the startup stage returns.
+; Watch only after an explicit Alt+A/Alt+L, then position the identified EHR once.
+AMDReadyWindow() {
+    for hwnd in WinGetList("ahk_exe chrome.exe") {
+        try {
+            title := WinGetTitle(hwnd)
+            if RegExMatch(title, "i)AdvancedMD\s*[-–—]?\s*EHR\b")
+                && !RegExMatch(title, "i)sharing (?:your |the )?(?:screen|window|tab|audio)")
+                && ChromeHasMainFrame(WinGetStyle(hwnd), DllCall("GetWindow", "ptr", hwnd, "uint", 4, "ptr"), WinGetExStyle(hwnd))
+                return hwnd
+        }
+    }
+    return 0
+}
+BeginAMDPlacementWatch() {
+    global AMDPlacementDeadline
+    if AMDReadyWindow()
+        return ; The normal helper handles an already-open EHR.
+    AMDPlacementDeadline := A_TickCount + 90000
+    SetTimer TrackAMDPlacement, 750
+}
+TrackAMDPlacement(*) {
+    global AMDPlacementDeadline, ManagedWorkerHandles
+    if !AMDPlacementDeadline || A_TickCount > AMDPlacementDeadline
+        || !AutomationEnabled("dell.launch-advancedmd") {
+        SetTimer TrackAMDPlacement, 0
+        AMDPlacementDeadline := 0
+        return
+    }
+    if hwnd := AMDReadyWindow() {
+        SetTimer TrackAMDPlacement, 0
+        AMDPlacementDeadline := 0
+        try StartManagedWorker AutomationPath("dell.launch-advancedmd"), hwnd, ' "place-ready-amd"'
+    }
+}
+
 ; Hold the actual process handles returned at creation. Q can stop only workers
 ; launched by this launcher, without scanning/killing other AutoHotkey processes.
 StartManagedWorker(path, target, arguments := "") {
@@ -3698,12 +3735,12 @@ StartManagedWorker(path, target, arguments := "") {
     static cleanupRegistered := false
     PruneManagedWorkerHandles()
     command := '"' A_AhkPath '" /ErrorStdOut=UTF-8 "' path '" ' Integer(target) arguments
-    buffer := Buffer(StrPut(command, "UTF-16") * 2, 0)
-    StrPut command, buffer, "UTF-16"
+    commandBuffer := Buffer(StrPut(command, "UTF-16") * 2, 0)
+    StrPut command, commandBuffer, "UTF-16"
     startup := Buffer(A_PtrSize = 8 ? 104 : 68, 0)
     NumPut "UInt", startup.Size, startup
     processInfo := Buffer(A_PtrSize * 2 + 8, 0)
-    if !DllCall("CreateProcessW", "str", A_AhkPath, "ptr", buffer, "ptr", 0,
+    if !DllCall("CreateProcessW", "str", A_AhkPath, "ptr", commandBuffer, "ptr", 0,
         "ptr", 0, "int", false, "uint", 0x08000000, "ptr", 0, "ptr", 0,
         "ptr", startup, "ptr", processInfo, "int")
         throw Error("Could not start the managed automation.")
@@ -3730,7 +3767,10 @@ PruneManagedWorkerHandles() {
     ManagedWorkerHandles := active
 }
 StopManagedWorkers() {
-    global ManagedWorkerHandles
+    global ManagedWorkerHandles, AMDPlacementDeadline, ZoomLaunchDeadline
+    SetTimer TrackAMDPlacement, 0
+    SetTimer TrackZoomMeeting, 0
+    AMDPlacementDeadline := 0, ZoomLaunchDeadline := 0
     remaining := []
     for handle in ManagedWorkerHandles {
         state := DllCall("WaitForSingleObject", "ptr", handle, "uint", 0, "uint")
@@ -3864,6 +3904,9 @@ RunAutomation(scriptId, choice := 0) {
                     try WinHide main
                 WinActivate mini.Hwnd
             } else {
+                if scriptId = "dell.launch-advancedmd"
+                    || (scriptId = "workspace.start-day" && (WorkspaceEnabledMask() & 1))
+                    BeginAMDPlacementWatch()
                 StartManagedWorker path, target, arguments
                 if scriptId = "zoom.join" {
                     ZoomLaunchDeadline := A_TickCount + 60000
@@ -4256,6 +4299,10 @@ ChromeIsEhrTitle(title) {
     return InStr(StrLower(title), "advancedmd") != 0
 }
 
+ChromeHasMainFrame(style, owner, extendedStyle := 0) {
+    return !owner && !(extendedStyle & 0x80)
+        && (style & 0x00040000) && (style & 0x00080000)
+}
 ChromeIsBrowsingFrame(title, style, owner, extendedStyle := 0) {
     if ChromeIsEhrTitle(title) || Trim(title) = "" || RegExMatch(title, "i)\bCopilot\b")
         return false
@@ -4267,8 +4314,7 @@ ChromeIsBrowsingFrame(title, style, owner, extendedStyle := 0) {
         return false
     ; Normal browsing windows are unowned, resizable frames with a system menu.
     ; Skip owned dialogs, WS_EX_TOOLWINDOW, and the non-resizable capture toolbar.
-    return !owner && !(extendedStyle & 0x80)
-        && (style & 0x00040000) && (style & 0x00080000)
+    return ChromeHasMainFrame(style, owner, extendedStyle)
 }
 ChromeIsBrowsingHwnd(hwnd) {
     try return WinGetProcessName(hwnd) = "chrome.exe"

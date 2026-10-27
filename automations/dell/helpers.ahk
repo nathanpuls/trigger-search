@@ -17,9 +17,11 @@ global HelperActions := Map(
     "blueprint", Blueprint, "it-ticket", ItTicket, "schedule-email", ScheduleEmail,
     "copilot", Copilot, "espanso", Espanso, "copy-back", CopyBack, "join-zoom", JoinZoom,
     "end-zoom", EndZoom, "teams-call-clipboard", TeamsCallClipboard,
-    "workspace-start", StartDayWorkspace, "open-teams", OpenTeams, "close-apps", CloseApplications)
+    "workspace-start", StartDayWorkspace, "open-teams", OpenTeams, "close-apps", CloseApplications,
+    "place-ready-amd", PlaceReadyAdvancedMD)
 if DryRun {
     TestZoomPlacement()
+    TestAMDStartup()
     TestWorkspaceBounds(IntegrationTest)
     TestCloseApplicationPolicy()
     if IntegrationTest
@@ -48,8 +50,8 @@ if DryRun {
         fn.Call()
         if Steps.Length = 0
             ExitApp 1
-        if action = "launch-advancedmd" && (Steps[2][1] != "SendEvent"
-            || Steps[2][2] != "136732" || Steps[3][2] != "{Enter}")
+        if action = "launch-advancedmd" && (Steps[1][1] != "Open"
+            || Steps[1][2] != AMDStartupUrl() || Steps.Length != 2)
             ExitApp 1
     }
     ExitApp 0
@@ -77,7 +79,7 @@ try {
     HelperActions[A_Args[2]].Call()
 } catch as problem {
     ; Fixed error messages only; no window titles or clipboard contents are logged.
-    MsgBox problem.Message, "Trigger Search 0.16.25 — " A_Args[2]
+    MsgBox problem.Message, "Trigger Search 0.16.26 — " A_Args[2]
 } finally {
     DllCall("CloseHandle", "ptr", mutex)
 }
@@ -252,33 +254,136 @@ Hpi() {
     ClickAt 0, 0
     ClickAt 506, 367
 }
+IsAMDChromeFrame(hwnd) {
+    try return WinGetProcessName(hwnd) = "chrome.exe"
+        && ChromeHasMainFrame(WinGetStyle(hwnd), DllCall("GetWindow", "ptr", hwnd, "uint", 4, "ptr"), WinGetExStyle(hwnd))
+        && !RegExMatch(WinGetTitle(hwnd), "i)sharing (?:your |the )?(?:screen|window|tab|audio)")
+    catch
+        return false
+}
+AMDStartupUrl() {
+    ; The public AdvancedMD SSO app accepts licensekey and forwards it to its
+    ; SAML request. This is Nathan's office key, never a password/session token.
+    return "https://login.advancedmd.com/?sso=1&licensekey=136732"
+}
+IsAdvancedMDLoginTitle(title) {
+    return !!RegExMatch(title, "i)(?:Login\s*\|\s*AdvancedMD|AdvancedMD.*(?:Login|Sign[ -]?in)|(?:Login|Sign[ -]?in).*AdvancedMD)")
+}
+RememberAdvancedMDWindow(hwnd) {
+    if !hwnd || !WinExist(hwnd) || WinGetProcessName(hwnd) != "chrome.exe"
+        return
+    path := A_AppData "\SheetAutocomplete\settings.ini"
+    IniWrite hwnd, path, "advancedmd", "managedWindowHwnd"
+    IniWrite WinGetPID(hwnd), path, "advancedmd", "managedWindowPid"
+}
+CachedAdvancedMDWindow() {
+    path := A_AppData "\SheetAutocomplete\settings.ini"
+    hwnd := IniRead(path, "advancedmd", "managedWindowHwnd", "0")
+    pid := IniRead(path, "advancedmd", "managedWindowPid", "0")
+    if !RegExMatch(hwnd, "^\d+$") || !RegExMatch(pid, "^\d+$") || !Integer(hwnd)
+        return 0
+    hwnd := Integer(hwnd)
+    try {
+        if WinExist(hwnd) && WinGetPID(hwnd) = Integer(pid) && IsAMDChromeFrame(hwnd) {
+            title := WinGetTitle(hwnd)
+            ; Reuse an identified AMD window or its ongoing Microsoft sign-in,
+            ; but never hijack a cached handle now showing general browsing.
+            if InStr(title, "AdvancedMD", false)
+                || RegExMatch(title, "i)^(?:Sign in(?: to your account)?|Microsoft account|Microsoft Sign[ -]?in)(?:\s*[-|–—].*)?$")
+                return hwnd
+        }
+    }
+    return 0
+}
+ExistingAdvancedMDSessionWindow() {
+    ; EHR takes precedence when login redirects have left multiple windows.
+    if ehr := ExistingAdvancedMDEhrWindow()
+        return ehr
+    if cached := CachedAdvancedMDWindow()
+        return cached
+    for hwnd in WinGetList("ahk_exe chrome.exe") {
+        try {
+            if IsAMDChromeFrame(hwnd) && InStr(WinGetTitle(hwnd), "AdvancedMD", false)
+                return hwnd
+        }
+    }
+    return 0
+}
 LaunchAdvancedMD() {
-    key := "136732"
-    global DryRun, TargetHwnd
-    ; Focus and place an open EHR without typing an office key or repeating login.
-    if !DryRun && (ehr := ExistingAdvancedMDEhrWindow()) {
-        WinActivate ehr
-        if !WinWaitActive(ehr, , 5)
-            throw Error("Could not activate the existing AdvancedMD EHR window.")
-        TargetHwnd := ehr
+    global DryRun, Steps, TargetHwnd
+    url := AMDStartupUrl()
+    if DryRun {
+        Steps.Push(["Open", url])
         PositionAdvancedMD()
         return
     }
-    if !DryRun && (login := WinExist("Login | AdvancedMD ahk_exe chrome.exe")) {
-        WinActivate "ahk_id " login
-        if !WinWaitActive("ahk_id " login, , 10)
-            throw Error("Could not activate the AdvancedMD login window.")
-        TargetHwnd := login
-    } else
-        OpenUrl "https://login.advancedmd.com/?sso=1", "Login | AdvancedMD", true
-    PauseFor 1800
-    SendAMDLogin key, "SendEvent"
-    PauseFor 300
-    SendAMDLogin "{Enter}"
-    PauseFor 10000
-    AdoptActiveAdvancedMDWindow()
+    existing := ExistingAdvancedMDSessionWindow()
+    if existing {
+        TargetHwnd := existing
+        if IsAdvancedMDLoginTitle(WinGetTitle(existing)) && !CachedAdvancedMDWindow() {
+            ; Upgrade one existing login page once, rather than spawning another.
+            ; Navigate the browser address bar in this exact identified window;
+            ; never type digits into an assumed form field or clinical page.
+            WinActivate existing
+            if !WinWaitActive(existing, , 5)
+                throw Error("Could not activate the existing AdvancedMD login window.")
+            if IsAdvancedMDLoginTitle(WinGetTitle(existing)) {
+                CheckTarget()
+                Send "^l"
+                CheckTarget()
+                SendText url
+                CheckTarget()
+                Send "{Enter}"
+            }
+        }
+        RememberAdvancedMDWindow existing
+        PositionAMDStartupWindow(existing)
+        return
+    }
+    ; A dedicated window prevents replacing a general browsing tab. Never open
+    ; another if an identified EHR, login, portal or cached SSO window exists.
+    Run 'chrome.exe --new-window "' url '"'
+    deadline := A_TickCount + 15000
+    while A_TickCount < deadline {
+        if hwnd := ExistingAdvancedMDSessionWindow() {
+            TargetHwnd := hwnd
+            RememberAdvancedMDWindow hwnd
+            PositionAMDStartupWindow(hwnd)
+            return
+        }
+        Sleep 200
+    }
+    throw Error("AdvancedMD was launched but its window could not be identified yet. Complete sign-in and retry Alt+A.")
+}
+PositionAMDStartupWindow(hwnd) {
+    ; Login/SSO can still be loading. Arrange this pinned Chrome HWND without
+    ; assuming it already has an EHR title, and without sending any form input.
+    if !WinExist(hwnd) || WinGetProcessName(hwnd) != "chrome.exe"
+        throw Error("The AdvancedMD startup window is no longer available.")
+    PlaceWindowInBounds hwnd, HalfDisplayBounds(RightmostDisplay(DisplayWorkAreas()), "left")
+    WinActivate hwnd
+}
+PlaceReadyAdvancedMD() {
+    global DryRun, Steps, TargetHwnd
+    if DryRun {
+        Steps.Push(["PlaceAdvancedMD", "identified ready EHR only"])
+        return
+    }
+    if !WinExist(TargetHwnd) || WinGetProcessName(TargetHwnd) != "chrome.exe"
+        || !IsAdvancedMDEhrTitle(WinGetTitle(TargetHwnd))
+        throw Error("The expected AdvancedMD EHR window is no longer available.")
+    RememberAdvancedMDWindow TargetHwnd
     PositionAdvancedMD()
 }
+TestAMDStartup() {
+    Assert AMDStartupUrl() = "https://login.advancedmd.com/?sso=1&licensekey=136732",
+        "The office key must be provided through the vendor's SSO URL parameter."
+    Assert IsAdvancedMDLoginTitle("Login | AdvancedMD - Google Chrome")
+        && !IsAdvancedMDLoginTitle("AdvancedMD-EHR - Google Chrome")
+        && !IsAdvancedMDLoginTitle("General browsing"),
+        "Only a positively identified login page may be navigated to the startup URL."
+}
+
 IsAdvancedMDEhrTitle(title) {
     return !!RegExMatch(title, "i)AdvancedMD\s*[-–—]?\s*EHR\b")
 }
@@ -286,31 +391,11 @@ ExistingAdvancedMDEhrWindow() {
     ; Only an actual EHR title counts; a login page still needs the login flow.
     for hwnd in WinGetList("ahk_exe chrome.exe") {
         try {
-            if IsAdvancedMDEhrTitle(WinGetTitle(hwnd))
+            if IsAMDChromeFrame(hwnd) && IsAdvancedMDEhrTitle(WinGetTitle(hwnd))
                 return hwnd
         }
     }
     return 0
-}
-SendAMDLogin(value, mode := "Send") {
-    global DryRun, TargetHwnd, Steps
-    if DryRun {
-        Steps.Push([mode, value])
-        return
-    }
-    ; Login is a self-opening action, not a macro bound to the launcher's old HWND.
-    ; Reacquire the exact login window before each input as Chrome settles.
-    login := WinExist("Login | AdvancedMD ahk_exe chrome.exe")
-    if !login
-        throw Error("Open AMD could not find its login window before input.")
-    TargetHwnd := login
-    WinActivate "ahk_id " login
-    if !WinWaitActive("ahk_id " login, , 5)
-        throw Error("Open AMD could not activate its login window before input.")
-    if mode = "SendEvent"
-        SendEvent value
-    else
-        Send value
 }
 
 MorningStartup() {
@@ -560,7 +645,7 @@ RequiresOriginWindow(action) {
     ; Opening AMD activates its own identified login window. The launcher may
     ; have started it from any application. Form-filling actions retain focus checks.
     return action != "launch-advancedmd" && action != "join-zoom"
-        && action != "copilot" && action != "open-teams" && action != "workspace-start" && action != "close-apps"
+        && action != "copilot" && action != "open-teams" && action != "workspace-start" && action != "close-apps" && action != "place-ready-amd"
         && action != "end-zoom" && action != "teams-call-clipboard"
 }
 
@@ -894,6 +979,8 @@ HelperMutexName(action) {
         return "Local\TriggerSearchWorkspace"
     if action = "close-apps"
         return "Local\TriggerSearchCloseApps"
+    if action = "place-ready-amd"
+        return "Local\TriggerSearchAMDPlacement"
     if action = "copilot" || action = "open-teams" || action = "join-zoom"
         return "Local\TriggerSearchApp-" action
     return "Local\TriggerSearchAdvancedMD"
@@ -958,6 +1045,10 @@ ChromeIsEhrTitle(title) {
     return InStr(StrLower(title), "advancedmd") != 0
 }
 
+ChromeHasMainFrame(style, owner, extendedStyle := 0) {
+    return !owner && !(extendedStyle & 0x80)
+        && (style & 0x00040000) && (style & 0x00080000)
+}
 ChromeIsBrowsingFrame(title, style, owner, extendedStyle := 0) {
     if ChromeIsEhrTitle(title) || Trim(title) = "" || RegExMatch(title, "i)\bCopilot\b")
         return false
@@ -969,8 +1060,7 @@ ChromeIsBrowsingFrame(title, style, owner, extendedStyle := 0) {
         return false
     ; Normal browsing windows are unowned, resizable frames with a system menu.
     ; Skip owned dialogs, WS_EX_TOOLWINDOW, and the non-resizable capture toolbar.
-    return !owner && !(extendedStyle & 0x80)
-        && (style & 0x00040000) && (style & 0x00080000)
+    return ChromeHasMainFrame(style, owner, extendedStyle)
 }
 ChromeIsBrowsingHwnd(hwnd) {
     try return WinGetProcessName(hwnd) = "chrome.exe"

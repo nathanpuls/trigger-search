@@ -22,6 +22,10 @@ ChromeIsEhrTitle(title) {
     return InStr(StrLower(title), "advancedmd") != 0
 }
 
+ChromeHasMainFrame(style, owner, extendedStyle := 0) {
+    return !owner && !(extendedStyle & 0x80)
+        && (style & 0x00040000) && (style & 0x00080000)
+}
 ChromeIsBrowsingFrame(title, style, owner, extendedStyle := 0) {
     if ChromeIsEhrTitle(title) || Trim(title) = "" || RegExMatch(title, "i)\bCopilot\b")
         return false
@@ -33,8 +37,7 @@ ChromeIsBrowsingFrame(title, style, owner, extendedStyle := 0) {
         return false
     ; Normal browsing windows are unowned, resizable frames with a system menu.
     ; Skip owned dialogs, WS_EX_TOOLWINDOW, and the non-resizable capture toolbar.
-    return !owner && !(extendedStyle & 0x80)
-        && (style & 0x00040000) && (style & 0x00080000)
+    return ChromeHasMainFrame(style, owner, extendedStyle)
 }
 ChromeIsBrowsingHwnd(hwnd) {
     try return WinGetProcessName(hwnd) = "chrome.exe"

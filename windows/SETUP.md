@@ -218,7 +218,11 @@ actions retain their strict focus checks.
 
 Exact aliases rank first across snippets and automations. Matching alias prefixes then sort by shortest alias before name and description matches (T, TA, TAP). Display names such as AMD are independent of trusted Script IDs. Keep the canonical advancedmd.* IDs in the Sheet; the explicit AMD.* compatibility IDs remain supported.
 
-Open AMD reacquires and activates the identified Chrome login window before each login input, uses the original SendEvent for office key 136732, and places the identified AMD window on the right display’s left half (as of 0.16.23). It does not require the window from which the launcher was opened to stay focused. Error dialog titles include the worker version and action so an old running copy can be identified. Actual Dell login and monitor behavior still require a device check.
+The older Open AMD code typed office key 136732 after a fixed delay. Version
+0.16.26 replaces that input with the vendor's `licensekey` SSO URL parameter,
+reuses identified AMD windows and watches for the actual EHR after redirects.
+Placement remains the right display's left half. Error dialog titles include the
+worker version/action. The actual Dell's SSO flow still requires a device check.
 
 ## Send Dell clipboard to Inbox
 
@@ -666,7 +670,7 @@ checks use invented window data and synthetic windows. They do not sign into
 Microsoft/AdvancedMD, join Zoom, admit a patient or verify the actual Dell's apps.
 
 
-## Q — Close all applications, and quiet refresh checks (0.16.25)
+## Q — Close all applications, and quiet refresh checks (0.16.26)
 
 Search **Q** and press Enter to run **Close all applications**
 (`workspace.close-all`). This exact alias takes precedence over other exact Q
@@ -721,3 +725,41 @@ older release's original visible test behavior.
 After Refresh all scripts, confirm the fake Zoom window and test notification no
 longer appear, then open F6 and search Q. Finish any app save/meeting prompts.
 Actual Dell applications' shutdown behavior remains a device check.
+
+
+## AdvancedMD startup iframe/redirect recovery (0.16.26)
+
+The previous Alt+A / Alt+L AMD stage inherited the Dell script's 1.8-second wait
+for the login iframe, then typed into the assumed focused field. It also looked
+up the login by title again before each send and waited a fixed ten seconds before
+choosing an AMD window. A slow iframe, another login tab/window or an SSO redirect
+could therefore miss the office-key field or choose a different AMD window.
+
+The public login site's iframe app currently reads a `licensekey` query parameter
+and passes it to its SAML request. The new fixed startup URL is
+`https://login.advancedmd.com/?sso=1&licensekey=136732`. Office key 136732 is the
+only supplied value; no password, patient data, SSO token or credentials are
+constructed or stored in GitHub. Actual server/tenant behavior must still be
+verified on the Dell. The app can still require Microsoft sign-in/MFA or a portal
+choice; those are left to the user.
+
+The helper first prefers an existing identified EHR, then a cached AMD/SSO window,
+then another identified AMD window. It does not open a second login when one of
+these exists. An unmanaged existing login page is navigated once in its exact
+HWND to the fixed startup URL. New login flows use a dedicated Chrome window.
+The local settings cache stores only the identified HWND and process ID and
+validates both and the current title/frame before reuse. Changing general
+browsing windows are never blindly reused. Screen-sharing/tool windows are
+excluded from both AMD recognition and EHR-ready placement.
+
+The AMD stage returns when its window has been identified/arranged, so manual
+SSO does not indefinitely hold up the other morning apps. A bounded launcher
+watcher, started only by explicit Alt+A / Alt+L, checks up to 90 seconds for an
+identified EHR title/frame and positions that EHR once on the right monitor's
+left half. It does not open/navigate pages or submit credentials while watching.
+Its placement worker is tracked like the other managed workers. Q cancels the
+watcher and its own active workers before sending application close requests.
+If sign-in takes longer, finish it and press Alt+A to focus/arrange the EHR.
+
+Tests check the fixed URL and recognition boundaries; they do not authenticate
+against AdvancedMD or prove that the live tenant automatically consumes the key.
