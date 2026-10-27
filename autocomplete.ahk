@@ -4024,7 +4024,7 @@ ActiveZoomMeeting() {
     return 0
 }
 ZoomControlCandidate(title, className) {
-    return className != "#32770" && (title != "" || className = "ZPContentViewWndClass")
+    return className != "#32770" && (title != "" || RegExMatch(className, "^ZP"))
         && !RegExMatch(title, "i)^(Zoom Workplace|Zoom Cloud Meetings|Settings|Zoom Settings|Meeting Chat|Team Chat|Zoom Chat|Participants|Zoom Participants|Meeting Information|Statistics)$")
 }
 ZoomControlArea(x, y, width, height) {
@@ -4154,6 +4154,9 @@ TestZoomWindowControls() {
     Assert b.Width = 552 && b.Height = 352, "Zoom size presets fit small work areas."
     Assert !ZoomControlCandidate("Zoom Workplace", "HomeWindow") && ZoomControlCandidate("Zoom Meeting", "MeetingWindow"),
         "Zoom controls must not intercept shortcuts in the home window."
+    Assert ZoomControlCandidate("", "ZPFloatVideoWndClass") && !ZoomControlCandidate("Reclaim Host", "#32770")
+        && !ZoomControlCandidate("Participants", "ZPContentViewWndClass"),
+        "Native untitled mini windows retain Zoom shortcuts, while dialogs and participant panels do not."
 }
 
 

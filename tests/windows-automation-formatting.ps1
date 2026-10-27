@@ -1,5 +1,5 @@
 # Exercise OOXML strikethrough without Excel, credentials, or live Sheet writes.
-param([string]$LiveSheetId = '')
+param([string]$LiveSheetId = '', [string]$ExpectedDisabledId = '')
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -53,7 +53,10 @@ try {
         & "$env:WINDIR\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File $script -ReadAutomationFormatting -FormattingSheetId $LiveSheetId -FormattingOutput $live
         if ($LASTEXITCODE -ne 0 -or -not (Test-Path $live)) { throw 'Live public formatting export could not be verified.' }
         if ((Get-Content $live -Raw) -notmatch 'verified=1') { throw 'Live public formatting export was invalid.' }
-        Write-Output 'PASS: live public formatting export parsed successfully (no cell contents logged).'
+        if ($ExpectedDisabledId -and (Get-Content $live -Raw) -notmatch ('(?m)^' + [regex]::Escape($ExpectedDisabledId) + '=1$')) {
+            throw 'The requested live strikethrough regression was not detected.'
+        }
+        Write-Output 'PASS: live public formatting export and requested disabled-state regression verified (no cell contents logged).' 
     }
     Write-Output 'PASS: full-cell and rich-text strike, explicit unstrike, duplicate precedence, ID cells, worksheet relationships, no install side effects.'
 } finally { Remove-Item $root -Recurse -Force }
