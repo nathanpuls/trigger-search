@@ -352,7 +352,7 @@ not exposed, it sends the native title-bar minimize system command, allowing
 Zoom to handle its thumbnail mode. It positively identifies the resulting
 thumbnail by its **Show full meeting window** button (also accepts Exit minimized
 video / Exit mini window / Restore full meeting window). Windows UI Automation checks that button through an on-demand PowerShell
-bridge with a five-second timeout. If no supported thumbnail is confirmed,
+bridge with an eight-second timeout. If no supported thumbnail is confirmed,
 it restores the main meeting and reports the issue. It never substitutes a small regular window or silently leaves the
 meeting hidden. Repeating Alt+2 while in thumbnail mode leaves it there.
 
@@ -448,7 +448,7 @@ fall-through into another automation while a Zoom view changes.
 ## Zoom recovery (0.16.19)
 
 **Alt+2 is now a toggle:** enter the tiny view, or return to the previous regular
-window. **Alt+3–6** expand the tiny view before selecting a larger size. Recovery
+window, keeping the tiny view's current screen/corner anchor. **Alt+3–6** expand the tiny view before selecting a larger size. Recovery
 tries Zoom's accessible expansion action and then the recorded main meeting
 window's native Restore action. It no longer depends solely on one English
 button label or on having learned a mini-window class in this session.

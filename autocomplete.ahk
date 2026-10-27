@@ -4248,8 +4248,11 @@ EnterZoomThumbnail(hwnd) {
     global ZoomMainHwnd, ZoomLastNormal
     pid := WinGetPID(hwnd)
     ZoomMainHwnd := hwnd
+    wasMaximized := WinGetMinMax(hwnd) = 1
+    if wasMaximized
+        WinRestore hwnd
     WinGetPos &x, &y, &width, &height, hwnd
-    ZoomLastNormal := {Hwnd: hwnd, X: x, Y: y, Width: width, Height: height, Maximized: WinGetMinMax(hwnd) = 1}
+    ZoomLastNormal := {Hwnd: hwnd, X: x, Y: y, Width: width, Height: height, Maximized: wasMaximized}
     area := ZoomControlArea(x, y, width, height)
     horizontal := ZoomControlAnchor(x, area.Left, area.Right - area.Left, width)
     vertical := ZoomControlAnchor(y, area.Top, area.Bottom - area.Top, height)
@@ -4286,6 +4289,8 @@ EnterZoomThumbnail(hwnd) {
     ; Quietly recover if Zoom did not enter a visible mini mode.
     WinShow hwnd
     WinRestore hwnd
+    if wasMaximized
+        WinMaximize hwnd
     WinActivate hwnd
 }
 RestoreZoomThumbnail(hwnd) {
@@ -4314,7 +4319,10 @@ RestoreZoomThumbnail(hwnd) {
     if !WinWaitActive("ahk_id " main, , 1)
         return 0
     if IsObject(ZoomLastNormal) && ZoomLastNormal.Hwnd = main {
-        WinMove ZoomLastNormal.X, ZoomLastNormal.Y, ZoomLastNormal.Width, ZoomLastNormal.Height, main
+        w := Min(ZoomLastNormal.Width, area.Right - area.Left)
+        h := Min(ZoomLastNormal.Height, area.Bottom - area.Top)
+        WinMove area.Left + Round(Max(0, area.Right - area.Left - w) * horizontal / 2),
+            area.Top + Round(Max(0, area.Bottom - area.Top - h) * vertical / 2), w, h, main
         if ZoomLastNormal.Maximized
             WinMaximize main
     } else {
@@ -4443,10 +4451,10 @@ if ($FixtureDiagnostic -and -not $found) {
         if fixtureDiagnostic
             command .= " -FixtureDiagnostic"
         Run command, , "Hide", &pid
-        ProcessWaitClose pid, 5
+        ProcessWaitClose pid, 8
         if ProcessExist(pid) {
             ProcessClose pid
-            throw Error("Zoom's window controls did not respond within five seconds. Trigger Search is still running.")
+            throw Error("Zoom's window controls did not respond within eight seconds. Trigger Search is still running.")
         }
         status := FileExist(response) ? Trim(FileRead(response, "UTF-8")) : "NO RESULT"
         if fixtureDiagnostic && status != "FOUND"
