@@ -418,3 +418,57 @@ Raycast. Trigger Search dispatches the maintained AutoHotkey implementations in
 `automations/dell/helpers.ahk`. Both commands run on demand, without another
 resident script or tray icon. No real Zoom call was ended or phone number dialed
 in automated tests.
+
+
+## Strikethrough disables an automation (0.16.19)
+
+Strike through the **Name** cell (or the entire row) in Automations to disable
+that action. Striking its **Script ID** cell also disables it. The disabled action
+is removed from launcher search and cannot dispatch; its managed keyboard
+shortcut/hotstring is released. Remove the strikethrough to enable it again.
+Striking only a description or alias is treated as an editorial edit. Partially
+struck rich-text names stay enabled unless the entire name is struck.
+
+Use **Ctrl+R** with the launcher open to apply edits immediately, or wait for
+the normal idle refresh (about 60 seconds). This is a data/formatting refresh,
+not a code update. A small read-only XLSX export supplies formatting omitted by
+CSV; the Windows built-in ZIP/XML libraries read it without Excel, credentials,
+an API key, another app, or a new Sheet column. Temporary exports are deleted.
+The last verified disabled state is cached for offline restarts. Network/export
+failure retains that state; before the first verified formatting read, managed
+automation shortcuts remain inactive. Snippets remain cache-first. Existing
+Original Scripts ON listeners and Raycast bindings are independent; this rule
+controls Trigger Search's own shortcuts and dispatch, not those backup files.
+
+For the struck Plan navigation row, Alt+4 no longer starts the AMD helper.
+Zoom's size-key context also recognizes its native tiny windows, preventing
+fall-through into another automation while a Zoom view changes.
+
+## Zoom recovery (0.16.19)
+
+**Alt+2 is now a toggle:** enter the tiny view, or return to the previous regular
+window. **Alt+3–6** expand the tiny view before selecting a larger size. Recovery
+tries Zoom's accessible expansion action and then the recorded main meeting
+window's native Restore action. It no longer depends solely on one English
+button label or on having learned a mini-window class in this session.
+
+The main meeting handle is remembered before entering the tiny view. While
+that tiny view is visible, only that known underlying meeting/black-room window
+is hidden; it is shown again on restoration. No meeting window is closed to
+clean up the background. Repeated floating-video confirmation notifications
+have been removed; an unsupported mini transition quietly restores the main
+window. Exact behavior still needs a Dell/Zoom test.
+
+After explicitly opening/focusing a regular meeting with Alt+Z, Trigger Search
+makes one rate-limited attempt to click an enabled **Reclaim Host** control.
+It never supplies a host key or password or answers a follow-up prompt. This is
+best-effort only and does not add background polling.
+
+Dell check: update to 0.16.19, use Ctrl+R, confirm struck actions are absent and
+their shortcuts are released, then remove/reapply strikethrough and repeat.
+Restart offline to verify the cached state. In a test meeting, toggle Alt+2
+repeatedly, try Alt+3–6 from the tiny view, use diagonal arrows, and confirm the
+underlying room window stays out of the way. Check Reclaim Host only in your own
+test meeting. CI validates cache behavior, native OOXML formatting, control
+invocation, worker syntax, install, startup isolation, and rollback; it does not
+join or end a real meeting or change host privileges.

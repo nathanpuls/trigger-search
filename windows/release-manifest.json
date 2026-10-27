@@ -3,11 +3,11 @@
   "files": [
     {
       "path": "windows/autocomplete.ahk",
-      "sha256": "7bc8a842320ad646d0169ee99081f532783d2d392a18892477588e207da2f71a"
+      "sha256": "801f65813d608149703d52fb86b91b528ab0da1f8373ffa7d9f83c022ebf69e8"
     },
     {
       "path": "windows/refresh-all.ps1",
-      "sha256": "6ff2af5ee1aa0e951ffb3892be7343d1a8db66dffc65b90eb7b9615f9402926d"
+      "sha256": "a27a35f2d3320c094084a19fdb69b443fb285f90706a465b02f48a609925b77e"
     },
     {
       "path": "automations/advancedmd/follow-up-office.ahk",
@@ -23,7 +23,7 @@
     },
     {
       "path": "automations/dell/helpers.ahk",
-      "sha256": "0ec13757fc1a7195ca31fe4049190985cbd90d75184f1591286ba136075d3141"
+      "sha256": "e9d5a237801fc7406704a82219a4916a81ec840996375516e57e251b79d10ad4"
     }
   ]
 }

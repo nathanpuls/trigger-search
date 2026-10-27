@@ -55,7 +55,7 @@ try {
     HelperActions[A_Args[2]].Call()
 } catch as problem {
     ; Fixed error messages only; no window titles or clipboard contents are logged.
-    MsgBox problem.Message, "Trigger Search 0.16.18 — " A_Args[2]
+    MsgBox problem.Message, "Trigger Search 0.16.19 — " A_Args[2]
 } finally {
     DllCall("CloseHandle", "ptr", mutex)
 }

@@ -110,6 +110,15 @@ jobs:
             if ($p.ExitCode -ne 0) { throw "Worker dry run failed: $file" }
           }
 
+      - name: Verify automation strikethrough formatting
+        shell: pwsh
+        run: ./tests/windows-automation-formatting.ps1
+
+      - name: Verify public formatting export once when requested
+        if: contains(github.event.head_commit.message, '[verify-public-format]')
+        shell: pwsh
+        run: ./tests/windows-automation-formatting.ps1 -LiveSheetId '15JTaedzH2ZfT2FAb7FduyMg37aBCHTKborM7E0y8nts'
+
       - name: Exercise reversible Startup setup in an isolated folder
         shell: pwsh
         run: |

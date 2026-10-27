@@ -3,7 +3,7 @@
 Persistent
 
 ; Trigger Search Windows client
-global AppVersion := "0.16.18"
+global AppVersion := "0.16.19"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -56,8 +56,13 @@ global AutomationRegistry := Map(
     "keyboard.remaps", {File: "", Action: "builtin:remaps"},
     "trigger-search.refresh-all", {File: "", Action: "builtin:refresh-all"}
 )
+global ZoomMainHwnd := 0
+global ZoomLastNormal := 0
+global ZoomLaunchDeadline := 0
 global ZoomThumbnailClass := ""
 global ZoomThumbnailClassLoaded := false
+global DisabledAutomations := Map()
+global AutomationFormattingReady := false
 global SpecialClipboard := ""
 global SpecialClipboardSet := false
 global RemapsEnabled := false
@@ -121,7 +126,7 @@ if A_Args.Length > 0 && A_Args[1] = "--self-test" {
 ; Keep this variant before the general Alt+4 AMD binding: Zoom owns it only
 ; while an actual meeting is focused. Alt+5 also overrides clipboard paste only
 ; in a focused meeting. Ordinary typing and arrows are untouched.
-#HotIf ManagedAutomationsAvailable() && !IsTriggerSearchOpen() && ActiveZoomMeeting()
+#HotIf AutomationShortcutEnabled("zoom.join") && ActiveZoomMeeting()
 !Left::ZoomWindowCommand("left")
 !Right::ZoomWindowCommand("right")
 !Up::ZoomWindowCommand("up")
@@ -134,36 +139,57 @@ if A_Args.Length > 0 && A_Args[1] = "--self-test" {
 #HotIf
 
 ; These shortcuts replace the corresponding Dell listeners only in managed installs.
-#HotIf ManagedAutomationsAvailable() && !IsTriggerSearchOpen()
+#HotIf AutomationShortcutEnabled("zoom.join")
 !z::RunAutomation("zoom.join")
+#HotIf AutomationShortcutEnabled("zoom.end")
 !1::RunAutomation("zoom.end")
+#HotIf AutomationShortcutEnabled("teams.call-clipboard")
 !p::RunAutomation("teams.call-clipboard")
+#HotIf AutomationShortcutEnabled("advancedmd.follow-up-office")
 !o::RunAutomation("advancedmd.follow-up-office")
+#HotIf AutomationShortcutEnabled("advancedmd.follow-up-tele")
 !t::RunAutomation("advancedmd.follow-up-tele")
+#HotIf AutomationShortcutEnabled("advancedmd.intake-office")
 !0::RunAutomation("advancedmd.intake-office")
+#HotIf AutomationShortcutEnabled("dell.launch-advancedmd")
 !a::RunAutomation("dell.launch-advancedmd")
+#HotIf AutomationShortcutEnabled("dell.blueprint")
 !b::RunAutomation("dell.blueprint")
+#HotIf AutomationShortcutEnabled("dell.mse-navigation")
 !q::RunAutomation("dell.mse-navigation")
+#HotIf AutomationShortcutEnabled("dell.plan-navigation")
 !4::RunAutomation("dell.plan-navigation")
+#HotIf AutomationShortcutEnabled("dell.initials")
 F2::RunAutomation("dell.initials")
+#HotIf AutomationShortcutEnabled("dell.charge-slip")
 F3::RunAutomation("dell.charge-slip")
+#HotIf AutomationShortcutEnabled("dell.timestamp")
 F4::RunAutomation("dell.timestamp")
+#HotIf AutomationShortcutEnabled("dell.schedule-email")
 F8::RunAutomation("dell.schedule-email")
+#HotIf AutomationShortcutEnabled("dell.mse-fast")
 ^!m::RunAutomation("dell.mse-fast")
+#HotIf AutomationShortcutEnabled("clipboard.store")
 ^!5::RunAutomation("clipboard.store")
+#HotIf AutomationShortcutEnabled("clipboard.paste")
 !5::RunAutomation("clipboard.paste")
+#HotIf AutomationShortcutEnabled("dell.mse")
 :*:'mse:: {
     RunAutomation("dell.mse")
 }
+#HotIf AutomationShortcutEnabled("dell.follow-up-mse")
 :*:'fum:: {
     RunAutomation("dell.follow-up-mse")
 }
+#HotIf AutomationShortcutEnabled("dell.sid")
 :*:;sid:: {
     RunAutomation("dell.sid")
 }
+#HotIf AutomationShortcutEnabled("dell.copy-back")
 :*:;cc:: {
     RunAutomation("dell.copy-back")
 }
+
 #HotIf
 
 #HotIf IsTriggerSearchOpen()
@@ -2236,6 +2262,8 @@ ConnectGoogleSheet(newSheetId, title := "Change Google Sheet") {
     global LauncherModifier, LauncherKey
     global LastRefreshError, LastShownRefreshError, RefreshFailureCount
 
+    global AutomationFormattingReady, DisabledAutomations
+    oldFormatting := {Ready: AutomationFormattingReady, Disabled: DisabledAutomations}
     oldSheetId := SheetId
     oldInfos := SheetInfos
     oldSnippets := Snippets
@@ -2245,8 +2273,9 @@ ConnectGoogleSheet(newSheetId, title := "Change Google Sheet") {
     stage := "checking the Google Sheet"
 
     try {
-        DownloadWorkbook newSheetId, &infos, &csvByName, &stage
+        DownloadWorkbook newSheetId, &infos, &csvByName, &stage, &formatState
         SheetId := newSheetId
+        ApplyAutomationFormatting formatState
         LoadRecentItems()
         ApplySheets infos, csvByName
         if Snippets.Length = 0
@@ -2264,6 +2293,7 @@ ConnectGoogleSheet(newSheetId, title := "Change Google Sheet") {
         return true
     } catch as problem {
         SheetId := oldSheetId
+        ApplyAutomationFormatting oldFormatting
         LoadRecentItems()
         SheetInfos := oldInfos
         Snippets := oldSnippets
@@ -2356,8 +2386,9 @@ RefreshData(force := false, *) {
     stage := "starting refresh"
 
     try {
-        DownloadWorkbook SheetId, &infos, &csvByName, &stage
+        DownloadWorkbook SheetId, &infos, &csvByName, &stage, &formatState
         stage := "parsing the downloaded Sheet tabs"
+        ApplyAutomationFormatting formatState
         ApplySheets infos, csvByName
         stage := "saving the offline cache"
         SaveCache infos, csvByName
@@ -2431,7 +2462,7 @@ RefreshInboxLive() {
     return true
 }
 
-DownloadWorkbook(sheetId, &infos, &csvByName, &stage) {
+DownloadWorkbook(sheetId, &infos, &csvByName, &stage, &formatState) {
     stage := "downloading the list of Sheet tabs"
     cacheBust := A_NowUTC A_MSec
     htmlUrl := "https://docs.google.com/spreadsheets/d/" sheetId
@@ -2447,6 +2478,13 @@ DownloadWorkbook(sheetId, &infos, &csvByName, &stage) {
         stage := "downloading the " info.Name " tab"
         csvByName[info.Name] := FetchSheetCsv(info, cacheBust, sheetId)
     }
+    stage := "reading automation strikethrough formatting"
+    hasAutomations := false
+    for info in infos {
+        if NormalizeSheetName(info.Name) = "automations"
+            hasAutomations := true
+    }
+    formatState := hasAutomations && ManagedAutomationsAvailable() ? FetchAutomationFormatting(sheetId) : {Ready: false, Disabled: Map()}
 }
 
 FetchSheetCsv(info, cacheBust, sheetId) {
@@ -2610,6 +2648,10 @@ RunSelfTests() {
     global Snippets, DetailParent, SearchServiceParent, RecentItems, InboxSheet
     global ChooserOpen, PreviewOpen, CategoryParent
 
+    TestAutomationDisabling()
+    TestAutomationFormattingCache()
+    global AutomationFormattingReady
+    AutomationFormattingReady := true
     TestInboxWriter()
     TestKeyboardRemaps()
     TestZoomWindowControls()
@@ -3403,7 +3445,7 @@ NormalizeSheetName(name) {
 }
 
 SaveCache(infos, csvByName) {
-    global CacheDir, ManifestPath, Trigger, SheetId
+    global CacheDir, ManifestPath, Trigger, SheetId, AutomationFormattingReady, DisabledAutomations
 
     manifest := "[cache]`ncount=" infos.Length "`ntrigger=" Trigger
         . "`nsheetId=" SheetId "`n"
@@ -3412,6 +3454,12 @@ SaveCache(infos, csvByName) {
         WriteTextAtomic cacheFile, csvByName[info.Name]
         manifest .= "`n[sheet" index "]`nname=" info.Name
             . "`ngid=" info.Gid "`nfile=" cacheFile "`n"
+    }
+    manifest .= "`n[automation-formatting]`nverified=" (AutomationFormattingReady ? 1 : 0) "`ncount=" DisabledAutomations.Count "`n"
+    index := 0
+    for id in DisabledAutomations {
+        index += 1
+        manifest .= "id" index "=" id "`n"
     }
     WriteTextAtomic ManifestPath, manifest
 }
@@ -3450,6 +3498,13 @@ LoadCache() {
     }
 
     if infos.Length > 0 {
+        disabled := Map()
+        Loop Integer(IniRead(ManifestPath, "automation-formatting", "count", "0")) {
+            id := CanonicalAutomationId(IniRead(ManifestPath, "automation-formatting", "id" A_Index, ""))
+            if id != ""
+                disabled[id] := true
+        }
+        ApplyAutomationFormatting {Ready: IniRead(ManifestPath, "automation-formatting", "verified", "0") = "1", Disabled: disabled}
         Trigger := cachedTrigger
         ApplySheets infos, csvByName
         SheetInfos := infos
@@ -3518,7 +3573,7 @@ ParseAutomations(rows, info, output) {
         row := rows[rowNumber]
         id := CanonicalAutomationId(Trim(Cell(row, columns["script id"])))
         name := Trim(Cell(row, columns["name"]))
-        if name = "" || !AutomationRegistry.Has(id) || seen.Has(id)
+        if name = "" || !AutomationRegistry.Has(id) || !AutomationEnabled(id) || seen.Has(id)
             continue
         seen[id] := true
         aliases := []
@@ -3538,8 +3593,10 @@ ParseAutomations(rows, info, output) {
 }
 
 RunAutomation(scriptId, choice := 0) {
-    global TargetWindow, ChooserGui, ChooserOpen, AtBoundary, AutomationRegistry
+    global TargetWindow, ChooserGui, ChooserOpen, AtBoundary, AutomationRegistry, ZoomLaunchDeadline
     try {
+        if !AutomationEnabled(scriptId)
+            return
         path := AutomationPath(scriptId)
         entry := AutomationRegistry[scriptId]
         if path != "" && !FileExist(path)
@@ -3561,10 +3618,18 @@ RunAutomation(scriptId, choice := 0) {
             arguments := entry.Action != "" ? ' "' entry.Action '"' : ""
             ; Alt+Z and the searchable action focus an existing thumbnail as-is.
             mini := scriptId = "zoom.join" ? FindZoomThumbnail() : 0
-            if mini
+            if mini {
+                main := FindZoomMainWindow(WinGetPID(mini.Hwnd))
+                if main && main != mini.Hwnd
+                    try WinHide main
                 WinActivate mini.Hwnd
-            else
+            } else {
                 Run '"' A_AhkPath '" "' path '" ' target arguments
+                if scriptId = "zoom.join" {
+                    ZoomLaunchDeadline := A_TickCount + 60000
+                    SetTimer TrackZoomMeeting, -700
+                }
+            }
         }
         if choice
             RecordRecent choice
@@ -3634,7 +3699,7 @@ SendRemappedKey(value, *) {
 
 ShouldRemapKeys(*) {
     global RemapsEnabled
-    return RemapsEnabled && !IsTriggerSearchOpen()
+    return RemapsEnabled && AutomationEnabled("keyboard.remaps") && !IsTriggerSearchOpen()
 }
 
 RunKeyboardIntegrationTest(*) {
@@ -3959,7 +4024,8 @@ ActiveZoomMeeting() {
     return 0
 }
 ZoomControlCandidate(title, className) {
-    return className = "ZPContentViewWndClass" || RegExMatch(title, "i)Zoom (Meeting|Webinar)") != 0
+    return className != "#32770" && (title != "" || className = "ZPContentViewWndClass")
+        && !RegExMatch(title, "i)^(Zoom Workplace|Zoom Cloud Meetings|Settings|Zoom Settings|Meeting Chat|Team Chat|Zoom Chat|Participants|Zoom Participants|Meeting Information|Statistics)$")
 }
 ZoomControlArea(x, y, width, height) {
     monitor := MonitorGetPrimary()
@@ -4024,18 +4090,19 @@ ZoomWindowCommand(command) {
         if ActiveZoomMeeting() != hwnd
             return
         window := "ahk_id " hwnd
-        thumbnail := KnownZoomThumbnail(hwnd)
+        thumbnail := ZoomTinyWindow(hwnd)
         if command = "2" {
-            if !thumbnail
+            if thumbnail
+                RestoreZoomThumbnail hwnd
+            else
                 EnterZoomThumbnail hwnd
             return
         }
         ; Direction keys move the thumbnail itself; size keys expand it first.
         if thumbnail && RegExMatch(command, "^[3-6]$") {
-            button := ZoomThumbnailButton(hwnd)
-            if !button
-                throw Error("Could not identify Zoom's thumbnail expansion button. Use Show full meeting window once, then try again.")
-            hwnd := RestoreZoomThumbnail(hwnd, button)
+            hwnd := RestoreZoomThumbnail(hwnd)
+            if !hwnd
+                return
             window := "ahk_id " hwnd
         }
         if command = "6" {
@@ -4056,8 +4123,9 @@ ZoomWindowCommand(command) {
         WinGetPos , , &actualWidth, &actualHeight, window
         WinMove area.Left + Round(Max(0, area.Right - area.Left - actualWidth) * bounds.Horizontal / 2),
             area.Top + Round(Max(0, area.Bottom - area.Top - actualHeight) * bounds.Vertical / 2), , , window
-    } catch as problem {
-        TrayTip problem.Message, "Trigger Search Zoom"
+    } catch {
+        ; A changing Zoom layout should not produce repeated confirmation tips.
+        ; Alt+Z can refocus the meeting; the next size request retries recovery.
     } finally {
         busy := false
     }
@@ -4132,19 +4200,40 @@ FindZoomThumbnail(pid := 0) {
                 continue
             if WinGetMinMax(hwnd) = -1
                 continue
-            if KnownZoomThumbnail(hwnd)
+            if ZoomTinyWindow(hwnd)
                 return {Hwnd: hwnd}
         }
     }
     return 0
 }
-FindZoomMainWindow(pid) {
+ZoomTinyWindow(hwnd) {
+    try {
+        if KnownZoomThumbnail(hwnd)
+            return true
+        if WinGetProcessName(hwnd) != "Zoom.exe" || !ZoomControlCandidate(WinGetTitle(hwnd), WinGetClass(hwnd))
+            return false
+        if WinGetMinMax(hwnd) != 0
+            return false
+        WinGetPos , , &w, &h, hwnd
+        return w >= 100 && h >= 20 && ((w <= 900 && h <= 450)
+            || (WinGetClass(hwnd) != "ZPContentViewWndClass" && (WinGetExStyle(hwnd) & 0x80) && w <= 1200 && h <= 800))
+    }
+    return false
+}
+FindZoomMainWindow(pid := 0, excluded := 0) {
+    global ZoomMainHwnd
     previous := DetectHiddenWindows(true)
     try {
-        for hwnd in WinGetList("ahk_exe Zoom.exe ahk_pid " pid) {
+        if ZoomMainHwnd && WinExist(ZoomMainHwnd) && WinGetProcessName(ZoomMainHwnd) = "Zoom.exe"
+            && (!pid || WinGetPID(ZoomMainHwnd) = pid) && !ZoomTinyWindow(ZoomMainHwnd)
+            return ZoomMainHwnd
+        for hwnd in WinGetList("ahk_exe Zoom.exe" (pid ? " ahk_pid " pid : "")) {
             try {
-                if ZoomControlCandidate(WinGetTitle(hwnd), WinGetClass(hwnd)) && !KnownZoomThumbnail(hwnd)
+                if ZoomControlCandidate(WinGetTitle(hwnd), WinGetClass(hwnd)) && !ZoomTinyWindow(hwnd)
+                    && (WinGetClass(hwnd) = "ZPContentViewWndClass" || RegExMatch(WinGetTitle(hwnd), "i)(Zoom (Meeting|Webinar)|personal meeting room)")) {
+                    ZoomMainHwnd := hwnd
                     return hwnd
+                }
             }
         }
     } finally {
@@ -4153,64 +4242,110 @@ FindZoomMainWindow(pid) {
     return 0
 }
 EnterZoomThumbnail(hwnd) {
+    global ZoomMainHwnd, ZoomLastNormal
     pid := WinGetPID(hwnd)
+    ZoomMainHwnd := hwnd
     WinGetPos &x, &y, &width, &height, hwnd
+    ZoomLastNormal := {Hwnd: hwnd, X: x, Y: y, Width: width, Height: height, Maximized: WinGetMinMax(hwnd) = 1}
     area := ZoomControlArea(x, y, width, height)
     horizontal := ZoomControlAnchor(x, area.Left, area.Right - area.Left, width)
     vertical := ZoomControlAnchor(y, area.Top, area.Bottom - area.Top, height)
     try {
-        ; Invoke Zoom's own accessible Minimize button. The native title-bar
-        ; system command is used only if that exact button is not exposed.
         if !ZoomUiAutomation(hwnd, "i)^(Minimi[sz]e|Minimi[sz]e meeting|Minimi[sz]e window)$", true)
             PostMessage 0x0112, 0xF020, 0, , hwnd
-        Sleep 250
+    } catch {
+        PostMessage 0x0112, 0xF020, 0, , hwnd
+    }
+    deadline := A_TickCount + 2000
+    while A_TickCount < deadline {
         for candidate in WinGetList("ahk_exe Zoom.exe ahk_pid " pid) {
-            if WinGetMinMax(candidate) = -1
-                continue
-            WinGetPos , , &w, &h, candidate
-            if w < 100 || h < 60 || w > 900 || h > 700
-                continue
-            if ZoomThumbnailButton(candidate) {
+            try {
+                if candidate = hwnd || !ZoomTinyWindow(candidate)
+                    continue
                 RememberZoomThumbnail candidate
+                WinGetPos , , &w, &h, candidate
                 WinMove area.Left + Round(Max(0, area.Right - area.Left - w) * horizontal / 2),
                     area.Top + Round(Max(0, area.Bottom - area.Top - h) * vertical / 2), , , candidate
+                ; Keep the known full meeting/black room window out of the way.
+                ; Hide only this recorded handle; never close a call or another Zoom window.
+                WinHide hwnd
                 WinActivate candidate
                 return
             }
         }
-    } catch {
-        ; Restore below on either timeout or unsupported accessibility controls.
+        Sleep 100
     }
-    ; Never silently leave the call hidden when the requested visible thumbnail
-    ; could not be positively identified. Restore the original main window.
+    ; Some versions repurpose the same window for the tiny view.
+    if ZoomTinyWindow(hwnd) {
+        RememberZoomThumbnail hwnd
+        return
+    }
+    ; Quietly recover if Zoom did not enter a visible mini mode.
     WinShow hwnd
     WinRestore hwnd
     WinActivate hwnd
-    throw Error("Could not confirm Zoom's floating video. The main window was restored. Try Zoom's minimize button; its thumbnail control may differ on this version.")
 }
-RestoreZoomThumbnail(hwnd, button) {
+RestoreZoomThumbnail(hwnd) {
+    global ZoomMainHwnd, ZoomLastNormal
     pid := WinGetPID(hwnd)
     WinGetPos &x, &y, &width, &height, hwnd
     area := ZoomControlArea(x, y, width, height)
     horizontal := ZoomControlAnchor(x, area.Left, area.Right - area.Left, width)
     vertical := ZoomControlAnchor(y, area.Top, area.Bottom - area.Top, height)
-    InvokeZoomAccessibleButton(button)
-    deadline := A_TickCount + 2000
-    while A_TickCount < deadline {
-        main := FindZoomMainWindow(pid)
-        if main && DllCall("IsWindowVisible", "ptr", main) && WinGetMinMax(main) != -1 {
-            WinActivate main
-            if !WinWaitActive("ahk_id " main, , 1)
-                throw Error("Zoom did not focus the full meeting window. Use its Show full meeting window button.")
-            WinRestore main
-            WinGetPos , , &w, &h, main
-            WinMove area.Left + Round(Max(0, area.Right - area.Left - w) * horizontal / 2),
-                area.Top + Round(Max(0, area.Bottom - area.Top - h) * vertical / 2), , , main
-            return main
-        }
+    ; Prefer the native expansion action; its exact name varies by Zoom build.
+    try ZoomUiAutomation(hwnd, "i)^(Show full meeting window|Exit minimi[sz]ed video|Exit mini window|Restore full meeting window|Expand meeting window)$", true)
+    main := FindZoomMainWindow(pid, hwnd)
+    if !main {
+        PostMessage 0x0112, 0xF120, 0, , hwnd
+        WinRestore hwnd
         Sleep 100
+        if !ZoomTinyWindow(hwnd)
+            main := hwnd
     }
-    throw Error("Zoom did not expand its thumbnail. Use its Show full meeting window button, then try the size key again.")
+    if !main
+        return 0
+    WinShow main
+    PostMessage 0x0112, 0xF120, 0, , main
+    WinRestore main
+    WinActivate main
+    if !WinWaitActive("ahk_id " main, , 1)
+        return 0
+    if IsObject(ZoomLastNormal) && ZoomLastNormal.Hwnd = main {
+        WinMove ZoomLastNormal.X, ZoomLastNormal.Y, ZoomLastNormal.Width, ZoomLastNormal.Height, main
+        if ZoomLastNormal.Maximized
+            WinMaximize main
+    } else {
+        WinGetPos , , &w, &h, main
+        WinMove area.Left + Round(Max(0, area.Right - area.Left - w) * horizontal / 2),
+            area.Top + Round(Max(0, area.Bottom - area.Top - h) * vertical / 2), , , main
+    }
+    ; Hide only the old miniature after the full meeting is visible and focused.
+    if hwnd != main && WinExist(hwnd) && DllCall("IsWindowVisible", "ptr", main)
+        try WinHide hwnd
+    ZoomMainHwnd := main
+    return main
+}
+TryReclaimZoomHost(hwnd) {
+    static lastAttempt := 0
+    if A_TickCount - lastAttempt < 30000 || !WinActive("ahk_id " hwnd)
+        return
+    try {
+        if WinGetProcessName(hwnd) != "Zoom.exe"
+            return
+        lastAttempt := A_TickCount
+        ; A host-key/sign-in prompt, if required, is left to the user.
+        ZoomUiAutomation hwnd, "i)^Reclaim Host$", true
+    }
+}
+TrackZoomMeeting(*) {
+    global ZoomLaunchDeadline, ZoomMainHwnd
+    if main := FindZoomMainWindow() {
+        ZoomMainHwnd := main
+        SetTimer () => TryReclaimZoomHost(main), -100
+        return
+    }
+    if A_TickCount < ZoomLaunchDeadline
+        SetTimer TrackZoomMeeting, -1000
 }
 FindZoomAccessibilityButton(hwnd, pattern) {
     result := ZoomUiAutomation(hwnd, pattern, false)
@@ -4332,6 +4467,7 @@ TestZoomAccessibility() {
         . 'g := Gui(, "Trigger Search accessibility fixture")' "`n"
         . 'g.AddButton("w200", "Show full meeting window").OnEvent("Click", (*) => FileAppend("expanded", A_Temp "\trigger-zoom-accessibility-fixture.txt", "UTF-8-RAW"))' "`n"
         . 'g.AddButton("w200", "End meeting").OnEvent("Click", (*) => FileAppend("ended", A_Temp "\trigger-zoom-accessibility-fixture.txt", "UTF-8-RAW"))' "`n"
+        . 'g.AddButton("w200", "Reclaim Host").OnEvent("Click", (*) => FileAppend("host", A_Temp "\trigger-zoom-accessibility-fixture.txt", "UTF-8-RAW"))' "`n"
         . 'g.OnEvent("Close", (*) => ExitApp())' "`n"
         . 'g.Show("NA w240 h120")' "`n"
     FileAppend code, script, "UTF-8-RAW"
@@ -4348,6 +4484,14 @@ TestZoomAccessibility() {
             Sleep 50
         Assert FileExist(result) && FileRead(result, "UTF-8") = "expanded",
             "Invoke only the expansion button, never End meeting."
+        FileDelete result
+        host := FindZoomAccessibilityButton(hwnd, "i)^Reclaim Host$")
+        Assert IsObject(host), "Reclaim Host must match the exact accessible action."
+        InvokeZoomAccessibleButton(host)
+        deadline := A_TickCount + 2000
+        while !FileExist(result) && A_TickCount < deadline
+            Sleep 50
+        Assert FileExist(result) && FileRead(result, "UTF-8") = "host", "Host reclaim must not invoke End meeting or another control."
         Assert !FindZoomAccessibilityButton(hwnd, "i)^Minimize$"), "A missing control must not trigger a guessed click."
     } finally {
         if fixturePid && ProcessExist(fixturePid)
@@ -4369,4 +4513,101 @@ ZoomDirectionChord(command, left, right, up, down) {
 
 CleanupZoomUiScript(path, *) {
     try FileDelete path
+}
+
+
+AutomationEnabled(id) {
+    global AutomationFormattingReady, DisabledAutomations
+    return AutomationFormattingReady && !DisabledAutomations.Has(CanonicalAutomationId(id))
+}
+AutomationShortcutEnabled(id) {
+    return ManagedAutomationsAvailable() && !IsTriggerSearchOpen() && AutomationEnabled(id)
+}
+ApplyAutomationFormatting(state) {
+    global AutomationFormattingReady, DisabledAutomations
+    AutomationFormattingReady := state.Ready
+    DisabledAutomations := state.Disabled
+}
+FetchAutomationFormatting(sheetId) {
+    global CacheDir
+    script := A_ScriptDir "\refresh-all.ps1"
+    if !FileExist(script)
+        throw Error("Refresh all scripts to install automation formatting support.")
+    response := CacheDir "\automation-formatting-new.ini"
+    if FileExist(response)
+        FileDelete response
+    powershell := A_WinDir "\System32\WindowsPowerShell\v1.0\powershell.exe"
+    command := '"' powershell '" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' script
+        . '" -ReadAutomationFormatting -FormattingSheetId "' sheetId '" -FormattingOutput "' response '"'
+    pid := 0
+    Run command, , "Hide", &pid
+    ProcessWaitClose pid, 25
+    if ProcessExist(pid) {
+        ProcessClose pid
+        throw Error("Automation formatting timed out. Last verified shortcut state was retained.")
+    }
+    try {
+        if !FileExist(response) || IniRead(response, "formatting", "verified", "0") != "1"
+            || IniRead(response, "formatting", "sheetId", "") != sheetId
+            throw Error("Could not verify automation strikethrough. Last verified shortcut state was retained.")
+        disabled := Map()
+        text := IniRead(response, "disabled", , "")
+        Loop Parse, text, "`n", "`r" {
+            id := CanonicalAutomationId(StrSplit(A_LoopField, "=")[1])
+            if id != ""
+                disabled[id] := true
+        }
+        return {Ready: true, Disabled: disabled}
+    } finally {
+        if FileExist(response)
+            FileDelete response
+    }
+}
+TestAutomationDisabling() {
+    global DisabledAutomations, AutomationFormattingReady
+    old := {Ready: AutomationFormattingReady, Disabled: DisabledAutomations}
+    try {
+        ApplyAutomationFormatting {Ready: true, Disabled: Map("dell.plan-navigation", true)}
+        rows := ParseCsv("Name,Alias,Description,Script ID`nPlan,plan,Off,dell.plan-navigation`nZoom,z,On,zoom.join")
+        output := []
+        ParseAutomations rows, {Name: "Automations", Gid: "987"}, output
+        Assert output.Length = 1 && output[1].ScriptId = "zoom.join", "Struck automation must disappear from unified search."
+        Assert !AutomationEnabled("dell.plan-navigation") && AutomationEnabled("zoom.join"), "Struck automation cannot dispatch or own its hotkey."
+        ApplyAutomationFormatting {Ready: true, Disabled: Map()}
+        Assert AutomationEnabled("dell.plan-navigation"), "Removing strikethrough must re-enable the same trusted action."
+        ApplyAutomationFormatting {Ready: false, Disabled: Map()}
+        Assert !AutomationEnabled("zoom.join"), "Unverified first-run formatting must not activate potentially disabled shortcuts."
+    } finally {
+        ApplyAutomationFormatting old
+    }
+}
+
+TestAutomationFormattingCache() {
+    global CacheDir, ManifestPath, SheetId, SheetInfos, Snippets, Trigger, InboxSheet
+    global AutomationFormattingReady, DisabledAutomations
+    old := {CacheDir: CacheDir, ManifestPath: ManifestPath, SheetId: SheetId,
+        Infos: SheetInfos, Snippets: Snippets, Trigger: Trigger, Inbox: InboxSheet,
+        Ready: AutomationFormattingReady, Disabled: DisabledAutomations}
+    folder := A_Temp "\trigger-format-cache-" A_TickCount
+    try {
+        CacheDir := folder
+        ManifestPath := folder "\cache.ini"
+        SheetId := "formatting-fixture-sheet"
+        DirCreate folder
+        ApplyAutomationFormatting {Ready: true, Disabled: Map("dell.plan-navigation", true)}
+        infos := [{Name: "Automations", Gid: "123"}]
+        csv := "Name,Alias,Description,Script ID`nPlan,p,Disabled,dell.plan-navigation`nZoom,z,Enabled,zoom.join"
+        SaveCache infos, Map("Automations", csv)
+        ApplyAutomationFormatting {Ready: false, Disabled: Map()}
+        LoadCache()
+        Assert AutomationFormattingReady && !AutomationEnabled("dell.plan-navigation") && AutomationEnabled("zoom.join"),
+            "Offline restart must retain the last verified disabled shortcut set."
+        Assert Snippets.Length = 1 && Snippets[1].ScriptId = "zoom.join", "Cached struck rows must remain excluded from search."
+    } finally {
+        CacheDir := old.CacheDir, ManifestPath := old.ManifestPath, SheetId := old.SheetId
+        SheetInfos := old.Infos, Snippets := old.Snippets, Trigger := old.Trigger, InboxSheet := old.Inbox
+        ApplyAutomationFormatting {Ready: old.Ready, Disabled: old.Disabled}
+        if DirExist(folder)
+            DirDelete folder, true
+    }
 }

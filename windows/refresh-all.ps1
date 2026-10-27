@@ -10,7 +10,11 @@ param(
     [switch]$NoStart,
     [switch]$InstallOriginalControls,
     [ValidateSet('ON', 'OFF')][string]$OriginalScriptsMode = '',
-    [ValidateSet('zoom.join')][string]$Automation = ''
+    [ValidateSet('zoom.join')][string]$Automation = '',
+    [switch]$ReadAutomationFormatting,
+    [ValidatePattern('^[A-Za-z0-9_-]{20,}$')][string]$FormattingSheetId = '',
+    [string]$FormattingOutput = '',
+    [string]$FormattingWorkbook = ''
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
@@ -413,6 +417,133 @@ function Invoke-OriginalControl([string]$Root, [string]$Mode) {
     if ($Mode -eq 'ON' -and [Windows.Forms.MessageBox]::Show('Enable original production scripts now and at Windows sign-in? Trigger Search stays running. Duplicate hotkeys may compete while both are enabled.', 'Original Scripts ON', 'YesNo', 'Warning') -ne 'Yes') { return }
     $message = Set-OriginalScriptsMode $config $Mode
     [Windows.Forms.MessageBox]::Show($message, 'Original Scripts ' + $Mode) | Out-Null
+}
+
+
+# Read-only formatting bridge. Excel/Office and Google credentials are not used.
+function Read-AutomationFormatting([string]$Book, [string]$SheetIdentity, [string]$Output) {
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $download = ''
+    if (-not $Book) {
+        $download = Join-Path ([IO.Path]::GetTempPath()) ('trigger-format-' + [guid]::NewGuid().ToString('N') + '.xlsx')
+        $Book = $download
+        try { Invoke-WebRequest -UseBasicParsing -TimeoutSec 15 -Uri ("https://docs.google.com/spreadsheets/d/$SheetIdentity/export?format=xlsx") -OutFile $Book }
+        catch {
+            if (Test-Path -LiteralPath $download) { Remove-Item -LiteralPath $download -Force }
+            throw
+        }
+    }
+    $zip = $null
+    try {
+        $zip = [IO.Compression.ZipFile]::OpenRead($Book)
+        function Read-ZipXml([string]$Name) {
+            $entry = $zip.GetEntry($Name)
+            if (-not $entry) { throw 'Workbook formatting is incomplete.' }
+            if ($entry.Length -gt 20000000) { throw 'Workbook formatting entry is too large.' }
+            $reader = [IO.StreamReader]::new($entry.Open())
+            try {
+                $settings = [Xml.XmlReaderSettings]::new()
+                $settings.DtdProcessing = [Xml.DtdProcessing]::Prohibit
+                $settings.XmlResolver = $null
+                $xmlReader = [Xml.XmlReader]::Create($reader, $settings)
+                try { $doc = [Xml.XmlDocument]::new(); $doc.XmlResolver = $null; $doc.Load($xmlReader); return ,$doc }
+                finally { $xmlReader.Dispose() }
+            } finally { $reader.Dispose() }
+        }
+        $bookXml = Read-ZipXml 'xl/workbook.xml'
+        $tab = $bookXml.SelectSingleNode("//*[local-name()='sheet' and @name='Automations']")
+        if (-not $tab) { throw 'Automations tab was not found in the formatting export.' }
+        $relationId = $tab.GetAttribute('id', 'http://schemas.openxmlformats.org/officeDocument/2006/relationships')
+        $relations = Read-ZipXml 'xl/_rels/workbook.xml.rels'
+        $target = ''
+        foreach ($relation in $relations.DocumentElement.ChildNodes) {
+            if ($relation.GetAttribute('Id') -eq $relationId) { $target = $relation.GetAttribute('Target'); break }
+        }
+        if ($target -match '^/xl/') { $target = $target.TrimStart('/') }
+        elseif ($target -match '^worksheets/[^/]+\.xml$') { $target = 'xl/' + $target }
+        else { throw 'Invalid automation worksheet relationship.' }
+        $sheetXml = Read-ZipXml $target
+        $styles = Read-ZipXml 'xl/styles.xml'
+        $fonts = @($styles.SelectNodes("/*[local-name()='styleSheet']/*[local-name()='fonts']/*"))
+        $formats = @($styles.SelectNodes("/*[local-name()='styleSheet']/*[local-name()='cellXfs']/*"))
+        $strings = @()
+        if ($zip.GetEntry('xl/sharedStrings.xml')) {
+            $stringXml = Read-ZipXml 'xl/sharedStrings.xml'
+            $strings = @($stringXml.SelectNodes("/*[local-name()='sst']/*[local-name()='si']"))
+        }
+        function Is-StrikeNode($Node) {
+            if (-not $Node) { return $false }
+            $value = $Node.GetAttribute('val')
+            return $value -ne '0' -and $value -ne 'false'
+        }
+        function Read-Cell($Cell) {
+            if (-not $Cell) { return @{ Text = ''; Strike = $false } }
+            $payload = $null
+            $type = $Cell.GetAttribute('t')
+            $v = $Cell.SelectSingleNode("*[local-name()='v']")
+            if ($type -eq 's' -and $v) {
+                $index = [int]$v.InnerText
+                if ($index -lt 0 -or $index -ge $strings.Count) { throw 'Invalid shared string.' }
+                $payload = $strings[$index]
+            } elseif ($type -eq 'inlineStr') { $payload = $Cell.SelectSingleNode("*[local-name()='is']") }
+            $text = if ($payload) { ($payload.SelectNodes(".//*[local-name()='t']") | ForEach-Object { $_.InnerText }) -join '' } elseif ($v) { $v.InnerText } else { '' }
+            $styleIndex = if ($Cell.HasAttribute('s')) { [int]$Cell.GetAttribute('s') } else { 0 }
+            if ($styleIndex -ge $formats.Count) { throw 'Invalid cell style.' }
+            $fontIndex = if ($formats[$styleIndex].HasAttribute('fontId')) { [int]$formats[$styleIndex].GetAttribute('fontId') } else { 0 }
+            if ($fontIndex -ge $fonts.Count) { throw 'Invalid cell font.' }
+            $strike = Is-StrikeNode ($fonts[$fontIndex].SelectSingleNode("*[local-name()='strike']"))
+            if ($payload) {
+                $runs = @($payload.SelectNodes("*[local-name()='r']"))
+                if ($runs.Count) {
+                    $baseStrike = $strike
+                    $strike = $true
+                    foreach ($run in $runs) {
+                        $runText = $run.SelectSingleNode("*[local-name()='t']")
+                        if (-not $runText -or -not $runText.InnerText) { continue }
+                        $override = $run.SelectSingleNode("*[local-name()='rPr']/*[local-name()='strike']")
+                        $runStrike = if ($override) { Is-StrikeNode $override } else { $baseStrike }
+                        if (-not $runStrike) { $strike = $false; break }
+                    }
+                }
+            }
+            return @{ Text = [string]$text; Strike = [bool]$strike }
+        }
+        $rows = @($sheetXml.SelectNodes("//*[local-name()='sheetData']/*[local-name()='row']"))
+        if (-not $rows.Count) { throw 'Automations formatting has no headers.' }
+        $nameColumn = ''; $idColumn = ''
+        foreach ($cell in $rows[0].ChildNodes) {
+            $value = (Read-Cell $cell).Text.Trim().ToLowerInvariant()
+            if ($value -eq 'name') { $nameColumn = $cell.GetAttribute('r') -replace '\d', '' }
+            if ($value -eq 'script id') { $idColumn = $cell.GetAttribute('r') -replace '\d', '' }
+        }
+        if (-not $nameColumn -or -not $idColumn) { throw 'Automations formatting headers are invalid.' }
+        $disabled = @{}
+        foreach ($row in $rows | Select-Object -Skip 1) {
+            $nameCell = $null; $idCell = $null
+            foreach ($cell in $row.ChildNodes) {
+                $column = $cell.GetAttribute('r') -replace '\d', ''
+                if ($column -eq $nameColumn) { $nameCell = $cell }
+                if ($column -eq $idColumn) { $idCell = $cell }
+            }
+            $nameValue = Read-Cell $nameCell; $idValue = Read-Cell $idCell
+            $id = $idValue.Text.Trim()
+            if ($id -match '^[A-Za-z0-9][A-Za-z0-9._-]+$' -and ($nameValue.Strike -or $idValue.Strike)) { $disabled[$id] = $true }
+        }
+        $lines = @('[formatting]', 'verified=1', "sheetId=$SheetIdentity", '[disabled]')
+        $lines += @($disabled.Keys | Sort-Object | ForEach-Object { "$_=1" })
+        [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($Output))) | Out-Null
+        $temporary = $Output + '.tmp'
+        [IO.File]::WriteAllText($temporary, (($lines -join "`n") + "`n"), [Text.UTF8Encoding]::new($false))
+        Move-Item -LiteralPath $temporary -Destination $Output -Force
+    } finally {
+        if ($zip) { $zip.Dispose() }
+        if ($download -and (Test-Path -LiteralPath $download)) { Remove-Item -LiteralPath $download -Force }
+    }
+}
+if ($ReadAutomationFormatting) {
+    if (-not $FormattingSheetId -or -not $FormattingOutput) { throw 'Formatting requires a Sheet ID and output path.' }
+    Read-AutomationFormatting $FormattingWorkbook $FormattingSheetId $FormattingOutput
+    return
 }
 
 $InstallRoot = [IO.Path]::GetFullPath($InstallRoot)
