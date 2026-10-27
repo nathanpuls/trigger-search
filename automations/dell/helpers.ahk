@@ -3,7 +3,8 @@
 #NoTrayIcon
 SendMode "Input"
 SetTitleMatchMode 2
-global DryRun := A_Args.Length = 1 && A_Args[1] = "--self-test"
+global DryRun := A_Args.Length = 1 && (A_Args[1] = "--self-test" || A_Args[1] = "--integration-test")
+global IntegrationTest := A_Args.Length = 1 && A_Args[1] = "--integration-test"
 global TargetHwnd := 0
 global Steps := []
 global WorkspaceMask := 31
@@ -16,10 +17,13 @@ global HelperActions := Map(
     "blueprint", Blueprint, "it-ticket", ItTicket, "schedule-email", ScheduleEmail,
     "copilot", Copilot, "espanso", Espanso, "copy-back", CopyBack, "join-zoom", JoinZoom,
     "end-zoom", EndZoom, "teams-call-clipboard", TeamsCallClipboard,
-    "workspace-start", StartDayWorkspace, "open-teams", OpenTeams)
+    "workspace-start", StartDayWorkspace, "open-teams", OpenTeams, "close-apps", CloseApplications)
 if DryRun {
     TestZoomPlacement()
-    TestWorkspaceBounds()
+    TestWorkspaceBounds(IntegrationTest)
+    TestCloseApplicationPolicy()
+    if IntegrationTest
+        TestCloseApplicationsUI()
     TestGeneralChromeSelection()
     TestWorkspaceAutomation()
     TestClipboardPhoneNumber()
@@ -73,12 +77,14 @@ try {
     HelperActions[A_Args[2]].Call()
 } catch as problem {
     ; Fixed error messages only; no window titles or clipboard contents are logged.
-    MsgBox problem.Message, "Trigger Search 0.16.24 — " A_Args[2]
+    MsgBox problem.Message, "Trigger Search 0.16.25 — " A_Args[2]
 } finally {
     DllCall("CloseHandle", "ptr", mutex)
 }
 ExitApp
+#HotIf !DryRun
 Esc::ExitApp
+#HotIf
 
 CheckTarget() {
     global DryRun, TargetHwnd
@@ -475,7 +481,7 @@ PositionAdvancedMD() {
     area := RightmostDisplay(DisplayWorkAreas())
     PlaceWindowInBounds TargetHwnd, HalfDisplayBounds(area, "left")
 }
-TestWorkspaceBounds() {
+TestWorkspaceBounds(includeGui := false) {
     areas := [{Left: 0, Top: 40, Right: 2560, Bottom: 1400},
         {Left: -1920, Top: -100, Right: 0, Bottom: 940}]
     amd := HalfDisplayBounds(RightmostDisplay(areas), "left")
@@ -492,6 +498,8 @@ TestWorkspaceBounds() {
     single := [{Left: 0, Top: 0, Right: 1920, Bottom: 1040}]
     if LeftmostDisplay(single) != RightmostDisplay(single)
         throw Error("A single display must safely provide both halves.")
+    if !includeGui
+        return
     ; A synthetic native window tests restore/placement without opening an app.
     fixture := Gui("+Resize", "Workspace geometry fixture")
     try {
@@ -552,7 +560,7 @@ RequiresOriginWindow(action) {
     ; Opening AMD activates its own identified login window. The launcher may
     ; have started it from any application. Form-filling actions retain focus checks.
     return action != "launch-advancedmd" && action != "join-zoom"
-        && action != "copilot" && action != "open-teams" && action != "workspace-start"
+        && action != "copilot" && action != "open-teams" && action != "workspace-start" && action != "close-apps"
         && action != "end-zoom" && action != "teams-call-clipboard"
 }
 
@@ -884,6 +892,8 @@ OpenTeams(arrange := false) {
 HelperMutexName(action) {
     if action = "workspace-start"
         return "Local\TriggerSearchWorkspace"
+    if action = "close-apps"
+        return "Local\TriggerSearchCloseApps"
     if action = "copilot" || action = "open-teams" || action = "join-zoom"
         return "Local\TriggerSearchApp-" action
     return "Local\TriggerSearchAdvancedMD"
@@ -1114,3 +1124,159 @@ TestGeneralChromeSelection() {
     Assert SelectGeneralChrome([], usage) = 0, "No eligible window must request a new Chrome window."
 }
 ; END SHARED CHROME FOCUS
+
+; Close application windows gracefully. No taskkill, app-process termination,
+; automatic save/discard choice, session logoff or Windows shutdown is used.
+CloseApplicationCandidate(process, className, title, style, extendedStyle, owner, zoomMain := false) {
+    process := StrLower(process)
+    if RegExMatch(process, "i)^autohotkey.*\.exe$")
+        || process = "trigger-search.exe" || process = "triggersearch.exe"
+        return false
+    if className = "Progman" || className = "WorkerW" || className = "Shell_TrayWnd"
+        || className = "Shell_SecondaryTrayWnd" || className = "#32770"
+        return false
+    shell := Map("shellexperiencehost.exe", true, "startmenuexperiencehost.exe", true,
+        "searchhost.exe", true, "textinputhost.exe", true, "lockapp.exe", true,
+        "dwm.exe", true, "winlogon.exe", true)
+    if shell.Has(process)
+        return false
+    if process = "explorer.exe" && className != "CabinetWClass" && className != "ExploreWClass"
+        return false
+    ; A known hidden main Zoom meeting can exist while its mini view is visible.
+    if zoomMain && process = "zoom.exe"
+        return true
+    if owner || (extendedStyle & 0x80) || Trim(title) = ""
+        return false
+    return !!(style & 0x00080000)
+        && (((style & 0x00C00000) = 0x00C00000) || (style & 0x00040000))
+}
+CloseApplicationEntry(hwnd, zoomMain := false) {
+    try {
+        process := WinGetProcessName(hwnd)
+        className := WinGetClass(hwnd)
+        title := WinGetTitle(hwnd)
+        verifiedZoom := zoomMain && process = "Zoom.exe" && ZoomMeetingCandidate(title, className)
+        if CloseApplicationCandidate(process, className, title, WinGetStyle(hwnd),
+            WinGetExStyle(hwnd), DllCall("GetWindow", "ptr", hwnd, "uint", 4, "ptr"), verifiedZoom)
+            return {Hwnd: hwnd, Pid: WinGetPID(hwnd), ZoomMain: verifiedZoom}
+    }
+    return 0
+}
+CaptureCloseApplications() {
+    entries := [], seen := Map()
+    for hwnd in WinGetList() {
+        if entry := CloseApplicationEntry(hwnd) {
+            entries.Push(entry)
+            seen[hwnd] := true
+        }
+    }
+    previous := DetectHiddenWindows(true)
+    try {
+        for hwnd in WinGetList("ahk_exe Zoom.exe") {
+            if !seen.Has(hwnd) && (entry := CloseApplicationEntry(hwnd, true)) && entry.ZoomMain {
+                entries.Push(entry)
+                seen[hwnd] := true
+            }
+        }
+    } finally {
+        DetectHiddenWindows previous
+    }
+    return entries
+}
+RequestApplicationClose(entry) {
+    ; Verify the same PID and current eligibility immediately before posting.
+    if !WinExist(entry.Hwnd) || WinGetPID(entry.Hwnd) != entry.Pid
+        return 0
+    if !CloseApplicationEntry(entry.Hwnd, entry.ZoomMain)
+        return 0
+    return DllCall("PostMessageW", "ptr", entry.Hwnd, "uint", 0x0010,
+        "ptr", 0, "ptr", 0, "int") ? 1 : -1
+}
+DispatchApplicationCloses(entries, sender := 0) {
+    result := {Requested: 0, Skipped: 0, Failed: 0}
+    ; A single initial snapshot: never enumerate or act on new Save/Discard or
+    ; End Meeting dialogs that appear in response to these close requests.
+    for entry in entries {
+        try {
+            status := sender ? sender.Call(entry) : RequestApplicationClose(entry)
+            if status > 0
+                result.Requested += 1
+            else if status = 0
+                result.Skipped += 1
+            else
+                result.Failed += 1
+        } catch {
+            result.Failed += 1
+        }
+    }
+    return result
+}
+CloseApplications() {
+    global DryRun, Steps
+    if DryRun {
+        Steps.Push(["Close applications", "normal WM_CLOSE requests only"])
+        return
+    }
+    result := DispatchApplicationCloses(CaptureCloseApplications())
+    message := "Close requests sent to " result.Requested " application windows."
+    message .= " Finish any save or meeting prompts."
+    if result.Failed
+        message .= " Some windows could not be asked to close."
+    TrayTip message, "Trigger Search"
+}
+TestCloseApplicationPolicy() {
+    style := 0x00CF0000
+    Assert CloseApplicationCandidate("chrome.exe", "Chrome_WidgetWin_1", "Browser", style, 0, 0)
+        && CloseApplicationCandidate("explorer.exe", "CabinetWClass", "Folder", style, 0, 0),
+        "Normal application and File Explorer windows must receive close requests."
+    for process in ["AutoHotkey64.exe", "AutoHotkey.exe", "TriggerSearch.exe", "dwm.exe", "StartMenuExperienceHost.exe"]
+        Assert !CloseApplicationCandidate(process, "AppWindow", "Application", style, 0, 0),
+            "AHK launchers, keyboard listeners and Windows shell processes must be protected."
+    Assert !CloseApplicationCandidate("explorer.exe", "Shell_TrayWnd", "Taskbar", style, 0, 0)
+        && !CloseApplicationCandidate("explorer.exe", "WorkerW", "Desktop", style, 0, 0)
+        && !CloseApplicationCandidate("notepad.exe", "#32770", "Save changes", style, 0, 0)
+        && !CloseApplicationCandidate("chrome.exe", "Chrome_WidgetWin_1", "Dialog", style, 0, 123)
+        && !CloseApplicationCandidate("chrome.exe", "Chrome_WidgetWin_1", "Toolbar", style, 0x80, 0),
+        "Shells, save prompts, owned dialogs and tool windows must never be close targets."
+    Assert CloseApplicationCandidate("Zoom.exe", "ZPContentViewWndClass", "", 0, 0, 0, true)
+        && !CloseApplicationCandidate("notepad.exe", "ZPContentViewWndClass", "", 0, 0, 0, true),
+        "Only an identified Zoom main window may bypass ordinary visibility/frame checks."
+    captured := [{Hwnd: 1}, {Hwnd: 2}]
+    sent := []
+    result := DispatchApplicationCloses(captured, (entry) => ClosePolicyFixtureSend(entry, sent))
+    Assert result.Requested = 1 && result.Skipped = 1 && sent.Length = 2,
+        "The dispatcher must use the supplied snapshot and count requests without force-killing apps."
+}
+ClosePolicyFixtureSend(entry, sent) {
+    sent.Push(entry.Hwnd)
+    return entry.Hwnd = 1 ? 1 : 0
+}
+TestCloseApplicationsUI() {
+    ; Only explicitly created test HWNDs are sent a close request. Never call the
+    ; production capture-all function from automated tests on a real workstation.
+    fixture := Gui("+Resize", "Close request fixture")
+    state := {Requests: 0, Prompt: 0}
+    fixture.OnEvent("Close", (*) => ClosePromptFixture(fixture, state))
+    try {
+        fixture.Show("NA w300 h150")
+        result := DispatchApplicationCloses([{Hwnd: fixture.Hwnd}],
+            (entry) => DllCall("PostMessageW", "ptr", entry.Hwnd, "uint", 0x0010, "ptr", 0, "ptr", 0, "int"))
+        deadline := A_TickCount + 1500
+        while !state.Requests && A_TickCount < deadline
+            Sleep 30
+        Assert result.Requested = 1 && state.Requests = 1 && WinExist(fixture.Hwnd)
+            && IsObject(state.Prompt) && WinExist(state.Prompt.Hwnd),
+            "Graceful close must leave an application's save prompt available, without killing it or choosing a button."
+    } finally {
+        if IsObject(state.Prompt)
+            state.Prompt.Destroy()
+        fixture.Destroy()
+    }
+}
+ClosePromptFixture(owner, state) {
+    state.Requests += 1
+    state.Prompt := Gui("+Owner" owner.Hwnd, "Save fixture")
+    state.Prompt.AddText(, "Invented unsaved document: waiting for the user.")
+    state.Prompt.Show("NA w340 h100")
+    return true ; Model an app refusing to close until the user chooses.
+}

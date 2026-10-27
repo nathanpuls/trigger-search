@@ -664,3 +664,60 @@ ordering, failure continuation, quarter geometry, main-window recognition,
 clinical/workspace lock separation, worker dry runs and install/rollback. These
 checks use invented window data and synthetic windows. They do not sign into
 Microsoft/AdvancedMD, join Zoom, admit a patient or verify the actual Dell's apps.
+
+
+## Q — Close all applications, and quiet refresh checks (0.16.25)
+
+Search **Q** and press Enter to run **Close all applications**
+(`workspace.close-all`). This exact alias takes precedence over other exact Q
+aliases and longer prefixes. It has no additional global keyboard shortcut.
+There is no launcher confirmation dialog after Enter; applications retain their
+normal save, unsaved-work and End Meeting prompts, which must be handled manually.
+
+The launcher first stops its own still-running temporary automation workers,
+using the exact native process handles obtained when it created them. This
+prevents Start my day or an active macro from continuing to open apps or send
+inputs after Q. It does not scan for or terminate unrelated AutoHotkey processes.
+The resident Trigger Search launcher and its essential keyboard remaps remain
+available. Child-process handles are pruned after exit and closed on launcher
+exit; ordinary launcher exit does not terminate application processes.
+
+The close worker captures a single snapshot of normal application windows and
+posts **WM_CLOSE** to each eligible HWND after rechecking its PID and eligibility.
+It does not force-kill the application, press Save/Discard, confirm End Meeting,
+log off, or shut down Windows. New dialogs that appear after the requests are
+not added to the snapshot. The desktop, taskbar, shell components, AHK listeners,
+tool windows and owned/dialog windows are excluded. File Explorer folder windows
+are included. An identified hidden main Zoom meeting window is also included so
+mini mode can still show Zoom's normal close/end prompt. A final notification
+reports requests sent, not a claim that every app has exited. Apps may refuse a
+close request, keep a save prompt open, or continue background services/tray
+processes according to their own settings.
+
+Refresh all scripts previously ran the visible chooser/accessibility integration
+tests on the Dell. That produced the fake **Show full meeting window / End
+meeting / Reclaim Host** window and the test **Web search is disabled while
+local patient search is enabled** notification. They were test fixtures and
+validation output, not controls from an actual meeting.
+
+`--self-test`, used by manual install/refresh and rollback validation, is now
+quiet: parsing, ranking, private-directory policy, masks, dispatch, geometry,
+close-window eligibility and managed-worker lifecycle checks still run, but no
+chooser, Zoom fixture, resize fixture or test save prompt is shown. Validation
+instances hide their tray icons and disable their launcher/automation/remap
+hotkeys so they do not compete with the running launcher. Self-tests still
+never load the actual patient directory. The real patient-mode Google safeguard
+is unchanged; its notification can still appear for an explicitly requested
+web search during ordinary use.
+
+Visible UI tests now require **`--integration-test`**, which CI invokes explicitly.
+They exercise the launcher, Zoom accessibility, native half-window placement,
+and a synthetic unsaved-document window that receives WM_CLOSE but keeps its
+save prompt open. No automated test runs the production capture-all close action
+against the workstation's actual applications. Installer/rollback tests also
+exercise the quiet validation path. Rollback to an older release may retain that
+older release's original visible test behavior.
+
+After Refresh all scripts, confirm the fake Zoom window and test notification no
+longer appear, then open F6 and search Q. Finish any app save/meeting prompts.
+Actual Dell applications' shutdown behavior remains a device check.

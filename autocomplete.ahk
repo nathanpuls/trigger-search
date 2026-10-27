@@ -3,7 +3,7 @@
 Persistent
 
 ; Trigger Search Windows client
-global AppVersion := "0.16.24"
+global AppVersion := "0.16.25"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -50,6 +50,7 @@ global AutomationRegistry := Map(
     "dell.copy-back", {File: "dell/helpers.ahk", Action: "copy-back"},
     "zoom.join", {File: "dell/helpers.ahk", Action: "join-zoom"},
     "zoom.end", {File: "dell/helpers.ahk", Action: "end-zoom"},
+    "workspace.close-all", {File: "dell/helpers.ahk", Action: "close-apps"},
     "workspace.start-day", {File: "dell/helpers.ahk", Action: "workspace-start"},
     "teams.open", {File: "dell/helpers.ahk", Action: "open-teams"},
     "chrome.general", {File: "", Action: "builtin:chrome-general"},
@@ -114,8 +115,12 @@ global PreviewGui := 0
 global PreviewChoiceValue := 0
 global PreviewExpanded := 0
 global ModifierHud := 0
+global ManagedWorkerHandles := []
+global SelfTesting := A_Args.Length > 0 && (A_Args[1] = "--self-test" || A_Args[1] = "--integration-test")
+global IntegrationTest := A_Args.Length > 0 && A_Args[1] = "--integration-test"
 
-if A_Args.Length > 0 && A_Args[1] = "--self-test" {
+if SelfTesting {
+    A_IconHidden := true
     SetTimer RunSelfTestsAndExit, -50
 } else if KeyboardTestMode {
     SetTimer RunKeyboardIntegrationTest, -50
@@ -125,6 +130,7 @@ if A_Args.Length > 0 && A_Args[1] = "--self-test" {
 }
 
 ; Right Ctrl is a tap-only parallel launcher. Combinations retain Ctrl behavior.
+#HotIf !SelfTesting
 ~*SC11D::BeginRightControlTap()
 ~*SC11D Up::EndRightControlTap()
 ^!Space::ShowChooser()
@@ -133,7 +139,7 @@ if A_Args.Length > 0 && A_Args[1] = "--self-test" {
 ; Keep this variant before the general Alt+4 AMD binding: Zoom owns it only
 ; while an actual meeting is focused. Alt+5 also overrides clipboard paste only
 ; in a focused meeting. Ordinary typing and arrows are untouched.
-#HotIf AutomationShortcutEnabled("zoom.join") && ActiveZoomMeeting()
+#HotIf !SelfTesting && AutomationShortcutEnabled("zoom.join") && ActiveZoomMeeting()
 !Left::ZoomWindowCommand("left")
 !Right::ZoomWindowCommand("right")
 !Up::ZoomWindowCommand("up")
@@ -146,72 +152,72 @@ if A_Args.Length > 0 && A_Args[1] = "--self-test" {
 #HotIf
 
 ; These shortcuts replace the corresponding Dell listeners only in managed installs.
-#HotIf AutomationShortcutEnabled("zoom.join")
+#HotIf !SelfTesting && AutomationShortcutEnabled("zoom.join")
 !z::RunAutomation("zoom.join")
-#HotIf AutomationShortcutEnabled("zoom.end")
+#HotIf !SelfTesting && AutomationShortcutEnabled("zoom.end")
 !1::RunAutomation("zoom.end")
-#HotIf AutomationShortcutEnabled("teams.call-clipboard")
+#HotIf !SelfTesting && AutomationShortcutEnabled("teams.call-clipboard")
 !p::RunAutomation("teams.call-clipboard")
-#HotIf AutomationShortcutEnabled("advancedmd.follow-up-office")
+#HotIf !SelfTesting && AutomationShortcutEnabled("advancedmd.follow-up-office")
 !o::RunAutomation("advancedmd.follow-up-office")
-#HotIf AutomationShortcutEnabled("advancedmd.follow-up-tele")
+#HotIf !SelfTesting && AutomationShortcutEnabled("advancedmd.follow-up-tele")
 !t::RunAutomation("advancedmd.follow-up-tele")
-#HotIf AutomationShortcutEnabled("advancedmd.intake-office")
+#HotIf !SelfTesting && AutomationShortcutEnabled("advancedmd.intake-office")
 !0::RunAutomation("advancedmd.intake-office")
-#HotIf AutomationShortcutEnabled("workspace.start-day")
+#HotIf !SelfTesting && AutomationShortcutEnabled("workspace.start-day")
 !l::RunAutomation("workspace.start-day")
-#HotIf AutomationShortcutEnabled("dell.copilot")
+#HotIf !SelfTesting && AutomationShortcutEnabled("dell.copilot")
 !c::RunAutomation("dell.copilot")
-#HotIf AutomationShortcutEnabled("teams.open")
+#HotIf !SelfTesting && AutomationShortcutEnabled("teams.open")
 !s::RunAutomation("teams.open")
-#HotIf AutomationShortcutEnabled("chrome.general")
+#HotIf !SelfTesting && AutomationShortcutEnabled("chrome.general")
 !x::RunAutomation("chrome.general")
-#HotIf AutomationShortcutEnabled("dell.launch-advancedmd")
+#HotIf !SelfTesting && AutomationShortcutEnabled("dell.launch-advancedmd")
 !a::RunAutomation("dell.launch-advancedmd")
-#HotIf AutomationShortcutEnabled("dell.blueprint")
+#HotIf !SelfTesting && AutomationShortcutEnabled("dell.blueprint")
 !b::RunAutomation("dell.blueprint")
-#HotIf AutomationShortcutEnabled("dell.mse-navigation")
+#HotIf !SelfTesting && AutomationShortcutEnabled("dell.mse-navigation")
 !q::RunAutomation("dell.mse-navigation")
-#HotIf AutomationShortcutEnabled("dell.plan-navigation")
+#HotIf !SelfTesting && AutomationShortcutEnabled("dell.plan-navigation")
 !4::RunAutomation("dell.plan-navigation")
-#HotIf AutomationShortcutEnabled("dell.initials")
+#HotIf !SelfTesting && AutomationShortcutEnabled("dell.initials")
 F2::RunAutomation("dell.initials")
-#HotIf AutomationShortcutEnabled("dell.charge-slip")
+#HotIf !SelfTesting && AutomationShortcutEnabled("dell.charge-slip")
 F3::RunAutomation("dell.charge-slip")
-#HotIf AutomationShortcutEnabled("dell.timestamp")
+#HotIf !SelfTesting && AutomationShortcutEnabled("dell.timestamp")
 F4::RunAutomation("dell.timestamp")
-#HotIf AutomationShortcutEnabled("dell.schedule-email")
+#HotIf !SelfTesting && AutomationShortcutEnabled("dell.schedule-email")
 F8::RunAutomation("dell.schedule-email")
-#HotIf AutomationShortcutEnabled("dell.mse-fast")
+#HotIf !SelfTesting && AutomationShortcutEnabled("dell.mse-fast")
 ^!m::RunAutomation("dell.mse-fast")
-#HotIf AutomationShortcutEnabled("clipboard.store")
+#HotIf !SelfTesting && AutomationShortcutEnabled("clipboard.store")
 ^!5::RunAutomation("clipboard.store")
-#HotIf AutomationShortcutEnabled("clipboard.paste")
+#HotIf !SelfTesting && AutomationShortcutEnabled("clipboard.paste")
 !5::RunAutomation("clipboard.paste")
-#HotIf AutomationShortcutEnabled("dell.mse")
+#HotIf !SelfTesting && AutomationShortcutEnabled("dell.mse")
 :*:'mse:: {
     RunAutomation("dell.mse")
 }
-#HotIf AutomationShortcutEnabled("dell.follow-up-mse")
+#HotIf !SelfTesting && AutomationShortcutEnabled("dell.follow-up-mse")
 :*:'fum:: {
     RunAutomation("dell.follow-up-mse")
 }
-#HotIf AutomationShortcutEnabled("dell.sid")
+#HotIf !SelfTesting && AutomationShortcutEnabled("dell.sid")
 :*:;sid:: {
     RunAutomation("dell.sid")
 }
-#HotIf AutomationShortcutEnabled("dell.copy-back")
+#HotIf !SelfTesting && AutomationShortcutEnabled("dell.copy-back")
 :*:;cc:: {
     RunAutomation("dell.copy-back")
 }
 
 #HotIf
 
-#HotIf IsTriggerSearchOpen()
+#HotIf !SelfTesting && IsTriggerSearchOpen()
 $*Escape::HandleEscape()
 #HotIf
 
-#HotIf IsChooserOpen()
+#HotIf !SelfTesting && IsChooserOpen()
 Up::MoveSelection(-1)
 Down::MoveSelection(1)
 Enter::ChooseSelected()
@@ -239,14 +245,16 @@ Left::CloseDetails()
 ~*Ctrl Up::HideModifierHud()
 #HotIf
 
-#HotIf IsPreviewOpen()
+#HotIf !SelfTesting && IsPreviewOpen()
 p::PastePreview()
 c::CopyPreview()
 #HotIf
 
+#HotIf !SelfTesting
 ~LButton::ResetBoundary()
 ~RButton::ResetBoundary()
 ~MButton::ResetBoundary()
+#HotIf
 
 Initialize() {
     global CacheDir, RefreshIntervalMs, Trigger, SheetId
@@ -299,7 +307,8 @@ Initialize() {
 }
 
 BuildChooser() {
-    global ChooserGui, SearchBox, ResultsView, FooterText
+    global ChooserGui, SearchBox, ResultsView, FooterText, SelfTesting, IntegrationTest
+    Assert !SelfTesting || IntegrationTest, "Quiet refresh validation must not create a launcher window."
 
     ChooserGui := Gui("+AlwaysOnTop +ToolWindow", "Trigger Search")
     ChooserGui.MarginX := 14
@@ -474,26 +483,28 @@ EnsureKeyboardWatcher(*) {
 }
 
 InstallTrigger(newTrigger) {
-    global Trigger, TriggerHotkey
+    global Trigger, TriggerHotkey, SelfTesting
 
     newTrigger := SubStr(Trim(newTrigger), 1, 1)
     if newTrigger = ""
         return
 
-    if TriggerHotkey != "" {
+    if !SelfTesting && TriggerHotkey != "" {
         try Hotkey TriggerHotkey, "Off"
     }
 
     Trigger := newTrigger
     TriggerHotkey := "$" Trigger
-    Hotkey TriggerHotkey, HandleTrigger, "On"
+    if !SelfTesting
+        Hotkey TriggerHotkey, HandleTrigger, "On"
 }
 
 InstallLauncherHotkey(modifierValue, keyValue) {
-    global LauncherModifier, LauncherKey, LauncherHotkey
+    global LauncherModifier, LauncherKey, LauncherHotkey, SelfTesting
 
     if LauncherHotkey != "" {
-        try Hotkey LauncherHotkey, "Off"
+        if !SelfTesting
+            try Hotkey LauncherHotkey, "Off"
         LauncherHotkey := ""
     }
 
@@ -543,7 +554,8 @@ InstallLauncherHotkey(modifierValue, keyValue) {
     }
 
     LauncherHotkey := "$" modifierPrefix keyName
-    Hotkey LauncherHotkey, HandleLauncher, "On"
+    if !SelfTesting
+        Hotkey LauncherHotkey, HandleLauncher, "On"
 }
 
 HandleLauncher(*) {
@@ -1229,6 +1241,14 @@ HomeChoices() {
 }
 
 CompareRanked(a, b) {
+    ; Q is the explicitly requested close-all command. It wins ties with other
+    ; exact Q aliases; other searches and alias-length ordering are unchanged.
+    if a.Rank = 0 && b.Rank = 0 {
+        closeA := a.Item.HasOwnProp("ScriptId") && a.Item.ScriptId = "workspace.close-all"
+        closeB := b.Item.HasOwnProp("ScriptId") && b.Item.ScriptId = "workspace.close-all"
+        if closeA != closeB
+            return closeA ? -1 : 1
+    }
     if a.Rank != b.Rank
         return a.Rank < b.Rank ? -1 : 1
     if a.Rank = 1 && a.AliasLength != b.AliasLength
@@ -1915,11 +1935,12 @@ LaunchSearchQuery(choice) {
 }
 
 SearchGoogleQuery(*) {
-    global SearchBox, ChooserGui, ChooserOpen, AtBoundary
+    global SearchBox, ChooserGui, ChooserOpen, AtBoundary, SelfTesting
 
     ; A misspelled/partial patient name must never fall through to Google.
     if LocalPatientSearchIsPrivate() {
-        TrayTip "Web search is disabled while local patient search is enabled.", "Trigger Search"
+        if !SelfTesting
+            TrayTip "Web search is disabled while local patient search is enabled.", "Trigger Search"
         return false
     }
     phrase := Trim(SearchBox.Value)
@@ -2717,7 +2738,7 @@ RunSelfTestsAndExit() {
 
 RunSelfTests() {
     global Snippets, DetailParent, SearchServiceParent, RecentItems, InboxSheet
-    global ChooserOpen, PreviewOpen, CategoryParent
+    global ChooserOpen, PreviewOpen, CategoryParent, IntegrationTest
 
     TestAutomationDisabling()
     TestAutomationFormattingCache()
@@ -2728,8 +2749,11 @@ RunSelfTests() {
     TestLocalPatients()
     TestGeneralChromeSelection()
     TestWorkspaceEnabledMask()
+    TestCloseAllAliasRanking()
+    TestManagedWorkerLifecycle()
     TestZoomWindowControls()
-    TestZoomAccessibility()
+    if IntegrationTest
+        TestZoomAccessibility()
     automationRows := ParseCsv('Name,Alias,Description,Script ID`n'
         . 'Office visit,of,Office follow up,advancedmd.follow-up-office`n'
         . 'Renamed duplicate,other,Duplicate,advancedmd.follow-up-office`n'
@@ -3084,7 +3108,8 @@ RunSelfTests() {
         "A raw spreadsheet ID should remain valid."
     Assert ExtractSheetId("https://example.com/not-a-sheet") = "",
         "A non-Google link should be rejected."
-    TestLauncherToggle()
+    if IntegrationTest
+        TestLauncherToggle()
 }
 
 TestSnippet(label, content, aliases) {
@@ -3666,6 +3691,118 @@ ParseAutomations(rows, info, output) {
     }
 }
 
+; Hold the actual process handles returned at creation. Q can stop only workers
+; launched by this launcher, without scanning/killing other AutoHotkey processes.
+StartManagedWorker(path, target, arguments := "") {
+    global ManagedWorkerHandles
+    static cleanupRegistered := false
+    PruneManagedWorkerHandles()
+    command := '"' A_AhkPath '" /ErrorStdOut=UTF-8 "' path '" ' Integer(target) arguments
+    buffer := Buffer(StrPut(command, "UTF-16") * 2, 0)
+    StrPut command, buffer, "UTF-16"
+    startup := Buffer(A_PtrSize = 8 ? 104 : 68, 0)
+    NumPut "UInt", startup.Size, startup
+    processInfo := Buffer(A_PtrSize * 2 + 8, 0)
+    if !DllCall("CreateProcessW", "str", A_AhkPath, "ptr", buffer, "ptr", 0,
+        "ptr", 0, "int", false, "uint", 0x08000000, "ptr", 0, "ptr", 0,
+        "ptr", startup, "ptr", processInfo, "int")
+        throw Error("Could not start the managed automation.")
+    handle := NumGet(processInfo, 0, "Ptr")
+    thread := NumGet(processInfo, A_PtrSize, "Ptr")
+    pid := NumGet(processInfo, A_PtrSize * 2, "UInt")
+    DllCall("CloseHandle", "ptr", thread)
+    ManagedWorkerHandles.Push(handle)
+    if !cleanupRegistered {
+        OnExit CloseManagedWorkerHandles
+        cleanupRegistered := true
+    }
+    return pid
+}
+PruneManagedWorkerHandles() {
+    global ManagedWorkerHandles
+    active := []
+    for handle in ManagedWorkerHandles {
+        if DllCall("WaitForSingleObject", "ptr", handle, "uint", 0, "uint") = 0x102
+            active.Push(handle)
+        else
+            DllCall("CloseHandle", "ptr", handle)
+    }
+    ManagedWorkerHandles := active
+}
+StopManagedWorkers() {
+    global ManagedWorkerHandles
+    remaining := []
+    for handle in ManagedWorkerHandles {
+        state := DllCall("WaitForSingleObject", "ptr", handle, "uint", 0, "uint")
+        if state = 0x102 {
+            ; Only the temporary AHK worker is stopped here, never the browser,
+            ; clinical application, unrelated script, or resident launcher.
+            DllCall("TerminateProcess", "ptr", handle, "uint", 0)
+            state := DllCall("WaitForSingleObject", "ptr", handle, "uint", 1000, "uint")
+        }
+        if state = 0x102
+            remaining.Push(handle)
+        else
+            DllCall("CloseHandle", "ptr", handle)
+    }
+    ManagedWorkerHandles := remaining
+    return remaining.Length = 0
+}
+CloseManagedWorkerHandles(*) {
+    global ManagedWorkerHandles
+    for handle in ManagedWorkerHandles
+        DllCall("CloseHandle", "ptr", handle)
+    ManagedWorkerHandles := []
+}
+TestManagedWorkerLifecycle() {
+    global ManagedWorkerHandles
+    saved := ManagedWorkerHandles
+    ManagedWorkerHandles := []
+    fixture := A_Temp "\trigger-managed-worker-fixture-" A_TickCount ".ahk"
+    unrelatedHandle := 0
+    try {
+        FileAppend "#Requires AutoHotkey v2.0`n#SingleInstance Off`n#NoTrayIcon`nSleep 60000`nExitApp`n",
+            fixture, "UTF-8-RAW"
+        StartManagedWorker(fixture, 0)
+        unrelatedHandle := ManagedWorkerHandles.Pop()
+        pid := StartManagedWorker(fixture, 0)
+        Assert pid > 0 && ManagedWorkerHandles.Length = 1
+            && DllCall("WaitForSingleObject", "ptr", ManagedWorkerHandles[1], "uint", 0, "uint") = 0x102,
+            "A managed worker must retain its exact live process handle."
+        Assert StopManagedWorkers() && ManagedWorkerHandles.Length = 0,
+            "Q must stop its own worker and clear the owned handle without enumerating other processes."
+        Assert DllCall("WaitForSingleObject", "ptr", unrelatedHandle, "uint", 0, "uint") = 0x102,
+            "A worker outside the launcher's owned handle list must remain untouched."
+    } finally {
+        StopManagedWorkers()
+        if unrelatedHandle {
+            ; Dispose only this deliberately detached synthetic test process.
+            DllCall("TerminateProcess", "ptr", unrelatedHandle, "uint", 0)
+            DllCall("WaitForSingleObject", "ptr", unrelatedHandle, "uint", 1000)
+            DllCall("CloseHandle", "ptr", unrelatedHandle)
+        }
+        ManagedWorkerHandles := saved
+        if FileExist(fixture)
+            FileDelete fixture
+    }
+}
+
+TestCloseAllAliasRanking() {
+    global Snippets, DetailParent, SearchServiceParent, CategoryParent, AutomationFormattingReady
+    saved := {Items: Snippets, Detail: DetailParent, Service: SearchServiceParent, Category: CategoryParent}
+    try {
+        rows := []
+        ParseAutomations ParseCsv("Name,Alias,Description,Script ID`nClose all applications,Q,Graceful close,workspace.close-all"),
+            {Name: "Automations", Gid: "987"}, rows
+        Assert rows.Length = 1, "Close all must have a trusted automation mapping."
+        Snippets := [TestSnippet("Other Q", "ordinary text", ["q"]), TestSnippet("Queue", "queue", ["queue"]), rows[1]]
+        DetailParent := 0, SearchServiceParent := 0, CategoryParent := ""
+        Assert FilterChoices("Q")[1].ScriptId = "workspace.close-all",
+            "The explicitly requested Q close command must be the first exact-alias result."
+    } finally {
+        Snippets := saved.Items, DetailParent := saved.Detail, SearchServiceParent := saved.Service, CategoryParent := saved.Category
+    }
+}
 WorkspaceEnabledMask() {
     flags := Map("dell.launch-advancedmd", 1, "zoom.join", 2,
         "dell.copilot", 4, "chrome.general", 8, "teams.open", 16)
@@ -3699,19 +3836,23 @@ RunAutomation(scriptId, choice := 0) {
         if path != "" && !FileExist(path)
             throw Error("Automation is not installed. Use Refresh all scripts.")
         target := ChooserOpen ? TargetWindow : WinExist("A")
-        if !target || !WinExist("ahk_id " target)
+        if scriptId != "workspace.close-all" && (!target || !WinExist("ahk_id " target))
             throw Error("The original window is no longer available.")
         if ChooserOpen {
             HideModifierHud()
             ChooserGui.Hide()
             ChooserOpen := false
         }
-        WinActivate "ahk_id " target
-        if !WinWaitActive("ahk_id " target, , 1)
-            throw Error("Could not return to the original window.")
+        if scriptId != "workspace.close-all" {
+            WinActivate "ahk_id " target
+            if !WinWaitActive("ahk_id " target, , 1)
+                throw Error("Could not return to the original window.")
+        }
         if entry.File = ""
             RunBuiltinAutomation entry.Action
         else {
+            if scriptId = "workspace.close-all" && !StopManagedWorkers()
+                throw Error("A managed automation could not be stopped. Close requests were not sent.")
             arguments := entry.Action != "" ? ' "' entry.Action '"' : ""
             if scriptId = "workspace.start-day"
                 arguments .= " " WorkspaceEnabledMask()
@@ -3723,7 +3864,7 @@ RunAutomation(scriptId, choice := 0) {
                     try WinHide main
                 WinActivate mini.Hwnd
             } else {
-                Run '"' A_AhkPath '" "' path '" ' target arguments
+                StartManagedWorker path, target, arguments
                 if scriptId = "zoom.join" {
                     ZoomLaunchDeadline := A_TickCount + 60000
                     SetTimer TrackZoomMeeting, -700
@@ -4291,9 +4432,9 @@ DefaultLocalPatientPath() {
 }
 
 LoadLocalPatients(pathOverride := "") {
-    global LocalPatients, LocalPatientPrivacy, LocalPatientStatus, SettingsPath, KeyboardTestMode
+    global LocalPatients, LocalPatientPrivacy, LocalPatientStatus, SettingsPath, KeyboardTestMode, SelfTesting
     ; Self-tests on a real workstation must never read its patient directory.
-    if pathOverride = "" && (KeyboardTestMode || (A_Args.Length && A_Args[1] = "--self-test"))
+    if pathOverride = "" && (KeyboardTestMode || SelfTesting)
         return
     LocalPatients := []
     LocalPatientStatus := ""
@@ -4599,11 +4740,13 @@ InitializeKeyboardRemaps() {
     SetKeyboardRemaps enabled, false
 }
 SetKeyboardRemaps(enabled, persist := true) {
-    global RemapsEnabled, SettingsPath
-    HotIf ShouldRemapKeys
-    for key, value in KeyboardRemapMap()
-        Hotkey "$" key, SendRemappedKey.Bind(value), enabled ? "On" : "Off"
-    HotIf
+    global RemapsEnabled, SettingsPath, SelfTesting
+    if !SelfTesting {
+        HotIf ShouldRemapKeys
+        for key, value in KeyboardRemapMap()
+            Hotkey "$" key, SendRemappedKey.Bind(value), enabled ? "On" : "Off"
+        HotIf
+    }
     RemapsEnabled := !!enabled
     if persist
         IniWrite enabled ? "1" : "0", SettingsPath, "keyboard", "remapsEnabled"
@@ -4998,6 +5141,7 @@ InvokeZoomAccessibleButton(button) {
         throw Error("Zoom's requested button was not available. Use Zoom's own window controls and try again.")
 }
 ZoomUiAutomation(hwnd, pattern, invoke) {
+    global IntegrationTest
     ; Only fixed internal patterns and a numeric HWND enter this on-demand
     ; Windows UI Automation bridge. No clipboard, titles, numbers, or Sheet code.
     static script := A_Temp "\trigger-search-zoom-ui-" DllCall("GetCurrentProcessId") ".ps1"
@@ -5078,7 +5222,7 @@ if ($FixtureDiagnostic -and -not $found) {
         powershell := A_WinDir "\System32\WindowsPowerShell\v1.0\powershell.exe"
         command := '"' powershell '" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "' script
             . '" -Window ' Integer(hwnd) ' -Pattern "' expression '" -ResultPath "' response '"' (invoke ? " -Invoke" : "")
-        fixtureDiagnostic := A_Args.Length > 0 && A_Args[1] = "--self-test" && WinGetTitle(hwnd) = "Trigger Search accessibility fixture"
+        fixtureDiagnostic := IntegrationTest && WinGetTitle(hwnd) = "Trigger Search accessibility fixture"
         if fixtureDiagnostic
             command .= " -FixtureDiagnostic"
         Run command, , "Hide", &pid

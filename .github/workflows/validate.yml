@@ -60,7 +60,7 @@ jobs:
           Remove-Item $result -ErrorAction SilentlyContinue
           $test = Start-Process `
             -FilePath $exe.FullName `
-            -ArgumentList @('/ErrorStdOut=UTF-8', ('"' + "$PWD\windows\autocomplete.ahk" + '"'), '--self-test') `
+            -ArgumentList @('/ErrorStdOut=UTF-8', ('"' + "$PWD\windows\autocomplete.ahk" + '"'), '--integration-test') `
             -RedirectStandardOutput "$env:TEMP\trigger-self-test-output.txt" `
             -RedirectStandardError "$env:TEMP\trigger-self-test-error.txt" `
             -PassThru
@@ -108,7 +108,8 @@ jobs:
             if ($p.ExitCode -ne 0) { throw "Worker validation failed: $file" }
             $workerOut = Join-Path $env:TEMP ('trigger-worker-' + $file.BaseName + '-out.txt')
             $workerErr = Join-Path $env:TEMP ('trigger-worker-' + $file.BaseName + '-err.txt')
-            $p = Start-Process $exe.FullName -ArgumentList @('/ErrorStdOut=UTF-8', ('"' + $file.FullName + '"'), '--self-test') -PassThru -RedirectStandardOutput $workerOut -RedirectStandardError $workerErr
+            $testMode = if ($file.Name -eq 'helpers.ahk') { '--integration-test' } else { '--self-test' }
+            $p = Start-Process $exe.FullName -ArgumentList @('/ErrorStdOut=UTF-8', ('"' + $file.FullName + '"'), $testMode) -PassThru -RedirectStandardOutput $workerOut -RedirectStandardError $workerErr
             $null = $p.Handle
             if (-not $p.WaitForExit(30000)) { $p.Kill(); throw "Worker dry run timed out: $file" }
             if ($p.ExitCode -ne 0) {

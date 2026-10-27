@@ -190,5 +190,11 @@
     "s, teams, open teams",
     "Focus/open the Teams desktop app. Shortcut: Alt + S.",
     "teams.open"
+  ],
+  [
+    "Close all applications",
+    "Q",
+    "Ask open apps to close; finish any save or meeting prompts. Alias: Q.",
+    "workspace.close-all"
   ]
 ]
