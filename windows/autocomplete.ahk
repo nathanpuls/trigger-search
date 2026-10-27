@@ -3,7 +3,7 @@
 Persistent
 
 ; Trigger Search Windows client
-global AppVersion := "0.16.19"
+global AppVersion := "0.16.20"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -3698,8 +3698,10 @@ SendRemappedKey(value, *) {
 }
 
 ShouldRemapKeys(*) {
-    global RemapsEnabled
-    return RemapsEnabled && AutomationEnabled("keyboard.remaps") && !IsTriggerSearchOpen()
+    global RemapsEnabled, DisabledAutomations
+    ; Essential local keys must work before the first Sheet formatting check and
+    ; while offline. Still honor an explicitly verified, cached strikethrough.
+    return RemapsEnabled && !DisabledAutomations.Has("keyboard.remaps") && !IsTriggerSearchOpen()
 }
 
 RunKeyboardIntegrationTest(*) {
@@ -3979,7 +3981,9 @@ SetKeyboardRemaps(enabled, persist := true) {
         IniWrite enabled ? "1" : "0", SettingsPath, "keyboard", "remapsEnabled"
 }
 TestKeyboardRemaps() {
-    global RemapsEnabled, ChooserOpen, PreviewOpen, SettingsPath
+    global RemapsEnabled, ChooserOpen, PreviewOpen, SettingsPath, AutomationFormattingReady, DisabledAutomations
+    savedReady := AutomationFormattingReady
+    savedDisabled := DisabledAutomations
     savedEnabled := RemapsEnabled
     savedChooser := ChooserOpen
     savedPreview := PreviewOpen
@@ -3988,8 +3992,18 @@ TestKeyboardRemaps() {
     try {
         ChooserOpen := false
         PreviewOpen := false
+        AutomationFormattingReady := false
+        DisabledAutomations := Map()
         InitializeKeyboardRemaps()
-        Assert RemapsEnabled && ShouldRemapKeys(), "Managed installs must enable original single-key remaps by default."
+        Assert RemapsEnabled && ShouldRemapKeys(), "Essential remaps must work at startup without verified Sheet formatting."
+        AutomationFormattingReady := true
+        Assert ShouldRemapKeys(), "Successful formatting refresh must preserve enabled remaps."
+        DisabledAutomations["keyboard.remaps"] := true
+        Assert !ShouldRemapKeys(), "Verified strikethrough must disable remaps."
+        AutomationFormattingReady := false
+        Assert !ShouldRemapKeys(), "Offline remaps must honor a cached explicit strikethrough."
+        DisabledAutomations := Map()
+        Assert ShouldRemapKeys(), "Missing formatting or offline startup must not disable essential keys."
         ChooserOpen := true
         Assert !ShouldRemapKeys(), "Remaps must leave navigation and editing normal inside the launcher."
         ChooserOpen := false
@@ -4003,6 +4017,8 @@ TestKeyboardRemaps() {
         if FileExist(SettingsPath)
             FileDelete SettingsPath
         SettingsPath := savedSettings
+        AutomationFormattingReady := savedReady
+        DisabledAutomations := savedDisabled
         SetKeyboardRemaps savedEnabled, false
         ChooserOpen := savedChooser
         PreviewOpen := savedPreview

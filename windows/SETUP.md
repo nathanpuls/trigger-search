@@ -259,6 +259,11 @@ are enabled by default and stay inactive inside the launcher so its text fields
 and navigation work normally. The Sheet's existing `keyboard.remaps` automation
 and the tray toggle both save an explicit ON/OFF preference locally.
 
+As of 0.16.20, these essential keys work immediately at startup and offline;
+they do not wait for the Google Sheet formatting check. A verified strikethrough
+of `keyboard.remaps` is still honored, including from the last saved cache.
+An explicitly saved local OFF preference is also preserved.
+
 | Key | Action |
 | --- | --- |
 | Insert | Copy |
