@@ -3,7 +3,7 @@
 Persistent
 
 ; Trigger Search Windows client
-global AppVersion := "0.16.20"
+global AppVersion := "0.16.21"
 
 SendMode "Input"
 SetTitleMatchMode 2
@@ -86,6 +86,10 @@ global ChooserOpen := false
 global PreviewOpen := false
 global SheetInfos := []
 global Snippets := []
+; Patient records never join Snippets or the workbook cache.
+global LocalPatients := []
+global LocalPatientPrivacy := false
+global LocalPatientStatus := ""
 global RecentItems := []
 global RecentLimit := 9
 global VisibleChoices := []
@@ -246,6 +250,7 @@ Initialize() {
     LoadSheetConfiguration()
     LoadRecentItems()
     LoadCache()
+    LoadLocalPatients()
     BuildChooser()
     InstallTrigger(Trigger)
     InstallLauncherHotkey(LauncherModifier, LauncherKey)
@@ -273,7 +278,7 @@ Initialize() {
 
     SetTimer CheckActiveWindow, 400
     SetTimer RefreshData, RefreshIntervalMs
-    if SheetId = ""
+    if SheetId = "" && !LocalPatientSearchIsPrivate()
         SetTimer () => PromptForGoogleSheet(true), -100
     else if Snippets.Length = 0
         RefreshData(true)
@@ -558,7 +563,7 @@ ShowChooser(*) {
     global ReturnParentKey, SearchBox, ChooserGui
     global Refreshing, RefreshPending, LastRefreshTick
     global LastRefreshError, SheetId, ActionsForChoice, FooterText
-    global PreviewOpen, PreviewGui
+    global PreviewOpen, PreviewGui, LocalPatients, LocalPatientStatus
 
     ; A second open request must not capture our own window as the target or
     ; position relative to it. Keep the current search, selection, and location.
@@ -572,13 +577,14 @@ ShowChooser(*) {
         return
     }
 
-    if SheetId = "" {
+    LoadLocalPatients()
+    if SheetId = "" && LocalPatients.Length = 0 {
         PromptForGoogleSheet(true)
         if SheetId = ""
             return
     }
 
-    if Snippets.Length = 0 {
+    if Snippets.Length = 0 && LocalPatients.Length = 0 {
         if !Refreshing
             RefreshData(true)
         if Snippets.Length = 0 {
@@ -601,7 +607,7 @@ ShowChooser(*) {
     ReturnParentKey := ""
     ActionsForChoice := 0
     SearchBox.Enabled := true
-    FooterText.Text := "Ctrl+R  Refresh now"
+    FooterText.Text := LocalPatientFooter()
     FooterText.Visible := true
     UpdateChooserContext()
     SearchBox.Value := ""
@@ -676,22 +682,26 @@ RefreshInPlace(*) {
         return
     if Refreshing
         return
+    LoadLocalPatients()
+    RefreshOpenChooser()
     FooterText.Text := "Refreshing the Sheet…"
     ; RefreshData already updates the visible results through RefreshOpenChooser.
     ; Leave the GUI, query, target window, and position intact throughout.
     RefreshData(true)
     if ChooserOpen
         FooterText.Text := LastRefreshError = ""
-            ? "Updated  •  Ctrl+R  Refresh now"
-            : "Refresh failed; saved results kept  •  Ctrl+R  Retry"
+            ? "Updated  •  " LocalPatientFooter()
+            : "Sheet refresh failed; saved results kept  •  " LocalPatientFooter()
 }
 
 ManualRefresh(*) {
     global ChooserOpen
     if ChooserOpen
         RefreshInPlace()
-    else
+    else {
+        LoadLocalPatients()
         RefreshData(true)
+    }
 }
 
 IsTriggerSearchOpen(*) {
@@ -740,7 +750,7 @@ ShowModifierHud(*) {
     hasSavedContent := choice && (!choice.HasOwnProp("HasSavedContent")
         || choice.HasSavedContent) && Trim(choice.Content) != ""
     actions := []
-    if query != ""
+    if query != "" && !LocalPatientSearchIsPrivate()
         actions.Push("G       Search Google")
     if choice && choice.HasOwnProp("AiPrompt") && Trim(choice.AiPrompt) != ""
         actions.Push("Enter   Ask AI")
@@ -1071,6 +1081,10 @@ FilterChoices(query) {
             ranked.Push({Item: item, Rank: rank, AliasLength: aliasLength})
     }
 
+    ; Local records participate only in the root search, never in Sheet tabs.
+    if !DetailParent && !SearchServiceParent && CategoryParent = ""
+        for entry in RankedLocalPatientChoices(query)
+            ranked.Push(entry)
     if needle != ""
         InsertionSort ranked, CompareRanked
     choices := []
@@ -1106,7 +1120,7 @@ SameRecentItem(entry, choice) {
 RecordRecent(choice) {
     global RecentItems, RecentLimit
 
-    if !choice || !choice.HasOwnProp("Category")
+    if IsPrivatePatient(choice) || !choice || !choice.HasOwnProp("Category")
         || !choice.HasOwnProp("GroupLabel")
         || (choice.HasOwnProp("Type") && choice.Type = "utility")
         || Trim(choice.Category) = "" || Trim(choice.GroupLabel) = ""
@@ -1307,6 +1321,10 @@ ResultClicked(control, row) {
 }
 
 ChooseChoice(choice) {
+    if IsPrivatePatient(choice) {
+        ShowChoiceActions choice
+        return
+    }
     if IsAutomationChoice(choice) {
         RunAutomation choice.ScriptId, choice
         return
@@ -1341,6 +1359,8 @@ ChooseChoice(choice) {
 }
 
 PasteChoice(choice) {
+    if IsPrivatePatient(choice)
+        return
     if choice.HasOwnProp("HasSavedContent") && !choice.HasSavedContent {
         if choice.HasOwnProp("AiPrompt") && Trim(choice.AiPrompt) != ""
             LaunchAiPrompt choice
@@ -1637,6 +1657,10 @@ OpenSelectedAction(*) {
     choice := SelectedChoice()
     if !choice
         return
+    if IsPrivatePatient(choice) {
+        ShowChoiceActions choice
+        return
+    }
     if IsAutomationChoice(choice) {
         RunAutomation choice.ScriptId, choice
         return
@@ -1700,6 +1724,8 @@ OpenSearchService(choice) {
 OpenSelectedLink(*) {
     global ActionsForChoice
     HideModifierHud()
+    if CurrentChoiceIsPrivatePatient()
+        return
     if ActionsForChoice {
         OpenChoiceLink ActionsForChoice, false
         ActionsForChoice := 0
@@ -1712,6 +1738,8 @@ OpenSelectedLink(*) {
 
 OpenChoiceLink(choice, standaloneOnly := false) {
     global ChooserGui, ChooserOpen, AtBoundary
+    if IsPrivatePatient(choice)
+        return false
 
     expanded := ExpandDynamicContent(choice.Content, A_Clipboard)
     launchUrl := standaloneOnly
@@ -1763,6 +1791,8 @@ CloseDetails(*) {
 EditSelected(*) {
     global ChooserGui, ChooserOpen, ActionsForChoice
     HideModifierHud()
+    if CurrentChoiceIsPrivatePatient()
+        return
 
     if ActionsForChoice {
         choice := ActionsForChoice
@@ -1783,6 +1813,8 @@ EditSelected(*) {
 CopySelected(*) {
     global ChooserGui, ChooserOpen, AtBoundary, ActionsForChoice
     HideModifierHud()
+    if CurrentChoiceIsPrivatePatient()
+        return
 
     if ActionsForChoice {
         choice := ActionsForChoice
@@ -1808,6 +1840,8 @@ CopySelected(*) {
 }
 
 BuildAiPrompt(choice) {
+    if IsPrivatePatient(choice)
+        return ""
     if !choice || !choice.HasOwnProp("AiPrompt") || Trim(choice.AiPrompt) = ""
         return ""
     prompt := choice.AiPrompt
@@ -1871,6 +1905,11 @@ LaunchSearchQuery(choice) {
 SearchGoogleQuery(*) {
     global SearchBox, ChooserGui, ChooserOpen, AtBoundary
 
+    ; A misspelled/partial patient name must never fall through to Google.
+    if LocalPatientSearchIsPrivate() {
+        TrayTip "Web search is disabled while local patient search is enabled.", "Trigger Search"
+        return false
+    }
     phrase := Trim(SearchBox.Value)
     if phrase = "" {
         TrayTip "Type a Google search first.", "Trigger Search"
@@ -1887,6 +1926,8 @@ SearchGoogleQuery(*) {
 LaunchSelectedAi(*) {
     global ActionsForChoice
     HideModifierHud()
+    if CurrentChoiceIsPrivatePatient()
+        return
     if ActionsForChoice {
         choice := ActionsForChoice
         ActionsForChoice := 0
@@ -1937,33 +1978,40 @@ CopyAiPrompt(choice) {
 }
 
 ShowActionsMenu(*) {
+    ShowChoiceActions SelectedChoice()
+}
+
+ShowChoiceActions(choice) {
     global ActionsForChoice, ActionsReturnQuery, ActionsReturnKey
     global SearchBox, VisibleChoices, ResultsView, FooterText, ChooserGui, AiEngine
     HideModifierHud()
-    choice := SelectedChoice()
     if !choice || (choice.HasOwnProp("Type") && choice.Type = "action")
         return
     ActionsForChoice := choice
     ActionsReturnQuery := SearchBox.Value
     ActionsReturnKey := choice.Key
     actions := []
-    hasSavedContent := (!choice.HasOwnProp("HasSavedContent")
-        || choice.HasSavedContent) && Trim(choice.Content) != ""
-    hasAi := choice.HasOwnProp("AiPrompt") && Trim(choice.AiPrompt) != ""
-    hasLink := choice.HasOwnProp("Content") && ExtractLaunchUrl(choice.Content) != ""
-    hasEdit := choice.HasOwnProp("EditUrl") && choice.EditUrl != ""
-    if IsAutomationChoice(choice)
-        actions.Push(ActionChoice("run", "Run automation", "Enter"))
-    actions.Push(ActionChoice("paste", "Paste", "Return", hasSavedContent))
-    actions.Push(ActionChoice("preview", "Preview", "Ctrl+P", hasSavedContent))
-    actions.Push(ActionChoice("copy", "Copy", "Ctrl+C", hasSavedContent))
-    aiShortcut := hasSavedContent ? "Ctrl+Enter  •  " AiEngine
-        : "Enter or Ctrl+Enter  •  " AiEngine
-    actions.Push(ActionChoice("ai", "Ask AI", aiShortcut, hasAi))
-    actions.Push(ActionChoice("copyAi", "Copy AI prompt",
-        "Copy the prepared prompt", hasAi))
-    actions.Push(ActionChoice("open", "Open link", "Ctrl+O", hasLink))
-    actions.Push(ActionChoice("edit", "Edit in Google Sheets", "Ctrl+E", hasEdit))
+    if IsPrivatePatient(choice) {
+        actions := LocalPatientActions()
+    } else {
+        hasSavedContent := (!choice.HasOwnProp("HasSavedContent")
+            || choice.HasSavedContent) && Trim(choice.Content) != ""
+        hasAi := choice.HasOwnProp("AiPrompt") && Trim(choice.AiPrompt) != ""
+        hasLink := choice.HasOwnProp("Content") && ExtractLaunchUrl(choice.Content) != ""
+        hasEdit := choice.HasOwnProp("EditUrl") && choice.EditUrl != ""
+        if IsAutomationChoice(choice)
+            actions.Push(ActionChoice("run", "Run automation", "Enter"))
+        actions.Push(ActionChoice("paste", "Paste", "Return", hasSavedContent))
+        actions.Push(ActionChoice("preview", "Preview", "Ctrl+P", hasSavedContent))
+        actions.Push(ActionChoice("copy", "Copy", "Ctrl+C", hasSavedContent))
+        aiShortcut := hasSavedContent ? "Ctrl+Enter  •  " AiEngine
+            : "Enter or Ctrl+Enter  •  " AiEngine
+        actions.Push(ActionChoice("ai", "Ask AI", aiShortcut, hasAi))
+        actions.Push(ActionChoice("copyAi", "Copy AI prompt",
+            "Copy the prepared prompt", hasAi))
+        actions.Push(ActionChoice("open", "Open link", "Ctrl+O", hasLink))
+        actions.Push(ActionChoice("edit", "Edit in Google Sheets", "Ctrl+E", hasEdit))
+    }
     SearchBox.Value := ""
     SearchBox.Enabled := false
     actionLabel := choice.HasOwnProp("GroupLabel")
@@ -1990,6 +2038,11 @@ ActionChoice(actionId, label, preview, available := true) {
 PerformAction(actionId) {
     global ActionsForChoice
     choice := ActionsForChoice
+    if IsPrivatePatient(choice) {
+        if actionId = "patient.copy-mrn"
+            CopyLocalPatientMRN choice
+        return
+    }
     if actionId = "back" {
         CloseActions()
         return
@@ -2021,6 +2074,8 @@ PerformAction(actionId) {
 PreviewSelected(*) {
     global ActionsForChoice
     HideModifierHud()
+    if CurrentChoiceIsPrivatePatient()
+        return
 
     choice := ActionsForChoice ? ActionsForChoice : SelectedChoice()
     if !choice
@@ -2132,6 +2187,8 @@ CloseActions(*) {
 
 CopyChoice(choice) {
     global ChooserGui, ChooserOpen, AtBoundary
+    if IsPrivatePatient(choice)
+        return
     RecordRecent choice
     expanded := ExpandDynamicContent(choice.Content, A_Clipboard)
     ChooserGui.Hide()
@@ -2143,7 +2200,7 @@ CopyChoice(choice) {
 
 EditSelectedChoice(choice) {
     global ChooserGui, ChooserOpen
-    if !choice || choice.EditUrl = ""
+    if IsPrivatePatient(choice) || !choice || choice.EditUrl = ""
         return
     RecordRecent choice
     ChooserGui.Hide()
@@ -2519,9 +2576,10 @@ LooksLikeCsv(csv) {
 
 RefreshOpenChooser() {
     global ChooserOpen, DetailParent, SearchServiceParent, Snippets, SearchBox
-    global RootQuery, VisibleChoices, ResultsView
+    global RootQuery, VisibleChoices, ResultsView, ActionsForChoice
 
-    if !ChooserOpen
+    ; Keep action menus intact during Sheet or local-directory refresh.
+    if !ChooserOpen || ActionsForChoice
         return
 
     selected := SelectedChoice()
@@ -2586,19 +2644,19 @@ RefreshOpenChooser() {
 
 BuildErrorReport(problem, context, mode := "Caught") {
     global AppVersion
-
+    private := LocalPatientSearchIsPrivate()
     report := "Trigger Search v" AppVersion
         . "`nContext: " context
         . "`nError type: " Type(problem)
-        . "`nMessage: " problem.Message
+        . "`nMessage: " (private ? "Details omitted in local patient mode." : problem.Message)
         . "`nFunction: " (problem.What != "" ? problem.What : "Not provided")
         . "`nFile: " (problem.File != "" ? problem.File : A_ScriptFullPath)
         . "`nLine: " (problem.Line != "" ? problem.Line : "Not provided")
         . "`nMode: " mode
 
-    if problem.Extra != ""
+    if !private && problem.Extra != ""
         report .= "`nExtra: " problem.Extra
-    if problem.Stack != ""
+    if !private && problem.Stack != ""
         report .= "`n`nStack trace:`n" problem.Stack
     return report
 }
@@ -2654,6 +2712,7 @@ RunSelfTests() {
     AutomationFormattingReady := true
     TestInboxWriter()
     TestKeyboardRemaps()
+    TestLocalPatients()
     TestZoomWindowControls()
     TestZoomAccessibility()
     automationRows := ParseCsv('Name,Alias,Description,Script ID`n'
@@ -3791,6 +3850,7 @@ TestLauncherToggle() {
     PreviewOpen := true
     HandleEscape()
     Assert !IsTriggerSearchOpen(), "Escape must close both preview and chooser."
+    TestLocalPatientChooserUI()
     ChooserGui.Destroy()
     ChooserGui := 0
 }
@@ -3956,6 +4016,352 @@ TestInboxWriter() {
         rejected := true
     Assert rejected, "Inbox setup must not transmit clipboard data to another host."
     SheetId := oldSheet
+}
+
+TestLocalPatientChooserUI() {
+    global LocalPatients, LocalPatientPrivacy, LocalPatientStatus, SearchBox
+    global ActionsForChoice, VisibleChoices, ChooserOpen, RecentItems
+    oldPatients := LocalPatients, oldPrivacy := LocalPatientPrivacy, oldStatus := LocalPatientStatus
+    try {
+        LocalPatientPrivacy := true
+        LocalPatients := ParseLocalPatients("MRN,Last Name,First Name`n00123,TestAlpha,TestFirst")
+        HandleLauncher()
+        SearchBox.Value := "TestFirst"
+        RenderChoices(FilterChoices(SearchBox.Value))
+        ChooseSelected()
+        Assert ChooserOpen && IsPrivatePatient(ActionsForChoice) && VisibleChoices.Length = 4
+            && !SearchBox.Enabled,
+            "Enter on a patient must open the local action menu rather than paste a record."
+        originalPatient := ActionsForChoice
+        ChooseVisibleByNumber(1)
+        Assert ActionsForChoice = originalPatient && ChooserOpen,
+            "An unconnected clinical action must not launch anything or close the menu."
+        CopySelected()
+        EditSelected()
+        OpenSelectedLink()
+        LaunchSelectedAi()
+        PreviewSelected()
+        Assert ActionsForChoice = originalPatient && !SearchBox.Enabled,
+            "Generic snippet shortcuts must leave the private patient menu intact."
+        RefreshOpenChooser()
+        Assert ActionsForChoice = originalPatient && VisibleChoices.Length = 4,
+            "Refreshing must preserve the patient action menu."
+        CloseDetails()
+        Assert !ActionsForChoice && SearchBox.Enabled && SearchBox.Value = "TestFirst"
+            && IsPrivatePatient(SelectedChoice()),
+            "Left Arrow must return from patient actions to the same name search."
+        SearchBox.Value := "UnmatchedPatientFixture"
+        RenderChoices(FilterChoices(SearchBox.Value))
+        Assert !SearchGoogleQuery() && ChooserOpen,
+            "Even an unmatched patient name must never use the Google fallback."
+        HandleEscape()
+    } finally {
+        LocalPatients := oldPatients, LocalPatientPrivacy := oldPrivacy, LocalPatientStatus := oldStatus
+    }
+}
+
+; Local-only patient directory. Never append these records to Snippets, Sheet
+; exports, recents, updater files, error details, or cloud configuration.
+DefaultLocalPatientPath() {
+    expected := EnvGet("USERPROFILE") "\OneDrive - LifeStance Health\Desktop\Patients\patient-directory.txt"
+    desktopFile := A_Desktop "\Patients\patient-directory.txt"
+    return FileExist(expected) ? expected : (FileExist(desktopFile) ? desktopFile : expected)
+}
+
+LoadLocalPatients(pathOverride := "") {
+    global LocalPatients, LocalPatientPrivacy, LocalPatientStatus, SettingsPath, KeyboardTestMode
+    ; Self-tests on a real workstation must never read its patient directory.
+    if pathOverride = "" && (KeyboardTestMode || (A_Args.Length && A_Args[1] = "--self-test"))
+        return
+    LocalPatients := []
+    LocalPatientStatus := ""
+    LocalPatientPrivacy := pathOverride != "" || IniRead(SettingsPath, "patients", "enabled", "1") != "0"
+    if !LocalPatientPrivacy
+        return
+    path := pathOverride != "" ? pathOverride
+        : IniRead(SettingsPath, "patients", "directoryPath", DefaultLocalPatientPath())
+    try {
+        if !FileExist(path) || InStr(FileExist(path), "D") {
+            LocalPatientStatus := "Patient directory unavailable"
+            return
+        }
+        if FileGetSize(path) > 8 * 1024 * 1024 {
+            LocalPatientStatus := "Patient directory exceeds 8 MB"
+            return
+        }
+        LocalPatients := ParseLocalPatients(FileRead(path, "UTF-8"))
+        LocalPatientStatus := "Patients: " LocalPatients.Length " (local)"
+    } catch {
+        ; Do not forward parse errors, file contents, names or IDs to diagnostics.
+        LocalPatients := []
+        LocalPatientStatus := "Patient directory unreadable; check CSV headers and rows"
+    }
+}
+
+LocalPatientSearchIsPrivate() {
+    global LocalPatientPrivacy
+    return LocalPatientPrivacy
+}
+
+LocalPatientFooter() {
+    global LocalPatientStatus
+    return (LocalPatientStatus != "" ? LocalPatientStatus "  •  " : "") "Ctrl+R  Refresh now"
+}
+
+PatientCsvWellFormed(csv) {
+    ; Validate quoting before using the shared CSV parser, which is intentionally
+    ; permissive for snippets. A broken patient row must never combine records.
+    quoted := false, closed := false, atStart := true, index := 1
+    while index <= StrLen(csv) {
+        char := SubStr(csv, index, 1)
+        if quoted {
+            if char = Chr(34) {
+                if SubStr(csv, index + 1, 1) = Chr(34)
+                    index += 1
+                else
+                    quoted := false, closed := true
+            }
+        } else if char = "," || char = "`r" || char = "`n" {
+            closed := false, atStart := true
+        } else if closed {
+            return false
+        } else if char = Chr(34) {
+            if !atStart
+                return false
+            quoted := true, atStart := false
+        } else {
+            atStart := false
+        }
+        index += 1
+    }
+    return !quoted
+}
+
+ParseLocalPatients(csv) {
+    csv := LTrim(csv, Chr(0xFEFF))
+    if !PatientCsvWellFormed(csv)
+        throw Error("Invalid local patient CSV quoting.")
+    rows := ParseCsv(csv)
+    if !rows.Length
+        throw Error("Local patient CSV requires headers.")
+    columns := HeaderMap(rows[1])
+    for header in ["mrn", "last name", "first name"] {
+        if !columns.Has(header)
+            throw Error("Local patient CSV requires MRN, Last Name, First Name.")
+        occurrences := 0
+        for value in rows[1]
+            if StrLower(Trim(value)) = header
+                occurrences += 1
+        if occurrences != 1
+            throw Error("Duplicate local patient CSV headers.")
+    }
+    records := [], seen := Map()
+    seen.CaseSense := "On"
+    Loop rows.Length - 1 {
+        row := rows[A_Index + 1]
+        blank := true
+        for value in row
+            if Trim(value) != ""
+                blank := false
+        if blank
+            continue
+        if row.Length != rows[1].Length
+            throw Error("Invalid local patient CSV column count.")
+        mrn := Trim(Cell(row, columns["mrn"]))
+        last := Trim(Cell(row, columns["last name"]))
+        first := Trim(Cell(row, columns["first name"]))
+        if !RegExMatch(mrn, "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+            || first = "" || last = "" || StrLen(first) > 256 || StrLen(last) > 256
+            || RegExMatch(first last, "[\x00-\x1F\x7F]")
+            throw Error("Invalid local patient CSV record.")
+        if seen.Has(mrn) {
+            previous := seen[mrn]
+            if StrCompare(previous.FirstName, first, true) != 0
+                || StrCompare(previous.LastName, last, true) != 0
+                throw Error("Conflicting duplicate local patient MRN.")
+            continue
+        }
+        label := last ", " first
+        record := {Type: "patient", PrivatePatient: true, MRN: mrn,
+            FirstName: first, LastName: last, Key: "local-patient:" (records.Length + 1),
+            Label: label, GroupLabel: label, DisplayText: label,
+            SearchName: StrLower(first " " last),
+            Category: "Patients (local)", Preview: "MRN " mrn "  •  Enter for actions",
+            Content: "", HasSavedContent: false, AiPrompt: "", Aliases: [],
+            Details: [], DetailSearch: "", EditUrl: ""}
+        seen[mrn] := record
+        records.Push(record)
+    }
+    return records
+}
+
+IsPrivatePatient(choice) {
+    return IsObject(choice) && choice.HasOwnProp("PrivatePatient") && choice.PrivatePatient
+}
+
+CurrentChoiceIsPrivatePatient() {
+    global ActionsForChoice
+    return IsPrivatePatient(ActionsForChoice ? ActionsForChoice : SelectedChoice())
+}
+
+RankedLocalPatientChoices(query, limit := 50) {
+    global LocalPatients
+    needle := StrLower(Trim(RegExReplace(query, "[,\s]+", " ")))
+    if StrLen(needle) < 2
+        return []
+    matches := []
+    tokens := StrSplit(needle, " ")
+    for patient in LocalPatients {
+        rank := -1
+        if StrCompare(patient.MRN, needle, false) = 0
+            rank := 2
+        else if SubStr(StrLower(patient.MRN), 1, StrLen(needle)) = needle
+            rank := 3
+        else {
+            matched := true
+            for token in tokens
+                if !InStr(patient.SearchName, token)
+                    matched := false
+            if matched {
+                reverseName := StrLower(patient.LastName " " patient.FirstName)
+                rank := patient.SearchName = needle || reverseName = needle ? 2
+                    : (SubStr(patient.SearchName, 1, StrLen(needle)) = needle
+                        || SubStr(reverseName, 1, StrLen(needle)) = needle ? 3 : 5)
+            }
+        }
+        if rank < 0 || (matches.Length >= limit && rank >= matches[matches.Length].Rank)
+            continue
+        matches.Push({Item: patient, Rank: rank, AliasLength: 2147483647})
+        InsertionSort matches, CompareRanked
+        if matches.Length > limit
+            matches.Pop()
+    }
+    return matches
+}
+
+LocalPatientActions() {
+    ; Do not pretend that opening a home page selects a patient or starts a
+    ; recording. These actions become runnable only with verified local workers.
+    return [
+        ActionChoice("patient.search-advancedmd", "Search on AdvancedMD",
+            "Not connected yet: needs Chrome MRN-result setup", false),
+        ActionChoice("patient.start-blueprint", "Start recording session on Blueprint",
+            "Not connected yet: needs a patient-specific recording script", false),
+        ActionChoice("patient.call", "Call them",
+            "Unavailable: this directory has no phone-number column", false),
+        ActionChoice("patient.copy-mrn", "Copy MRN", "Copies only when you select this action")
+    ]
+}
+
+FindCurrentLocalPatient(choice) {
+    global LocalPatients
+    for patient in LocalPatients
+        if StrCompare(patient.MRN, choice.MRN, true) = 0
+            && StrCompare(patient.FirstName, choice.FirstName, true) = 0
+            && StrCompare(patient.LastName, choice.LastName, true) = 0
+            return patient
+    return 0
+}
+
+CopyLocalPatientMRN(choice) {
+    if !IsPrivatePatient(choice)
+        return
+    LoadLocalPatients()
+    patient := FindCurrentLocalPatient(choice)
+    if !patient {
+        TrayTip "Patient record changed or is unavailable. Search again.", "Trigger Search"
+        return
+    }
+    ; No command-line arguments, temp files or automatic clipboard writes.
+    ; Copy is explicit and follows the workstation's existing clipboard policy.
+    A_Clipboard := patient.MRN
+    CancelChooser()
+}
+
+TestLocalPatients() {
+    global LocalPatients, LocalPatientPrivacy, LocalPatientStatus
+    global Snippets, DetailParent, SearchServiceParent, CategoryParent, RecentItems
+    saved := {Patients: LocalPatients, Privacy: LocalPatientPrivacy, Status: LocalPatientStatus,
+        Snippets: Snippets, Detail: DetailParent, Service: SearchServiceParent,
+        Category: CategoryParent, Recents: RecentItems}
+    fixture := A_Temp "\trigger-patient-fixture-" A_TickCount ".txt"
+    try {
+        header := "MRN,Last Name,First Name`r`n"
+        csv := Chr(0xFEFF) header "00123,TestAlpha,TestFirst`r`n"
+            . 'ABC9,"TestBeta, Jr.",Zoë' "`r`n00123,TestAlpha,TestFirst`r`n"
+        parsed := ParseLocalPatients(csv)
+        Assert parsed.Length = 2 && StrCompare(parsed[1].MRN, "00123", true) = 0,
+            "Patient CSV must preserve leading zeroes and deduplicate identical MRNs."
+        Assert parsed[2].LastName = "TestBeta, Jr." && parsed[2].FirstName = "Zoë",
+            "BOM, CRLF, quoted commas and Unicode names must be supported."
+        for invalid in ["Name,Number`nTest,1", header '"00123,TestAlpha,TestFirst',
+            header "00123,TestAlpha,TestFirst`n00123,TestOther,TestFirst",
+            header "00123,TestAlpha", header "00123,TestAlpha,TestFirst,extra",
+            header "00123,TestAlpha,", header '00123,"TestAlpha"junk,TestFirst',
+            "MRN,MRN,Last Name,First Name`n00123,00123,TestAlpha,TestFirst"] {
+            rejected := false
+            try ParseLocalPatients(invalid)
+            catch
+                rejected := true
+            Assert rejected, "Malformed or ambiguous patient records must fail closed."
+        }
+        FileAppend csv, fixture, "UTF-8-RAW"
+        LoadLocalPatients(fixture)
+        Assert LocalPatients.Length = 2 && LocalPatientSearchIsPrivate(),
+            "A local .txt CSV must load directly without Sheet or network access."
+        DetailParent := 0, SearchServiceParent := 0, CategoryParent := ""
+        Snippets := [TestSnippet("Exact alias", "ordinary snippet", ["testfirst"])]
+        ranked := FilterChoices("testfirst")
+        Assert ranked.Length = 2 && ranked[1].Label = "Exact alias" && IsPrivatePatient(ranked[2]),
+            "Patient names must join root search while exact snippet aliases keep priority."
+        Assert Snippets.Length = 1 && !IsPrivatePatient(Snippets[1]),
+            "Private records must never join the Sheet/cache source."
+        Assert RankedLocalPatientChoices("testalpha testfirst").Length = 1
+            && RankedLocalPatientChoices("testfirst testalpha").Length = 1,
+            "Patient name search must accept either name order."
+        Assert RankedLocalPatientChoices("00123").Length = 1
+            && RankedLocalPatientChoices("123").Length = 0,
+            "MRN search must treat identifiers as text rather than equivalent numbers."
+        Assert RankedLocalPatientChoices("t").Length = 0 && RankedLocalPatientChoices("").Length = 0,
+            "Patient names must not populate home or single-letter shortcut searches."
+        RecentItems := []
+        patient := LocalPatients[1]
+        RecordRecent patient
+        Assert RecentItems.Length = 0, "Patient records must never enter saved recent history."
+        unsafePrompt := patient.Clone()
+        unsafePrompt.AiPrompt := "Never send {label}"
+        Assert BuildAiPrompt(unsafePrompt) = "" && !OpenChoiceLink(patient),
+            "Generic AI and URL actions must reject private patient records."
+        actions := LocalPatientActions()
+        Assert actions.Length = 4 && !actions[1].Available && !actions[2].Available
+            && !actions[3].Available && actions[4].Available,
+            "Unconnected clinical actions must remain visibly unavailable."
+        report := BuildErrorReport(Error("PRIVATE_FIXTURE", "TestLocalPatients", "PRIVATE_FIXTURE"),
+            "Local patient fixture")
+        Assert !InStr(report, "PRIVATE_FIXTURE"),
+            "Private mode diagnostics must omit message, extra data and stack values."
+        Assert FindCurrentLocalPatient(patient), "Unchanged records must resolve before an action."
+        FileDelete fixture
+        FileAppend header "00123,TestChanged,TestFirst", fixture, "UTF-8-RAW"
+        LoadLocalPatients(fixture)
+        Assert !FindCurrentLocalPatient(patient), "Changed records must not reuse a stale action selection."
+        FileDelete fixture
+        LoadLocalPatients(fixture)
+        Assert LocalPatients.Length = 0 && LocalPatientSearchIsPrivate(),
+            "A missing directory must clear stale records while retaining web-search protection."
+        for index in [1, 2, 3] {
+            LocalPatients.Push(ParseLocalPatients(header "00" index ",TestAlpha,TestFirst")[1])
+        }
+        Assert RankedLocalPatientChoices("testfirst", 2).Length = 2,
+            "Patient matches must be capped to keep the launcher responsive."
+    } finally {
+        if FileExist(fixture)
+            FileDelete fixture
+        LocalPatients := saved.Patients, LocalPatientPrivacy := saved.Privacy
+        LocalPatientStatus := saved.Status, Snippets := saved.Snippets
+        DetailParent := saved.Detail, SearchServiceParent := saved.Service
+        CategoryParent := saved.Category, RecentItems := saved.Recents
+    }
 }
 
 KeyboardRemapMap() {

@@ -478,3 +478,61 @@ underlying room window stays out of the way. Check Reclaim Host only in your own
 test meeting. CI validates cache behavior, native OOXML formatting, control
 invocation, worker syntax, install, startup isolation, and rollback; it does not
 join or end a real meeting or change host privileges.
+
+
+## Local patient directory (0.16.21)
+
+On Windows, the launcher reads the existing local UTF-8 CSV-formatted text file
+at `%USERPROFILE%\OneDrive - LifeStance Health\Desktop\Patients\patient-directory.txt`.
+It also recognizes `Patients\patient-directory.txt` under the Windows Desktop
+location. No download or Sheet tab is needed. Required headers are exactly
+`MRN,Last Name,First Name` (column order can vary). Identifiers stay text,
+including leading zeroes; CSV quoting, Unicode names, BOM and CRLF are supported.
+Duplicate identical records collapse. Conflicting duplicate MRNs, incomplete
+records, malformed CSV and files larger than 8 MB fail closed with a generic
+local status; no record contents are included in diagnostics.
+
+Open F6 and type at least two characters of a first name, last name, either
+name order, or an MRN. Up to 50 matching patients appear alongside snippets and
+automations; type more to narrow them. Exact snippet/automation aliases retain
+priority. Patients never appear in the empty home view or one-letter searches.
+Their visible MRNs distinguish patients who share a name. Enter, Right Arrow
+or Ctrl+K opens the patient's menu. Left Arrow returns; Escape closes.
+
+This release implements **local search and the patient menu**, with an explicit
+**Copy MRN** action. The AdvancedMD search, Blueprint recording and call menu
+entries are visibly unavailable: patient-specific browser workers have not yet
+been connected, and the supplied directory has no phone column. Opening a
+website is not treated as selecting a patient or starting a recording. Do not
+rely on these entries to perform clinical actions yet. A future AdvancedMD
+worker must match the exact MRN field in exactly one result, ignore matching
+phone digits, and verify the opened chart before continuing.
+
+Patient records remain in a separate in-memory collection. They are not added
+to the Google Sheet, Sheet CSV cache, saved recents, or updater bundle. The
+launcher reloads the file on opening and Ctrl+R; a missing/unreadable file
+clears stale records. Copy MRN rechecks the selected record before touching the
+clipboard. Copying is explicit and uses the workstation's existing clipboard
+settings, including any clipboard sync policy.
+
+Local patient mode disables the root Google fallback and Ctrl+G, including for
+unmatched names, and removes generic snippet/AI/Sheet-edit actions from patient
+records. Known Sheet snippets and deliberately selected search services keep
+their existing behavior: do not use those external services for patient data.
+Error reports in this mode omit message, extra-data and stack values. The
+existing Inbox shortcut still sends the clipboard when explicitly invoked;
+it does not receive patient records automatically.
+
+The file's location is in the employer's OneDrive folder and may already sync
+through OneDrive. The launcher introduces no additional directory upload.
+Local-only settings can override `[patients] directoryPath` in
+`%APPDATA%\SheetAutocomplete\settings.ini`. `[patients] enabled=0` disables
+this feature and restores the ordinary web-search behavior. The default is ON,
+so a missing patient file still cannot cause a typed name to fall through to
+Google. No patient data belongs in this settings file or in GitHub.
+
+Windows CI uses invented records only and tests parsing, identifiers, ranking,
+privacy guards, stale selections and the real chooser's patient-menu path.
+The actual Dell directory and live Chrome/AdvancedMD/Blueprint interactions
+remain unverified. On the Dell, refresh all scripts, open F6, check the local
+patient count, search a known name and press Enter to inspect the menu.
